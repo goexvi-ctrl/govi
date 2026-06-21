@@ -1,0 +1,13 @@
+# Build output
+/govi
+/bin/
+
+# Conformance oracle: the compiled C nvi binary, fetched/built locally.
+/internal/conformance/oracle/nvi
+
+# Editor/OS cruft
+*.swp
+.DS_Store
+
+# Test scratch (large-file generation, recovery temp dirs)
+/testdata/large/
