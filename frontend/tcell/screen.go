@@ -1,0 +1,164 @@
+// Package tcell is a terminal Frontend for the editor engine, built on
+// github.com/gdamore/tcell/v2. It renders the engine's semantic View onto a
+// character grid and translates terminal key events into engine events. It is
+// one consumer of the engine boundary; the engine itself has no terminal
+// dependency.
+package tcell
+
+import (
+	tc "github.com/gdamore/tcell/v2"
+
+	"govi/engine"
+)
+
+// Frontend renders the engine to a terminal via tcell.
+type Frontend struct {
+	scr   tc.Screen
+	eng   *engine.Engine
+	title string
+}
+
+// New initializes a terminal screen and returns a Frontend. Call Attach with
+// the engine, then Run.
+func New() (*Frontend, error) {
+	scr, err := tc.NewScreen()
+	if err != nil {
+		return nil, err
+	}
+	return NewWithScreen(scr)
+}
+
+// NewWithScreen builds a Frontend over a caller-provided tcell Screen. It is
+// used by tests (with a SimulationScreen) and by hosts that manage their own
+// screen. The screen is initialized here.
+func NewWithScreen(scr tc.Screen) (*Frontend, error) {
+	if err := scr.Init(); err != nil {
+		return nil, err
+	}
+	scr.SetStyle(tc.StyleDefault)
+	scr.EnablePaste()
+	return &Frontend{scr: scr}, nil
+}
+
+// Attach binds the engine the frontend drives.
+func (f *Frontend) Attach(e *engine.Engine) { f.eng = e }
+
+// Close restores the terminal.
+func (f *Frontend) Close() {
+	if f.scr != nil {
+		f.scr.Fini()
+	}
+}
+
+// Run feeds terminal events to the engine until a quit command is issued.
+func (f *Frontend) Run() {
+	w, h := f.scr.Size()
+	f.eng.Resize(textRows(h), w)
+
+	for !f.eng.ShouldQuit() {
+		ev := f.scr.PollEvent()
+		switch ev := ev.(type) {
+		case *tc.EventResize:
+			f.scr.Sync()
+			w, h := ev.Size()
+			f.eng.Resize(textRows(h), w)
+		case *tc.EventKey:
+			f.eng.Input(translateKey(ev))
+		case *tc.EventPaste:
+			// Bracketed paste: tcell brackets the run with start/end events;
+			// for now content arrives as individual key events between them.
+		case *tc.EventInterrupt:
+			f.eng.Input(engine.InterruptEvent{})
+		}
+	}
+}
+
+// textRows is the number of buffer rows, reserving the bottom row for the
+// status/message line.
+func textRows(h int) int {
+	if h <= 1 {
+		return 1
+	}
+	return h - 1
+}
+
+// Bell rings the terminal bell.
+func (f *Frontend) Bell() { f.scr.Beep() }
+
+// SetTitle records the desired window title. (Terminal title-setting is applied
+// in a later phase; stored here so the behavior is observable.)
+func (f *Frontend) SetTitle(title string) { f.title = title }
+
+// Render paints the current View. Phase 2 does a straightforward full repaint;
+// the ChangeSet hints are honored for incremental drawing in a later phase.
+func (f *Frontend) Render(v engine.View, _ engine.ChangeSet) {
+	f.scr.Clear()
+	w, h := f.scr.Size()
+	rows := textRows(h)
+	top := v.Viewport().Top
+
+	for row := 0; row < rows; row++ {
+		lno := top + int64(row)
+		if lno > v.LineCount() {
+			f.scr.SetContent(0, row, '~', nil, tc.StyleDefault)
+			continue
+		}
+		cells := engine.DisplayCells(v.Line(lno))
+		x := 0
+		for _, c := range cells {
+			if x >= w {
+				break
+			}
+			f.scr.SetContent(x, row, c.Rune, nil, styleFor(c.Style))
+			x++
+		}
+	}
+
+	f.drawStatus(v, w, rows)
+	f.placeCursor(v, rows)
+	f.scr.Show()
+}
+
+func (f *Frontend) drawStatus(v engine.View, w, row int) {
+	msg, _ := v.Message()
+	st := tc.StyleDefault
+	x := 0
+	for _, r := range msg {
+		if x >= w {
+			break
+		}
+		f.scr.SetContent(x, row, r, nil, st)
+		x++
+	}
+}
+
+func (f *Frontend) placeCursor(v engine.View, rows int) {
+	if v.Mode() == engine.ModeExColon {
+		msg, _ := v.Message()
+		f.scr.ShowCursor(len([]rune(msg)), rows) // end of the colon line
+		return
+	}
+	cur := v.Cursor()
+	dl := v.Line(cur.Line)
+	x := engine.DisplayColumn(dl, cur.Col)
+	y := int(cur.Line - v.Viewport().Top)
+	if y < 0 || y >= rows {
+		f.scr.HideCursor()
+		return
+	}
+	f.scr.ShowCursor(x, y)
+}
+
+func styleFor(s engine.Style) tc.Style {
+	st := tc.StyleDefault
+	if s&engine.StyleReverse != 0 {
+		st = st.Reverse(true)
+	}
+	if s&engine.StyleBold != 0 {
+		st = st.Bold(true)
+	}
+	if s&engine.StyleUnderline != 0 {
+		st = st.Underline(true)
+	}
+	return st
+}
