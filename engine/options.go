@@ -277,33 +277,38 @@ func (e *Engine) showOptions(all bool) {
 		width = 80
 	}
 
-	// Collect and format the options to show.
-	var entries []string
+	// Collect the options to show, sorted by option NAME. The "no" prefix on a
+	// disabled boolean is only a display modifier -- nvi sorts on the bare name,
+	// so "noruler" sorts as "ruler" (after "open"), not under "n".
+	type shown struct {
+		name string
+		disp string
+	}
+	var opts []shown
 	longBool := 1
 	for i := range optDefs {
 		d := &optDefs[i]
 		if !all && e.isDefault(d) {
 			continue
 		}
-		entries = append(entries, e.optDisplay(d))
-		if d.typ == optBool {
-			if l := len(e.optDisplay(d)); l > longBool {
-				longBool = l
-			}
+		disp := e.optDisplay(d)
+		opts = append(opts, shown{name: d.name, disp: disp})
+		if d.typ == optBool && len(disp) > longBool {
+			longBool = len(disp)
 		}
 	}
-	sort.Strings(entries)
-	if len(entries) == 0 {
+	if len(opts) == 0 {
 		return
 	}
+	sort.Slice(opts, func(i, j int) bool { return opts[i].name < opts[j].name })
 
 	colW := longBool + 2
 	var short, long []string
-	for _, en := range entries {
-		if len(en) <= longBool {
-			short = append(short, en)
+	for _, o := range opts {
+		if len(o.disp) <= longBool {
+			short = append(short, o.disp)
 		} else {
-			long = append(long, en)
+			long = append(long, o.disp)
 		}
 	}
 

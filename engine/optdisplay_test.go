@@ -31,6 +31,50 @@ func TestSetAllShowsManyOptions(t *testing.T) {
 	t.Logf("set all (%d lines):\n%s", len(out), joined)
 }
 
+func TestSetAllSortedByOptionName(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	e.Resize(23, 80)
+	drive(e, ":set all\r")
+	out := e.scr.pendingOutput
+
+	// The "no" prefix is a display modifier only: options sort on the bare
+	// name. "altwerase" sorts first, so "noaltwerase" leads the grid.
+	if len(out) == 0 || !strings.HasPrefix(out[0], "noaltwerase") {
+		t.Fatalf("first cell = %q, want noaltwerase (sorted by name, not display)", firstField(out))
+	}
+
+	// Reconstruct the first grid column and confirm it is sorted by bare name.
+	var col1 []string
+	for _, line := range out {
+		f := strings.Fields(line)
+		if len(f) < 2 { // skip the trailing single-entry long-value lines
+			continue
+		}
+		col1 = append(col1, sortKey(f[0]))
+	}
+	for i := 1; i < len(col1); i++ {
+		if col1[i] < col1[i-1] {
+			t.Fatalf("first column not name-sorted: %q before %q", col1[i-1], col1[i])
+		}
+	}
+}
+
+func firstField(out []string) string {
+	if len(out) == 0 {
+		return ""
+	}
+	return out[0]
+}
+
+// sortKey reduces a displayed option to its sort name: drop "=value" and a
+// leading "no".
+func sortKey(disp string) string {
+	if i := strings.IndexByte(disp, '='); i >= 0 {
+		disp = disp[:i]
+	}
+	return strings.TrimPrefix(disp, "no")
+}
+
 func TestSetShowsOnlyChanged(t *testing.T) {
 	e, _, _ := newTestEngine(t, "x\n")
 	e.Resize(23, 80)
