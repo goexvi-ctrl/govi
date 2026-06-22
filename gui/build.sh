@@ -23,7 +23,7 @@ swiftc \
 	-O \
 	-import-objc-header "$here/macos/Bridging.h" \
 	-I "$build" \
-	"$here/macos/main.swift" "$here/macos/GoviView.swift" \
+	"$here"/macos/*.swift \
 	"$build/libgovi.a" \
 	-framework Cocoa \
 	-framework CoreFoundation \

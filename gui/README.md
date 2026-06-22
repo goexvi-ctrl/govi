@@ -80,6 +80,14 @@ The app is multi-window — each window has its own embedded engine instance:
 This is enabled by the handle-based libgovi API: `GoviStart` returns a handle for
 one editor and every call takes it, so windows are fully independent.
 
+### Settings
+
+**Cmd-,** opens a Settings window. Currently it sets the **text padding** — the
+inset in pixels between the window edge and the text (default 3) — persisted in
+`UserDefaults` and applied live to all open windows. Padding is a pure rendering
+concern in the view layer (it offsets every cell↔pixel conversion); the engine
+is unaware of it.
+
 ### Mouse and clipboard
 
 In addition to vi keys, the window supports the usual GUI text affordances:

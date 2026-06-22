@@ -40,6 +40,9 @@ final class GoviView: NSView, NSTextInputClient {
     private let fgColor = NSColor.textColor
     private let cursorColor = NSColor.systemBlue
 
+    // Inset (pixels) between the window edge and the text grid, from Settings.
+    private var padding: CGFloat = Settings.padding
+
     private var rows = 1
     private var cols = 1
     private var timer: Timer?
@@ -57,11 +60,38 @@ final class GoviView: NSView, NSTextInputClient {
         self.handle = handle
         super.init(frame: frameRect)
         measureFont()
+        observeSettings()
     }
     required init?(coder: NSCoder) {
         self.handle = 0
         super.init(coder: coder)
         measureFont()
+        observeSettings()
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    private func observeSettings() {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(settingsChanged), name: Settings.changed, object: nil)
+    }
+
+    @objc private func settingsChanged() {
+        padding = Settings.padding
+        updateGeometry() // padding may change the cell rows/cols
+        needsDisplay = true
+    }
+
+    // cellPoint / cellRect convert a (col, row) cell to view pixels, applying the
+    // padding inset; cellOf is the inverse for hit-testing.
+    private func cellPoint(_ col: Int, _ row: Int) -> NSPoint {
+        NSPoint(x: padding + CGFloat(col) * cellW, y: padding + CGFloat(row) * cellH)
+    }
+
+    private func cellRect(_ col: Int, _ row: Int) -> NSRect {
+        NSRect(origin: cellPoint(col, row), size: NSSize(width: cellW, height: cellH))
     }
 
     private func measureFont() {
@@ -89,8 +119,8 @@ final class GoviView: NSView, NSTextInputClient {
     // updateGeometry recomputes the cell rows/cols for the current bounds and
     // tells the engine, then recomposes and repaints.
     func updateGeometry() {
-        let w = max(1, Int(bounds.width / cellW))
-        let h = max(1, Int(bounds.height / cellH))
+        let w = max(1, Int((bounds.width - 2 * padding) / cellW))
+        let h = max(1, Int((bounds.height - 2 * padding) / cellH))
         if w == cols && h == rows { return }
         cols = w
         rows = h
@@ -156,7 +186,9 @@ final class GoviView: NSView, NSTextInputClient {
 
     private func cellAt(_ event: NSEvent) -> (x: Int32, y: Int32) {
         let p = convert(event.locationInWindow, from: nil)
-        return (Int32(p.x / cellW), Int32(p.y / cellH))
+        let x = max(0, Int((p.x - padding) / cellW))
+        let y = max(0, Int((p.y - padding) / cellH))
+        return (Int32(x), Int32(y))
     }
 
     private func caretAt(_ event: NSEvent) -> Caret {
@@ -404,8 +436,7 @@ final class GoviView: NSView, NSTextInputClient {
     // firstRect tells the input system where the cursor is (in screen
     // coordinates) so the dead-key/IME candidate window appears there.
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
-        let r = NSRect(x: CGFloat(GoviCursorX(handle)) * cellW, y: CGFloat(GoviCursorY(handle)) * cellH,
-                       width: cellW, height: cellH)
+        let r = cellRect(Int(GoviCursorX(handle)), Int(GoviCursorY(handle)))
         let inWindow = convert(r, to: nil)
         return window?.convertToScreen(inWindow) ?? r
     }
@@ -432,8 +463,7 @@ final class GoviView: NSView, NSTextInputClient {
             for y in 0..<n {
                 guard let st = rowStyle(y) else { continue }
                 for (x, flag) in st.enumerated() where flag == "1" {
-                    NSRect(x: CGFloat(x) * cellW, y: CGFloat(y) * cellH,
-                           width: cellW, height: cellH).fill()
+                    cellRect(x, y).fill()
                 }
             }
         }
@@ -452,8 +482,7 @@ final class GoviView: NSView, NSTextInputClient {
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
             ]
             for (i, ch) in markedText.enumerated() {
-                let r = NSRect(x: CGFloat(cx + i) * cellW, y: CGFloat(cy) * cellH,
-                               width: cellW, height: cellH)
+                let r = cellRect(cx + i, cy)
                 bgColor.setFill()
                 r.fill()
                 (String(ch) as NSString).draw(at: r.origin, withAttributes: attrs)
@@ -461,10 +490,8 @@ final class GoviView: NSView, NSTextInputClient {
         } else if GoviCursorVisible(handle) != 0 {
             let cx = Int(GoviCursorX(handle))
             let cy = Int(GoviCursorY(handle))
-            let rect = NSRect(x: CGFloat(cx) * cellW, y: CGFloat(cy) * cellH,
-                              width: cellW, height: cellH)
             cursorColor.setFill()
-            rect.fill()
+            cellRect(cx, cy).fill()
             if let ch = charAt(cx, cy), ch != " " {
                 drawChar(ch, col: cx, row: cy, color: bgColor)
             }
@@ -480,8 +507,7 @@ final class GoviView: NSView, NSTextInputClient {
 
     private func drawChar(_ ch: Character, col: Int, row: Int, color: NSColor) {
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
-        let p = NSPoint(x: CGFloat(col) * cellW, y: CGFloat(row) * cellH)
-        (String(ch) as NSString).draw(at: p, withAttributes: attrs)
+        (String(ch) as NSString).draw(at: cellPoint(col, row), withAttributes: attrs)
     }
 
     private func rowText(_ y: Int) -> String? {

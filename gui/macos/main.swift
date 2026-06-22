@@ -78,6 +78,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         EditorWindow.open(path: "")
     }
 
+    // Settings… (Cmd-,)
+    @objc func showSettings(_ sender: Any?) {
+        SettingsWindowController.shared.show()
+    }
+
     // File > Open…: choose one or more files, each in its own window.
     @objc func openWindow(_ sender: Any?) {
         let panel = NSOpenPanel()
@@ -105,6 +110,10 @@ func makeMenu(target: AppDelegate) -> NSMenu {
     let appMenu = NSMenu()
     appItem.submenu = appMenu
     appMenu.addItem(withTitle: "About \(name)", action: nil, keyEquivalent: "")
+    appMenu.addItem(NSMenuItem.separator())
+    let settingsItem = appMenu.addItem(withTitle: "Settings…",
+                                       action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
+    settingsItem.target = target
     appMenu.addItem(NSMenuItem.separator())
     appMenu.addItem(withTitle: "Quit \(name)",
                     action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
