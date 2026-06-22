@@ -238,33 +238,43 @@ func wrapRows(dw, w int) int {
 }
 
 // scrollToCursor adjusts top so the cursor's line is fully visible, accounting
-// for line wrapping (a long line occupies several screen rows).
+// for line wrapping (a long line occupies several screen rows). It does O(rows)
+// work regardless of how far the cursor jumped, so commands like G on a huge
+// file are fast.
 func (s *screen) scrollToCursor() {
 	if s.rows <= 0 {
 		return
 	}
-	if s.cursor.Line < s.top {
-		s.top = s.cursor.Line
-	}
 	if s.top < 1 {
 		s.top = 1
 	}
-	// Advance top one logical line at a time until the cursor line fits within
-	// the visible screen rows.
-	for s.top < s.cursor.Line {
-		used := 0
-		bottom := s.top
-		for ln := s.top; ln <= s.lineCount(); ln++ {
-			r := s.screenLines(ln)
-			if used+r > s.rows {
-				break
-			}
-			used += r
-			bottom = ln
-		}
-		if s.cursor.Line <= bottom {
+	// Cursor above the viewport: bring its line to the top.
+	if s.cursor.Line < s.top {
+		s.top = s.cursor.Line
+		return
+	}
+	// Otherwise compute the highest top that still shows the cursor line at the
+	// bottom of the screen by packing screen rows backward from the cursor. If
+	// that top is below the current one, the cursor was off the bottom, so
+	// scroll down to it; if not, the cursor is already visible and top is kept.
+	if newTop := s.topForBottom(s.cursor.Line); newTop > s.top {
+		s.top = newTop
+	}
+}
+
+// topForBottom returns the topmost line such that lines [top, bottom] fit within
+// the available screen rows when wrapped (bottom shown at the screen's last
+// row). It reads at most ~rows lines.
+func (s *screen) topForBottom(bottom int64) int64 {
+	used := 0
+	top := bottom
+	for ln := bottom; ln >= 1; ln-- {
+		r := s.screenLines(ln)
+		if used+r > s.rows {
 			break
 		}
-		s.top++
+		used += r
+		top = ln
 	}
+	return top
 }
