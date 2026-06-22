@@ -86,6 +86,21 @@ no extra code: each tab is a separate `NSWindow` sharing a tabbing identifier.
 This is enabled by the handle-based libgovi API: `GoviStart` returns a handle for
 one editor and every call takes it, so windows and tabs are fully independent.
 
+### Spell checking
+
+Standard macOS spell checking (via `NSSpellChecker`):
+
+- Misspelled words on the visible lines get a **red squiggly underline**
+  (continuous checking).
+- **Right-click** a misspelled word for suggestions, **Ignore Spelling**, or
+  **Learn Spelling**; choosing a suggestion replaces the word.
+- **Edit ▸ Spelling ▸ Check Spelling While Typing** toggles it (persisted).
+
+The engine supplies line text and a buffer-position→screen-cell mapping; the
+view runs `NSSpellChecker`, draws the underlines, and applies corrections
+through the same caret-range primitives as the rest of the GUI. Results are
+cached per line text so unchanged lines are not re-checked.
+
 ### Settings
 
 **Cmd-,** opens a Settings window. Currently it sets the **text padding** — the

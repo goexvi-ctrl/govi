@@ -21,6 +21,21 @@ enum Settings {
             NotificationCenter.default.post(name: changed, object: nil)
         }
     }
+
+    private static let spellKey = "checkSpellingWhileTyping"
+
+    // spellChecking controls continuous spell checking (red squiggles).
+    static var spellChecking: Bool {
+        get {
+            let d = UserDefaults.standard
+            guard d.object(forKey: spellKey) != nil else { return true }
+            return d.bool(forKey: spellKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: spellKey)
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
 }
 
 // SettingsWindowController is the single Settings window (Cmd-,). It edits the

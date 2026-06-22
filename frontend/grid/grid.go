@@ -316,6 +316,40 @@ func Locate(v engine.View, rows, cols, x, y int) engine.Pos {
 	return engine.Pos{Line: last, Col: len(v.Line(last).Text)}
 }
 
+// CellOf maps a buffer caret position to the screen cell it occupies, the
+// inverse of Locate. visible reports whether the position is within the laid-out
+// area; when false x and y are meaningless. A GUI uses this to place overlays
+// (e.g. spelling squiggles) anchored to buffer positions.
+func CellOf(v engine.View, rows, cols int, p engine.Pos) (x, y int, visible bool) {
+	tr := textRows(rows)
+	gutter := engine.GutterWidth(v.LineCount(), v.Number())
+	textW := cols - gutter
+	if textW < 1 {
+		textW = 1
+	}
+	top := v.Viewport().Top
+	if p.Line < top {
+		return 0, 0, false
+	}
+	row := 0
+	for lno := top; lno <= v.LineCount(); lno++ {
+		dl := v.Line(lno)
+		if lno == p.Line {
+			dcol := engine.DisplayColumn(dl, p.Col)
+			yy := row + dcol/textW
+			if yy < 0 || yy >= tr {
+				return 0, 0, false
+			}
+			return gutter + dcol%textW, yy, true
+		}
+		row += wrapRowsOf(dl, textW)
+		if row >= tr {
+			return 0, 0, false
+		}
+	}
+	return 0, 0, false
+}
+
 // caretRuneIndex converts a display column to the caret rune index on dl: the
 // index of the rune whose cell contains dcol, or len(runes) at/after the end.
 func caretRuneIndex(dl engine.DisplayLine, dcol int) int {

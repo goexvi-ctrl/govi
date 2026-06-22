@@ -118,6 +118,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SettingsWindowController.shared.show()
     }
 
+    // Edit > Spelling > Check Spelling While Typing.
+    @objc func toggleSpelling(_ sender: Any?) {
+        Settings.spellChecking.toggle()
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleSpelling(_:)) {
+            item.state = Settings.spellChecking ? .on : .off
+        }
+        return true
+    }
+
     // File > Open…: choose one or more files, each in its own window.
     @objc func openWindow(_ sender: Any?) {
         let panel = NSOpenPanel()
@@ -178,6 +190,14 @@ func makeMenu(target: AppDelegate) -> NSMenu {
     editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
     editMenu.addItem(NSMenuItem.separator())
     editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+    editMenu.addItem(NSMenuItem.separator())
+    let spellingItem = NSMenuItem(title: "Spelling", action: nil, keyEquivalent: "")
+    let spellingMenu = NSMenu(title: "Spelling")
+    spellingItem.submenu = spellingMenu
+    let checkItem = spellingMenu.addItem(withTitle: "Check Spelling While Typing",
+                                         action: #selector(AppDelegate.toggleSpelling(_:)), keyEquivalent: "")
+    checkItem.target = target
+    editMenu.addItem(spellingItem)
 
     // Window menu. AppKit fills it with the window list and, because the windows
     // use native tabbing, the tab commands (Show Tab Bar, Show All Tabs, Merge

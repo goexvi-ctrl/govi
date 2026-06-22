@@ -56,6 +56,17 @@ final class GoviView: NSView, NSTextInputClient {
     private var dragAnchor: Caret = (1, 0)
     private var dragging = false
 
+    // Spell checking (continuous): red squiggles under misspelled words on the
+    // visible lines. Results are cached by line text so unchanged lines are not
+    // re-checked. Ranges are rune (Unicode scalar) indices, matching engine cols.
+    private typealias RuneRange = (start: Int, end: Int)
+    private struct Misspelling { let line: Int64; let start: Int; let end: Int }
+    private var spellEnabled = Settings.spellChecking
+    private let spellTag = NSSpellChecker.uniqueSpellDocumentTag()
+    private var spellCache: [String: [RuneRange]] = [:]
+    private var misspellings: [Misspelling] = []
+    private var contextMisspelling: Misspelling?
+
     init(frame frameRect: NSRect, handle: Int64) {
         self.handle = handle
         super.init(frame: frameRect)
@@ -80,7 +91,9 @@ final class GoviView: NSView, NSTextInputClient {
 
     @objc private func settingsChanged() {
         padding = Settings.padding
+        spellEnabled = Settings.spellChecking
         updateGeometry() // padding may change the cell rows/cols
+        updateSpelling()
         needsDisplay = true
     }
 
@@ -149,6 +162,7 @@ final class GoviView: NSView, NSTextInputClient {
 
     private func recompose() {
         GoviCompose(handle, Int32(rows), Int32(cols))
+        updateSpelling()
     }
 
     private func updateTitle() {
@@ -454,6 +468,183 @@ final class GoviView: NSView, NSTextInputClient {
         return ""
     }
 
+    // MARK: - Spell checking
+
+    private func lineText(_ line: Int64) -> String {
+        guard let c = GoviLineText(handle, line) else { return "" }
+        defer { GoviFree(c) }
+        return String(cString: c)
+    }
+
+    // updateSpelling recomputes the misspelled words on the visible lines.
+    private func updateSpelling() {
+        misspellings.removeAll()
+        guard spellEnabled else { return }
+        let checker = NSSpellChecker.shared
+        let count = GoviLineCount(handle)
+        var line = GoviTopLine(handle)
+        while line <= count {
+            var x: Int32 = 0, y: Int32 = 0, vis: Int32 = 0
+            GoviPosToCell(handle, line, 0, &x, &y, &vis)
+            if vis == 0 { break } // first off-screen line ends the visible range
+            for r in misspelledRanges(lineText(line), checker) {
+                misspellings.append(Misspelling(line: line, start: r.start, end: r.end))
+            }
+            line += 1
+        }
+    }
+
+    private func misspelledRanges(_ text: String, _ checker: NSSpellChecker) -> [RuneRange] {
+        if let cached = spellCache[text] { return cached }
+        var result: [RuneRange] = []
+        let len = (text as NSString).length
+        var start = 0
+        while start < len {
+            let r = checker.checkSpelling(of: text, startingAt: start, language: nil,
+                                          wrap: false, inSpellDocumentWithTag: spellTag, wordCount: nil)
+            if r.location == NSNotFound || r.length == 0 { break }
+            if let rr = runeRange(text, r) { result.append(rr) }
+            start = r.location + r.length
+        }
+        spellCache[text] = result
+        if spellCache.count > 4000 { spellCache.removeAll() }
+        return result
+    }
+
+    // runeRange converts an NSRange (UTF-16) into rune (Unicode scalar) indices,
+    // which is what the engine uses for columns.
+    private func runeRange(_ s: String, _ ns: NSRange) -> RuneRange? {
+        guard let range = Range(ns, in: s) else { return nil }
+        let sc = s.unicodeScalars
+        return (sc.distance(from: sc.startIndex, to: range.lowerBound),
+                sc.distance(from: sc.startIndex, to: range.upperBound))
+    }
+
+    private func cellOf(_ line: Int64, _ col: Int) -> (x: Int, y: Int, vis: Bool) {
+        var x: Int32 = 0, y: Int32 = 0, v: Int32 = 0
+        GoviPosToCell(handle, line, Int32(col), &x, &y, &v)
+        return (Int(x), Int(y), v != 0)
+    }
+
+    private func drawSpelling() {
+        NSColor.systemRed.setStroke()
+        for m in misspellings where m.end > m.start {
+            let a = cellOf(m.line, m.start)
+            let b = cellOf(m.line, m.end - 1)
+            if a.vis && b.vis && a.y == b.y {
+                squiggle(row: a.y, fromCol: a.x, toCol: b.x + 1)
+            } else {
+                // Wrapped or partially scrolled word: underline per row.
+                var byRow: [Int: (Int, Int)] = [:]
+                for r in m.start..<m.end {
+                    let c = cellOf(m.line, r)
+                    if !c.vis { continue }
+                    if let e = byRow[c.y] {
+                        byRow[c.y] = (min(e.0, c.x), max(e.1, c.x))
+                    } else {
+                        byRow[c.y] = (c.x, c.x)
+                    }
+                }
+                for (row, span) in byRow {
+                    squiggle(row: row, fromCol: span.0, toCol: span.1 + 1)
+                }
+            }
+        }
+    }
+
+    private func squiggle(row: Int, fromCol: Int, toCol: Int) {
+        let x0 = padding + CGFloat(fromCol) * cellW
+        let x1 = padding + CGFloat(toCol) * cellW
+        let yB = padding + CGFloat(row) * cellH + cellH - 1.5
+        let path = NSBezierPath()
+        let amp: CGFloat = 1.5
+        let stepX: CGFloat = 2
+        var x = x0
+        var up = true
+        path.move(to: NSPoint(x: x, y: yB))
+        while x < x1 {
+            x = min(x + stepX, x1)
+            path.line(to: NSPoint(x: x, y: yB - (up ? amp : 0)))
+            up.toggle()
+        }
+        path.lineWidth = 1
+        path.stroke()
+    }
+
+    // MARK: - Spelling context menu
+
+    override func rightMouseDown(with event: NSEvent) {
+        let c = cellAt(event)
+        var line: Int64 = 0, col: Int32 = 0
+        GoviCellToPos(handle, c.x, c.y, &line, &col)
+        if let m = misspelling(at: line, col: Int(col)), let menu = spellingMenu(for: m) {
+            contextMisspelling = m
+            NSMenu.popUpContextMenu(menu, with: event, for: self)
+            return
+        }
+        super.rightMouseDown(with: event)
+    }
+
+    private func misspelling(at line: Int64, col: Int) -> Misspelling? {
+        misspellings.first { $0.line == line && col >= $0.start && col < $0.end }
+    }
+
+    private func word(_ m: Misspelling) -> String {
+        let sc = Array(lineText(m.line).unicodeScalars)
+        guard m.start >= 0, m.end <= sc.count, m.start < m.end else { return "" }
+        var v = String.UnicodeScalarView()
+        v.append(contentsOf: sc[m.start..<m.end])
+        return String(v)
+    }
+
+    private func spellingMenu(for m: Misspelling) -> NSMenu? {
+        let w = word(m)
+        if w.isEmpty { return nil }
+        let menu = NSMenu()
+        let guesses = NSSpellChecker.shared.guesses(
+            forWordRange: NSRange(location: 0, length: (w as NSString).length),
+            in: w, language: nil, inSpellDocumentWithTag: spellTag) ?? []
+        if guesses.isEmpty {
+            menu.addItem(withTitle: "No Guesses Found", action: nil, keyEquivalent: "").isEnabled = false
+        } else {
+            for g in guesses {
+                let item = menu.addItem(withTitle: g, action: #selector(replaceSpelling(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = g
+            }
+        }
+        menu.addItem(.separator())
+        let ignore = menu.addItem(withTitle: "Ignore Spelling", action: #selector(ignoreSpelling(_:)), keyEquivalent: "")
+        ignore.target = self
+        let learn = menu.addItem(withTitle: "Learn Spelling", action: #selector(learnSpelling(_:)), keyEquivalent: "")
+        learn.target = self
+        return menu
+    }
+
+    @objc private func replaceSpelling(_ sender: NSMenuItem) {
+        guard let m = contextMisspelling, let g = sender.representedObject as? String else { return }
+        var buf = Array(g.utf8CString)
+        buf.withUnsafeMutableBufferPointer {
+            GoviReplaceText(handle, m.line, Int32(m.start), m.line, Int32(m.end), $0.baseAddress)
+        }
+        clearSelection()
+        step()
+    }
+
+    @objc private func ignoreSpelling(_ sender: Any?) {
+        guard let m = contextMisspelling else { return }
+        NSSpellChecker.shared.ignoreWord(word(m), inSpellDocumentWithTag: spellTag)
+        spellCache.removeAll()
+        step()
+    }
+
+    @objc private func learnSpelling(_ sender: Any?) {
+        guard let m = contextMisspelling else { return }
+        NSSpellChecker.shared.learnWord(word(m))
+        spellCache.removeAll()
+        step()
+    }
+
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
@@ -476,6 +667,10 @@ final class GoviView: NSView, NSTextInputClient {
 
         for y in 0..<n {
             drawRow(y)
+        }
+
+        if !misspellings.isEmpty {
+            drawSpelling()
         }
 
         // Marked (uncommitted) text from a dead key/IME: draw it underlined at

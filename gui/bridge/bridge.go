@@ -457,6 +457,67 @@ func GoviEndPos(h C.longlong, line *C.longlong, col *C.int) {
 	})
 }
 
+// GoviTopLine returns the first visible buffer line (the viewport top).
+//
+//export GoviTopLine
+func GoviTopLine(h C.longlong) C.longlong {
+	in := get(h)
+	if in == nil {
+		return 1
+	}
+	var top int64 = 1
+	in.eng.WithView(func(v engine.View) { top = v.Viewport().Top })
+	return C.longlong(top)
+}
+
+// GoviLineCount returns the number of buffer lines.
+//
+//export GoviLineCount
+func GoviLineCount(h C.longlong) C.longlong {
+	in := get(h)
+	if in == nil {
+		return 0
+	}
+	var n int64
+	in.eng.WithView(func(v engine.View) { n = v.LineCount() })
+	return C.longlong(n)
+}
+
+// GoviLineText returns the text of buffer line `line` (malloc'd; caller frees).
+// Backs spell checking, which works on whole logical lines.
+//
+//export GoviLineText
+func GoviLineText(h C.longlong, line C.longlong) *C.char {
+	in := get(h)
+	if in == nil {
+		return C.CString("")
+	}
+	out := ""
+	in.eng.WithView(func(v engine.View) {
+		if line >= 1 && int64(line) <= v.LineCount() {
+			out = string(v.Line(int64(line)).Text)
+		}
+	})
+	return C.CString(out)
+}
+
+// GoviPosToCell maps a buffer caret (line, col) to its screen cell, writing the
+// cell into *x/*y and 1/0 into *visible. The inverse of GoviCellToPos; backs
+// anchoring spelling underlines to buffer positions.
+//
+//export GoviPosToCell
+func GoviPosToCell(h C.longlong, line C.longlong, col C.int, x *C.int, y *C.int, visible *C.int) {
+	in := get(h)
+	if in == nil {
+		return
+	}
+	in.eng.WithView(func(v engine.View) {
+		cx, cy, ok := grid.CellOf(v, in.rows, in.cols, engine.Pos{Line: int64(line), Col: int(col)})
+		*x, *y = C.int(cx), C.int(cy)
+		*visible = boolToC(ok)
+	})
+}
+
 // GoviCursorX / GoviCursorY / GoviCursorVisible expose the cursor cell.
 //
 //export GoviCursorX

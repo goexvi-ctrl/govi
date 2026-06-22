@@ -131,6 +131,32 @@ func TestLocateWithGutter(t *testing.T) {
 	}
 }
 
+func TestCellOf(t *testing.T) {
+	v := &fakeView{lines: []string{"hello", "world"}, top: 1}
+	// CellOf is the inverse of the layout: (line 2, col 2) -> cell (2, 1).
+	x, y, ok := CellOf(v, 5, 20, engine.Pos{Line: 2, Col: 2})
+	if !ok || x != 2 || y != 1 {
+		t.Errorf("CellOf(2,2) = (%d,%d,%v), want (2,1,true)", x, y, ok)
+	}
+	// Round-trips with Locate.
+	p := Locate(v, 5, 20, x, y)
+	if p.Line != 2 || p.Col != 2 {
+		t.Errorf("Locate round-trip = %+v, want {2,2}", p)
+	}
+	// A line scrolled above the viewport is not visible.
+	if _, _, ok := CellOf(v, 5, 20, engine.Pos{Line: 1, Col: 0}); !ok {
+		t.Error("line 1 should be visible at top 1")
+	}
+}
+
+func TestCellOfWithGutter(t *testing.T) {
+	v := &fakeView{lines: []string{"abc"}, top: 1, number: true}
+	x, y, ok := CellOf(v, 4, 20, engine.Pos{Line: 1, Col: 2})
+	if !ok || x != 8 || y != 0 { // gutter 6 + col 2
+		t.Errorf("CellOf with gutter = (%d,%d,%v), want (8,0,true)", x, y, ok)
+	}
+}
+
 func TestComposeSelection(t *testing.T) {
 	v := &fakeView{lines: []string{"hello", "world"}, top: 1, cursor: engine.Pos{Line: 1, Col: 0}}
 	// Select "llo\nwo" : from line 1 col 2 to line 2 col 2.
