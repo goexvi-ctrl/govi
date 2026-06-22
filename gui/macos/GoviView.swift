@@ -1,17 +1,13 @@
 import Cocoa
 
-// GoviView is the editor surface: a custom NSView that draws the engine's
-// composed character grid and forwards key events into the embedded engine.
-// The engine runs in-process (via libgovi); this view is the "terminal" it
-// renders to.
+// GoviView is the editor surface: a custom NSView that draws one embedded
+// engine's composed character grid and forwards key events into it. The engine
+// runs in-process (via libgovi); this view is the "terminal" it renders to.
+// Each window has its own GoviView bound to its own engine via `handle`.
 final class GoviView: NSView, NSTextInputClient {
     // Engine-event modifier bits (must match engine.Mod).
     private static let modCtrl: Int32 = 1
     private static let modAlt: Int32 = 2
-
-    // Pending marked (uncommitted) text from a dead key or IME, e.g. the "¨"
-    // after Option-u, shown at the cursor until the next key composes it.
-    private var markedText = ""
 
     // Special-key codes (must match engine.SpecialKey).
     private enum SK {
@@ -28,6 +24,13 @@ final class GoviView: NSView, NSTextInputClient {
         static let pageUp: Int32 = 12
         static let pageDown: Int32 = 13
     }
+
+    // The handle of this view's embedded engine (one per window).
+    let handle: Int64
+
+    // Pending marked (uncommitted) text from a dead key or IME, e.g. the "¨"
+    // after Option-u, shown at the cursor until the next key composes it.
+    private var markedText = ""
 
     private let font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
     private var cellW: CGFloat = 8
@@ -50,11 +53,13 @@ final class GoviView: NSView, NSTextInputClient {
     private var dragAnchor: Caret = (1, 0)
     private var dragging = false
 
-    override init(frame frameRect: NSRect) {
+    init(frame frameRect: NSRect, handle: Int64) {
+        self.handle = handle
         super.init(frame: frameRect)
         measureFont()
     }
     required init?(coder: NSCoder) {
+        self.handle = 0
         super.init(coder: coder)
         measureFont()
     }
@@ -89,7 +94,7 @@ final class GoviView: NSView, NSTextInputClient {
         if w == cols && h == rows { return }
         cols = w
         rows = h
-        GoviResize(Int32(rows), Int32(cols))
+        GoviResize(handle, Int32(rows), Int32(cols))
         recompose()
         needsDisplay = true
     }
@@ -99,11 +104,11 @@ final class GoviView: NSView, NSTextInputClient {
     // step is run after every input: it handles quit, bell, title, recomposes
     // the grid, repaints, and arms any pending timer (map/showmatch/recovery).
     func step() {
-        if GoviShouldQuit() != 0 {
-            NSApp.terminate(nil)
+        if GoviShouldQuit(handle) != 0 {
+            window?.close() // :q closes this window; the app exits with the last
             return
         }
-        if GoviTakeBell() != 0 {
+        if GoviTakeBell(handle) != 0 {
             NSSound.beep()
         }
         updateTitle()
@@ -113,11 +118,11 @@ final class GoviView: NSView, NSTextInputClient {
     }
 
     private func recompose() {
-        GoviCompose(Int32(rows), Int32(cols))
+        GoviCompose(handle, Int32(rows), Int32(cols))
     }
 
     private func updateTitle() {
-        guard let c = GoviTitle() else { return }
+        guard let c = GoviTitle(handle) else { return }
         defer { GoviFree(c) }
         let t = String(cString: c)
         if !t.isEmpty {
@@ -130,15 +135,15 @@ final class GoviView: NSView, NSTextInputClient {
         timer = nil
         var interval: TimeInterval = 0
         var action: (() -> Void)?
-        if GoviMatchPending() != 0 {
-            interval = Double(GoviMatchTimeMS()) / 1000.0
-            action = { GoviFireTimeout() }
-        } else if GoviMapPending() != 0 {
+        if GoviMatchPending(handle) != 0 {
+            interval = Double(GoviMatchTimeMS(handle)) / 1000.0
+            action = { GoviFireTimeout(self.handle) }
+        } else if GoviMapPending(handle) != 0 {
             interval = 0.5
-            action = { GoviFireTimeout() }
-        } else if GoviNeedsRecoverySync() != 0 {
+            action = { GoviFireTimeout(self.handle) }
+        } else if GoviNeedsRecoverySync(handle) != 0 {
             interval = 2.0
-            action = { GoviSyncRecovery() }
+            action = { GoviSyncRecovery(self.handle) }
         }
         guard let act = action else { return }
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
@@ -158,7 +163,7 @@ final class GoviView: NSView, NSTextInputClient {
         let c = cellAt(event)
         var line: Int64 = 0
         var col: Int32 = 0
-        GoviCellToPos(c.x, c.y, &line, &col)
+        GoviCellToPos(handle, c.x, c.y, &line, &col)
         return (line, Int(col))
     }
 
@@ -170,13 +175,13 @@ final class GoviView: NSView, NSTextInputClient {
         selActive = true
         selStart = a
         selEnd = b
-        GoviSetSelection(1, a.line, Int32(a.col), b.line, Int32(b.col))
+        GoviSetSelection(handle, 1, a.line, Int32(a.col), b.line, Int32(b.col))
     }
 
     private func clearSelection() {
         if !selActive { return }
         selActive = false
-        GoviSetSelection(0, 0, 0, 0, 0)
+        GoviSetSelection(handle, 0, 0, 0, 0, 0)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -189,13 +194,13 @@ final class GoviView: NSView, NSTextInputClient {
             let c = cellAt(event)
             var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
             if event.clickCount == 2 {
-                GoviWordRange(c.x, c.y, &l1, &c1, &l2, &c2)
+                GoviWordRange(handle, c.x, c.y, &l1, &c1, &l2, &c2)
             } else {
-                GoviLineRange(c.x, c.y, &l1, &c1, &l2, &c2)
+                GoviLineRange(handle, c.x, c.y, &l1, &c1, &l2, &c2)
             }
             dragging = false
             setSelection((l1, Int(c1)), (l2, Int(c2)))
-            GoviMoveCursor(l2, c2)
+            GoviMoveCursor(handle, l2, c2)
             step()
             return
         }
@@ -204,7 +209,7 @@ final class GoviView: NSView, NSTextInputClient {
         dragAnchor = caret
         dragging = true
         clearSelection()
-        GoviMoveCursor(caret.line, Int32(caret.col))
+        GoviMoveCursor(handle, caret.line, Int32(caret.col))
         step()
     }
 
@@ -212,7 +217,7 @@ final class GoviView: NSView, NSTextInputClient {
         guard dragging else { return }
         let caret = caretAt(event)
         setSelection(dragAnchor, caret)
-        GoviMoveCursor(caret.line, Int32(caret.col))
+        GoviMoveCursor(handle, caret.line, Int32(caret.col))
         step()
     }
 
@@ -224,7 +229,7 @@ final class GoviView: NSView, NSTextInputClient {
 
     @objc func copy(_ sender: Any?) {
         guard selActive else { return }
-        let s = bridgeString(GoviRangeText(selStart.line, Int32(selStart.col),
+        let s = bridgeString(GoviRangeText(handle, selStart.line, Int32(selStart.col),
                                            selEnd.line, Int32(selEnd.col)))
         let pb = NSPasteboard.general
         pb.clearContents()
@@ -234,7 +239,7 @@ final class GoviView: NSView, NSTextInputClient {
     @objc func cut(_ sender: Any?) {
         guard selActive else { return }
         copy(sender)
-        GoviDeleteRange(selStart.line, Int32(selStart.col), selEnd.line, Int32(selEnd.col))
+        GoviDeleteRange(handle, selStart.line, Int32(selStart.col), selEnd.line, Int32(selEnd.col))
         clearSelection()
         step()
     }
@@ -244,12 +249,12 @@ final class GoviView: NSView, NSTextInputClient {
         var buf = Array(s.utf8CString)
         if selActive {
             buf.withUnsafeMutableBufferPointer {
-                GoviReplaceText(selStart.line, Int32(selStart.col),
+                GoviReplaceText(handle, selStart.line, Int32(selStart.col),
                                 selEnd.line, Int32(selEnd.col), $0.baseAddress)
             }
             clearSelection()
         } else {
-            buf.withUnsafeMutableBufferPointer { GoviInsertText($0.baseAddress) }
+            buf.withUnsafeMutableBufferPointer { GoviInsertText(handle, $0.baseAddress) }
         }
         step()
     }
@@ -257,7 +262,7 @@ final class GoviView: NSView, NSTextInputClient {
     @objc override func selectAll(_ sender: Any?) {
         var line: Int64 = 0
         var col: Int32 = 0
-        GoviEndPos(&line, &col)
+        GoviEndPos(handle, &line, &col)
         setSelection((1, 0), (line, Int(col)))
         needsDisplay = true
     }
@@ -291,7 +296,7 @@ final class GoviView: NSView, NSTextInputClient {
         if event.modifierFlags.contains(.option) { mods |= GoviView.modAlt }
         guard let chars = event.charactersIgnoringModifiers, !chars.isEmpty else { return }
         for scalar in chars.unicodeScalars {
-            GoviKeyRune(Int32(scalar.value), mods)
+            GoviKeyRune(handle, Int32(scalar.value), mods)
         }
         step()
     }
@@ -302,7 +307,7 @@ final class GoviView: NSView, NSTextInputClient {
         guard selActive else { return false }
         var buf = Array(s.utf8CString)
         buf.withUnsafeMutableBufferPointer {
-            GoviReplaceType(selStart.line, Int32(selStart.col),
+            GoviReplaceType(handle, selStart.line, Int32(selStart.col),
                             selEnd.line, Int32(selEnd.col), $0.baseAddress)
         }
         clearSelection()
@@ -311,7 +316,7 @@ final class GoviView: NSView, NSTextInputClient {
     }
 
     private func deleteSelection() {
-        GoviDeleteRange(selStart.line, Int32(selStart.col), selEnd.line, Int32(selEnd.col))
+        GoviDeleteRange(handle, selStart.line, Int32(selStart.col), selEnd.line, Int32(selEnd.col))
         clearSelection()
         step()
     }
@@ -324,7 +329,7 @@ final class GoviView: NSView, NSTextInputClient {
         if s.isEmpty { return }
         if replaceWithText(s) { return } // typed over a selection
         for scalar in s.unicodeScalars {
-            GoviKeyRune(Int32(scalar.value), 0)
+            GoviKeyRune(handle, Int32(scalar.value), 0)
         }
         step()
     }
@@ -336,7 +341,7 @@ final class GoviView: NSView, NSTextInputClient {
             sendSpecial(SK.enter)
         case "insertTab:":
             if selActive { clearSelection() }
-            GoviKeyRune(9, 0)
+            GoviKeyRune(handle, 9, 0)
             step()
         case "deleteBackward:":
             if selActive { deleteSelection(); return }
@@ -362,7 +367,7 @@ final class GoviView: NSView, NSTextInputClient {
 
     private func sendSpecial(_ key: Int32) {
         if selActive { clearSelection() }
-        GoviKeySpecial(key, 0)
+        GoviKeySpecial(handle, key, 0)
         step()
     }
 
@@ -399,7 +404,7 @@ final class GoviView: NSView, NSTextInputClient {
     // firstRect tells the input system where the cursor is (in screen
     // coordinates) so the dead-key/IME candidate window appears there.
     func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
-        let r = NSRect(x: CGFloat(GoviCursorX()) * cellW, y: CGFloat(GoviCursorY()) * cellH,
+        let r = NSRect(x: CGFloat(GoviCursorX(handle)) * cellW, y: CGFloat(GoviCursorY(handle)) * cellH,
                        width: cellW, height: cellH)
         let inWindow = convert(r, to: nil)
         return window?.convertToScreen(inWindow) ?? r
@@ -418,7 +423,7 @@ final class GoviView: NSView, NSTextInputClient {
         bgColor.setFill()
         bounds.fill()
 
-        let n = Int(GoviRows())
+        let n = Int(GoviRows(handle))
 
         // Selection highlight: fill the background of reverse-video cells before
         // painting glyphs over them.
@@ -440,8 +445,8 @@ final class GoviView: NSView, NSTextInputClient {
         // Marked (uncommitted) text from a dead key/IME: draw it underlined at
         // the cursor and skip the block cursor while it is pending.
         if !markedText.isEmpty {
-            let cx = Int(GoviCursorX())
-            let cy = Int(GoviCursorY())
+            let cx = Int(GoviCursorX(handle))
+            let cy = Int(GoviCursorY(handle))
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: font, .foregroundColor: fgColor,
                 .underlineStyle: NSUnderlineStyle.single.rawValue,
@@ -453,9 +458,9 @@ final class GoviView: NSView, NSTextInputClient {
                 r.fill()
                 (String(ch) as NSString).draw(at: r.origin, withAttributes: attrs)
             }
-        } else if GoviCursorVisible() != 0 {
-            let cx = Int(GoviCursorX())
-            let cy = Int(GoviCursorY())
+        } else if GoviCursorVisible(handle) != 0 {
+            let cx = Int(GoviCursorX(handle))
+            let cy = Int(GoviCursorY(handle))
             let rect = NSRect(x: CGFloat(cx) * cellW, y: CGFloat(cy) * cellH,
                               width: cellW, height: cellH)
             cursorColor.setFill()
@@ -480,13 +485,13 @@ final class GoviView: NSView, NSTextInputClient {
     }
 
     private func rowText(_ y: Int) -> String? {
-        guard let c = GoviRowText(Int32(y)) else { return nil }
+        guard let c = GoviRowText(handle, Int32(y)) else { return nil }
         defer { GoviFree(c) }
         return String(cString: c)
     }
 
     private func rowStyle(_ y: Int) -> String? {
-        guard let c = GoviRowStyle(Int32(y)) else { return nil }
+        guard let c = GoviRowStyle(handle, Int32(y)) else { return nil }
         defer { GoviFree(c) }
         return String(cString: c)
     }

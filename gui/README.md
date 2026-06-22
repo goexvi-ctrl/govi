@@ -68,6 +68,18 @@ gui/build/Govi.app/Contents/MacOS/Govi /path/to/file
 Use it like vi: `i` to insert, `Esc`, `:w`, `:q`, `dd`, `/pattern`, etc. All
 editing is handled by the embedded engine.
 
+### Windows
+
+The app is multi-window — each window has its own embedded engine instance:
+
+- **Cmd-N** opens a new empty window.
+- **Cmd-O** opens one or more files (each in its own window).
+- **Cmd-W** (or `:q`) closes the current window; the app quits when the last
+  window closes.
+
+This is enabled by the handle-based libgovi API: `GoviStart` returns a handle for
+one editor and every call takes it, so windows are fully independent.
+
 ### Mouse and clipboard
 
 In addition to vi keys, the window supports the usual GUI text affordances:
