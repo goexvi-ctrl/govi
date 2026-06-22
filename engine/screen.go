@@ -46,6 +46,12 @@ type screen struct {
 
 	opts options
 	maps mapTable
+
+	// Cursor column maintenance for vertical motions (nvi's RCM). desiredCol is
+	// the display column j/k/^F/... try to keep; desiredEOL makes them stick to
+	// the end of each line (set by $).
+	desiredCol int
+	desiredEOL bool
 }
 
 // lineCount returns the number of lines in the buffer, treating an empty buffer
@@ -161,6 +167,47 @@ func (s *screen) displayWidth(lno int64) int {
 		col += runeWidth(r, col, s.opts.tabstop)
 	}
 	return col
+}
+
+// displayColOf returns the display column at which rune index col begins on line
+// lno.
+func (s *screen) displayColOf(lno int64, col int) int {
+	runes := s.lineRunes(lno)
+	c := 0
+	for i := 0; i < col && i < len(runes); i++ {
+		c += runeWidth(runes[i], c, s.opts.tabstop)
+	}
+	return c
+}
+
+// colAtDisplay returns the rune index whose cell span contains display column
+// dcol on line lno (clamped to the last rune when dcol is past the line end).
+func (s *screen) colAtDisplay(lno int64, dcol int) int {
+	runes := s.lineRunes(lno)
+	c := 0
+	for i, r := range runes {
+		w := runeWidth(r, c, s.opts.tabstop)
+		if c+w > dcol {
+			return i
+		}
+		c += w
+	}
+	if len(runes) == 0 {
+		return 0
+	}
+	return len(runes) - 1
+}
+
+// maintainedCol returns the rune column on line lno that vertical motions should
+// land on, honoring the sticky-EOL flag.
+func (s *screen) maintainedCol(lno int64) int {
+	if s.desiredEOL {
+		if n := s.lineLen(lno); n > 0 {
+			return n - 1
+		}
+		return 0
+	}
+	return s.colAtDisplay(lno, s.desiredCol)
 }
 
 // screenLines returns the number of physical screen rows line lno occupies when

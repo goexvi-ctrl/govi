@@ -27,6 +27,12 @@ type vimode struct {
 	findCmd  rune
 	findChar rune
 
+	// cursor-column maintenance: preserveCol means this command keeps the
+	// desired display column (j/k/^F...); setEOL means it makes the column
+	// sticky to the end of line ($).
+	preserveCol bool
+	setEOL      bool
+
 	// insert/replace mode
 	inserting   bool
 	replaceMode bool
@@ -106,6 +112,20 @@ func (m *vimode) key(e *Engine, ev KeyEvent) {
 // finishCommand records the dot command when a buffer-changing command fully
 // completes, and clears transient state.
 func (m *vimode) finishCommand(e *Engine) {
+	// Maintain the desired display column for vertical motions: j/k/^F/...
+	// preserve it; every other command resets it to the cursor's column (or to
+	// end-of-line after $).
+	if m.preserveCol {
+		if m.setEOL {
+			e.scr.desiredEOL = true
+		}
+	} else {
+		e.scr.desiredCol = e.scr.displayColOf(e.scr.cursor.Line, e.scr.cursor.Col)
+		e.scr.desiredEOL = m.setEOL
+	}
+	m.preserveCol = false
+	m.setEOL = false
+
 	if m.changed {
 		if !m.replaying && len(m.rec) > 0 {
 			m.dot = append(m.dot[:0], m.rec...)
@@ -194,13 +214,13 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 	count := effCount(m.count)
 	switch r {
 	case 'f': // forward a screen
-		s.cursor.Line += int64(max(1, s.rows-2))
+		m.moveVertical(e, s.cursor.Line+int64(max(1, s.rows-2)))
 	case 'b': // back a screen
-		s.cursor.Line -= int64(max(1, s.rows-2))
+		m.moveVertical(e, s.cursor.Line-int64(max(1, s.rows-2)))
 	case 'd': // down half a screen
-		s.cursor.Line += int64(max(1, s.rows/2))
+		m.moveVertical(e, s.cursor.Line+int64(max(1, s.rows/2)))
 	case 'u': // up half a screen
-		s.cursor.Line -= int64(max(1, s.rows/2))
+		m.moveVertical(e, s.cursor.Line-int64(max(1, s.rows/2)))
 	case 'e': // scroll down one line
 		s.top++
 	case 'y': // scroll up one line
@@ -208,9 +228,9 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 			s.top--
 		}
 	case 'j', 'n': // move down (aliases for j)
-		s.cursor.Line += int64(count)
+		m.moveVertical(e, s.cursor.Line+int64(count))
 	case 'p': // move up (alias for k)
-		s.cursor.Line -= int64(count)
+		m.moveVertical(e, s.cursor.Line-int64(count))
 	case 'g': // file information
 		e.fileInfo()
 	case 'a': // search forward for the word under the cursor
@@ -262,6 +282,15 @@ func (m *vimode) doUndoCommand(e *Engine, fromDot bool) {
 	s.modified = true
 	m.lastStepRedo = redo
 	m.dotUndo = true
+}
+
+// moveVertical moves the cursor to targetLine keeping the maintained display
+// column, marking the command as column-preserving.
+func (m *vimode) moveVertical(e *Engine, targetLine int64) {
+	s := e.scr
+	s.cursor.Line = clampLine(s, targetLine)
+	s.cursor.Col = s.maintainedCol(s.cursor.Line)
+	m.preserveCol = true
 }
 
 func (m *vimode) startOperator(op rune) {

@@ -37,6 +37,17 @@ func lineMotion(from, to int64) motion {
 	return motion{to: Pos{Line: to}, linewise: true}
 }
 
+// verticalMotion builds a j/k motion that maintains the desired display column.
+// For cursor movement it sets the preserveCol flag so the desired column is not
+// reset afterward.
+func (e *Engine) verticalMotion(target int64) motion {
+	if e.vi.op == 0 {
+		e.vi.preserveCol = true
+	}
+	col := e.scr.maintainedCol(clampLine(e.scr, target))
+	return motion{to: Pos{Line: target, Col: col}, linewise: true}
+}
+
 // computeMotion evaluates a motion key. count is the (already combined) repeat
 // count; explicit reports whether a count was actually typed (matters for G/H/L);
 // charArg is the target character for f/F/t/T and the mark name for the mark
@@ -77,11 +88,16 @@ func (e *Engine) computeMotion(key rune, count int, explicit bool, charArg rune)
 		if col < 0 {
 			col = 0
 		}
+		if e.vi.op == 0 {
+			e.vi.setEOL = true // the cursor sticks to EOL for following j/k
+		}
 		return motion{to: Pos{Line: line, Col: col}, inclusive: true}, true
 	case 'j':
-		return motion{to: Pos{Line: cur.Line + int64(count), Col: cur.Col}, linewise: true}, true
+		target := cur.Line + int64(count)
+		return e.verticalMotion(target), true
 	case 'k':
-		return motion{to: Pos{Line: cur.Line - int64(count), Col: cur.Col}, linewise: true}, true
+		target := cur.Line - int64(count)
+		return e.verticalMotion(target), true
 	case '+':
 		line := cur.Line + int64(count)
 		return motion{to: Pos{Line: line, Col: s.firstNonBlank(line)}, linewise: true}, true

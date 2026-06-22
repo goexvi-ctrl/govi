@@ -73,6 +73,10 @@ var viConformanceCases = []struct {
 	{"tildeop-word", "hello world\n", ":set tildeop\r~w"},
 	{"filter-operator", "c\nb\na\n", "!Gsort\r"},
 	{"filter-ex", "3\n1\n2\n", ":%!sort\r"},
+	{"colmaint-tab", "a\tb\n0123456789\n", "0lljrZ"},
+	{"colmaint-sticky-eol", "abcdef\nxy\nlongword\n", "$jjrZ"},
+	{"colmaint-short-line", "abcdefgh\nxy\nABCDEFGH\n", "5ljjrZ"},
+	{"colmaint-reset", "abcdefgh\nABCDEFGH\n", "$0jrZ"},
 }
 
 // TestViConformance pins govi's vi-mode behavior to nvi. It needs both an nvi
