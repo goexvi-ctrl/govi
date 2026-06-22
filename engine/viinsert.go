@@ -123,6 +123,14 @@ func (m *vimode) insertRune(e *Engine, r rune) {
 		s.setLine(s.cursor.Line, nl)
 	}
 	s.cursor.Col = col + 1
+
+	// showmatch: briefly flash the matching open bracket.
+	if (r == ')' || r == ']' || r == '}') && s.opts.Bool("showmatch") {
+		if mp, ok := e.findOpenMatch(Pos{Line: s.cursor.Line, Col: col}); ok {
+			s.matchActive = true
+			s.matchPos = mp
+		}
+	}
 }
 
 func (m *vimode) insertNewline(e *Engine) {

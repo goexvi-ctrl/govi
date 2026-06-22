@@ -130,10 +130,21 @@ func (e *Engine) Close() error {
 // loop should stop feeding input and tear down once this is true.
 func (e *Engine) ShouldQuit() bool { return e.quit }
 
+// RunEx executes an ex command programmatically (e.g. from a GUI menu or host
+// configuration), as if typed on the colon line without the leading ':'.
+func (e *Engine) RunEx(cmd string) error { return e.exExecute(cmd) }
+
 // MapPending reports whether input is buffered awaiting more keys to resolve a
 // possible map. A host can use this to arm a key-timeout (sending a
 // TimeoutEvent) so an ambiguous map prefix does not hang.
 func (e *Engine) MapPending() bool { return len(e.mapPending) > 0 }
+
+// MatchPending reports whether a showmatch bracket flash is active, so the host
+// can arm a timer (matchtime tenths of a second) to clear it.
+func (e *Engine) MatchPending() bool { return e.scr.matchActive }
+
+// MatchTime returns the showmatch flash duration in tenths of a second.
+func (e *Engine) MatchTime() int { return e.scr.opts.Int("matchtime") }
 
 // Resize sets the viewport geometry (text rows and columns) and repaints fully.
 func (e *Engine) Resize(rows, cols int) {
@@ -165,6 +176,15 @@ func (e *Engine) snap() snap {
 func (e *Engine) Input(ev Event) {
 	before := e.snap()
 
+	// A showmatch bracket flash is cleared by the next real key (which is then
+	// processed normally, so the cursor returns and the keystroke takes effect).
+	if e.scr.matchActive {
+		switch ev.(type) {
+		case KeyEvent, StringEvent:
+			e.scr.matchActive = false
+		}
+	}
+
 	// A pending output overlay (e.g. :set all) is dismissed by the next key.
 	if e.scr.pendingOutput != nil {
 		switch ev.(type) {
@@ -191,7 +211,11 @@ func (e *Engine) Input(ev Event) {
 		e.flushMapPending()
 		e.interrupt()
 	case TimeoutEvent:
-		e.mapTimeout()
+		if e.scr.matchActive {
+			e.scr.matchActive = false // showmatch flash elapsed
+		} else {
+			e.mapTimeout()
+		}
 	default:
 		// SuspendEvent: nothing to do.
 	}

@@ -56,6 +56,11 @@ type screen struct {
 	// the end of each line (set by $).
 	desiredCol int
 	desiredEOL bool
+
+	// showmatch: when a close bracket is typed, matchActive briefly highlights
+	// the matching open bracket at matchPos.
+	matchActive bool
+	matchPos    Pos
 }
 
 // lineCount returns the number of lines in the buffer, treating an empty buffer

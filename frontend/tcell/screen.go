@@ -71,7 +71,10 @@ func (f *Frontend) Run() {
 
 	for !f.eng.ShouldQuit() {
 		var timer <-chan time.Time
-		if f.eng.MapPending() {
+		if f.eng.MatchPending() {
+			// showmatch flash: matchtime is in tenths of a second.
+			timer = time.After(time.Duration(f.eng.MatchTime()) * 100 * time.Millisecond)
+		} else if f.eng.MapPending() {
 			timer = time.After(mapTimeout)
 		}
 		select {
@@ -267,6 +270,9 @@ func (f *Frontend) placeCursor(v engine.View, rows, gutter, textW int) {
 		return
 	}
 	cur := v.Cursor()
+	if mp, ok := v.MatchHighlight(); ok {
+		cur = mp // showmatch: flash the cursor at the matching bracket
+	}
 	top := v.Viewport().Top
 
 	// Screen row: sum the wrapped row counts of lines [top, cur.Line) then add

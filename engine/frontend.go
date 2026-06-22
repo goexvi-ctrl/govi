@@ -108,6 +108,10 @@ type View interface {
 	// PendingOutput returns multi-line command output to overlay on the screen
 	// (e.g. :set all) until the next keypress; nil when there is none.
 	PendingOutput() []string
+	// MatchHighlight returns the position of the matching bracket to flash
+	// (showmatch) and whether one is active; while active the frontend shows the
+	// cursor there instead of at the insertion point.
+	MatchHighlight() (Pos, bool)
 }
 
 // LineRange is an inclusive 1-based range of buffer lines.

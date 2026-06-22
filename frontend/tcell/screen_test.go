@@ -151,6 +151,27 @@ func TestFrontendCursorOnWrappedLine(t *testing.T) {
 	}
 }
 
+func TestFrontendShowmatchFlash(t *testing.T) {
+	eng, sim := setup(t, "\n", 20, 4)
+	eng.RunEx("set showmatch")
+	for _, r := range "i(abc" {
+		eng.Input(engine.KeyEvent{Rune: r})
+	}
+	eng.Input(engine.KeyEvent{Rune: ')'})
+	// The cursor should flash at the matching '(' (column 0), not at the
+	// insertion point (column 5).
+	x, y, vis := sim.GetCursor()
+	if !vis || x != 0 || y != 0 {
+		t.Fatalf("showmatch cursor at (%d,%d) vis=%v, want (0,0)", x, y, vis)
+	}
+	// A timeout returns the cursor to the insertion point.
+	eng.Input(engine.TimeoutEvent{})
+	x, _, _ = sim.GetCursor()
+	if x != 5 {
+		t.Fatalf("after timeout cursor x = %d, want 5", x)
+	}
+}
+
 func TestFrontendColonLine(t *testing.T) {
 	eng, sim := setup(t, "x\n", 20, 3)
 	eng.Input(engine.KeyEvent{Rune: ':'})

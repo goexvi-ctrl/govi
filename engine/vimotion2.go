@@ -81,6 +81,35 @@ func (e *Engine) matchMotion() (motion, bool) {
 	}
 }
 
+// findOpenMatch returns the position of the open bracket matching the close
+// bracket at p, scanning backward with nesting. ok is false if p is not a close
+// bracket or no match is found.
+func (e *Engine) findOpenMatch(p Pos) (Pos, bool) {
+	s := e.scr
+	ch := s.runeAtPos(p)
+	want := isBracket(ch)
+	if want == 0 || isOpenBracket(ch) {
+		return Pos{}, false
+	}
+	depth := 0
+	for {
+		r := s.runeAtPos(p)
+		if r == ch {
+			depth++
+		} else if r == want {
+			depth--
+			if depth == 0 {
+				return p, true
+			}
+		}
+		np, ok := s.stepBack(p)
+		if !ok {
+			return Pos{}, false
+		}
+		p = np
+	}
+}
+
 func (s *screen) isBlankLine(lno int64) bool {
 	return s.lineLen(lno) == 0
 }
