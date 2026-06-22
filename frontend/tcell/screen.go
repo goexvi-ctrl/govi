@@ -149,7 +149,12 @@ func (f *Frontend) Render(v engine.View, _ engine.ChangeSet) {
 			}
 			x := gutter
 			for j := i; j < i+textW && j < len(cells); j++ {
-				f.scr.SetContent(x, row, cells[j].Rune, nil, styleFor(cells[j].Style))
+				// Continuation cells (Rune == 0) belong to a preceding wide
+				// glyph; tcell draws the wide rune spanning both columns, so skip
+				// them but still advance the column.
+				if cells[j].Rune != 0 {
+					f.scr.SetContent(x, row, cells[j].Rune, nil, styleFor(cells[j].Style))
+				}
 				x++
 			}
 			row++

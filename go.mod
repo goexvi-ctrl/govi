@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/creack/pty v1.1.24
 	github.com/gdamore/tcell/v2 v2.13.10
+	golang.org/x/text v0.31.0
 )
 
 require (
@@ -13,5 +14,4 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/term v0.37.0 // indirect
-	golang.org/x/text v0.31.0 // indirect
 )

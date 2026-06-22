@@ -1,6 +1,10 @@
 package engine
 
-import "strconv"
+import (
+	"strconv"
+
+	"golang.org/x/text/width"
+)
 
 // GutterWidth returns the width of the line-number gutter for a buffer with the
 // given line count, or 0 when numbering is off. It is shared by the engine's
@@ -24,10 +28,10 @@ func GutterWidth(lineCount int64, number bool) int {
 
 // runeWidth returns the number of display columns rune r occupies when it
 // begins at display column col, given the tabstop. Tabs advance to the next
-// tabstop; control characters render as a two-cell ^X form; other runes occupy
-// one column.
-//
-// TODO(phase7+): East Asian wide runes (width 2).
+// tabstop; control characters render as a two-cell ^X form; East Asian wide and
+// fullwidth runes (e.g. 日) occupy two columns; other runes occupy one. This is
+// the editor's wcwidth equivalent and is independent of the rune's UTF-8 byte
+// length (the buffer already holds decoded runes).
 func runeWidth(r rune, col, tabstop int) int {
 	switch {
 	case r == '\t':
@@ -36,9 +40,12 @@ func runeWidth(r rune, col, tabstop int) int {
 		return 2 // ^A .. ^Z etc.
 	case r == 0x7f:
 		return 2 // ^?
-	default:
-		return 1
 	}
+	switch width.LookupRune(r).Kind() {
+	case width.EastAsianWide, width.EastAsianFullwidth:
+		return 2
+	}
+	return 1
 }
 
 // makeDisplayLine builds a DisplayLine from logical buffer runes, computing the
@@ -86,8 +93,18 @@ func DisplayCells(dl DisplayLine) []Cell {
 			cells = append(cells, Cell{Rune: '?', Style: st})
 			col += 2
 		default:
+			// A rune may occupy more than one column (East Asian wide). Emit the
+			// glyph followed by continuation cells (Rune == 0) so the flat cell
+			// list length equals the line's display width.
+			w := int(dl.Widths[i])
+			if w < 1 {
+				w = 1
+			}
 			cells = append(cells, Cell{Rune: r, Style: st})
-			col++
+			for k := 1; k < w; k++ {
+				cells = append(cells, Cell{Rune: 0, Style: st})
+			}
+			col += w
 		}
 	}
 	return cells
