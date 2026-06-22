@@ -8,6 +8,7 @@ import (
 
 	"govi/engine/buffer"
 	"govi/engine/mark"
+	"govi/engine/register"
 	"govi/engine/undo"
 )
 
@@ -21,6 +22,7 @@ type Options struct{}
 type Engine struct {
 	fe  Frontend
 	scr *screen
+	vi  *vimode
 
 	file *os.File // open handle backing a paged buffer, if any
 	quit bool
@@ -39,11 +41,13 @@ func (e *Engine) setBuffer(store buffer.LineStore, name string) {
 		store:  store,
 		log:    undo.New(store),
 		marks:  mark.New(),
+		regs:   register.New(),
 		name:   name,
 		cursor: Pos{Line: 1, Col: 0},
 		top:    1,
 		mode:   ModeCommand,
 	}
+	e.vi = newVimode()
 }
 
 // Open loads path into the active buffer. A missing file starts an empty,
@@ -151,79 +155,15 @@ func (e *Engine) interrupt() {
 	e.fe.Bell()
 }
 
-// key dispatches a single keypress according to the current mode. The command
-// handling here is a Phase 2 placeholder: it supports just enough motion and
-// colon handling to prove the embedding seam. Phase 3 replaces it with the
-// engine/vi vikeys dispatch and Phase 4 with engine/ex.
+// key dispatches a single keypress according to the current mode. Command,
+// insert, and replace modes are handled by the vi state machine (vi.go); the
+// colon line is handled here until the ex parser arrives in Phase 4.
 func (e *Engine) key(ev KeyEvent) {
-	switch e.scr.mode {
-	case ModeExColon:
+	if e.scr.mode == ModeExColon {
 		e.colonKey(ev)
-	default:
-		e.commandKey(ev)
-	}
-}
-
-func (e *Engine) commandKey(ev KeyEvent) {
-	s := e.scr
-	s.msg, s.msgKind = "", MsgNone
-
-	if ev.Mods&ModCtrl != 0 {
-		switch ev.Rune {
-		case 'f': // page down
-			s.cursor.Line += int64(max(1, s.rows-2))
-		case 'b': // page up
-			s.cursor.Line -= int64(max(1, s.rows-2))
-		}
 		return
 	}
-
-	switch ev.Key {
-	case KeyLeft:
-		s.cursor.Col--
-		return
-	case KeyRight:
-		s.cursor.Col++
-		return
-	case KeyDown:
-		s.cursor.Line++
-		return
-	case KeyUp:
-		s.cursor.Line--
-		return
-	case KeyPageDown:
-		s.cursor.Line += int64(max(1, s.rows-2))
-		return
-	case KeyPageUp:
-		s.cursor.Line -= int64(max(1, s.rows-2))
-		return
-	case KeyHome:
-		s.cursor.Col = 0
-		return
-	case KeyEnd:
-		s.cursor.Col = len(s.lineRunes(s.cursor.Line)) - 1
-		return
-	}
-
-	switch ev.Rune {
-	case 'h':
-		s.cursor.Col--
-	case 'l', ' ':
-		s.cursor.Col++
-	case 'j':
-		s.cursor.Line++
-	case 'k':
-		s.cursor.Line--
-	case '0':
-		s.cursor.Col = 0
-	case '$':
-		s.cursor.Col = len(s.lineRunes(s.cursor.Line)) - 1
-	case 'G':
-		s.cursor.Line = s.lineCount()
-	case ':':
-		s.mode = ModeExColon
-		s.colon = nil
-	}
+	e.vi.key(e, ev)
 }
 
 func (e *Engine) colonKey(ev KeyEvent) {

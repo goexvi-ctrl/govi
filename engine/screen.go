@@ -3,6 +3,7 @@ package engine
 import (
 	"govi/engine/buffer"
 	"govi/engine/mark"
+	"govi/engine/register"
 	"govi/engine/undo"
 )
 
@@ -14,6 +15,7 @@ type screen struct {
 	store buffer.LineStore
 	log   *undo.Log
 	marks *mark.Set
+	regs  *register.Set
 
 	name     string // file path, or "" for an unnamed buffer
 	modified bool
@@ -52,6 +54,51 @@ func (s *screen) lineRunes(lno int64) []rune {
 		return nil
 	}
 	return r
+}
+
+// lineLen returns the rune length of buffer line lno.
+func (s *screen) lineLen(lno int64) int { return len(s.lineRunes(lno)) }
+
+// firstNonBlank returns the column of the first non-blank rune on line lno, or
+// 0 if the line is empty or all blanks.
+func (s *screen) firstNonBlank(lno int64) int {
+	r := s.lineRunes(lno)
+	for i, c := range r {
+		if c != ' ' && c != '\t' {
+			return i
+		}
+	}
+	return 0
+}
+
+// Line-edit primitives. All buffer mutations go through these so they are
+// recorded for undo and so marks are kept consistent. Callers must bracket a
+// logical change with Engine.beginChange/endChange.
+
+func (s *screen) setLine(lno int64, runes []rune) {
+	if lno < 1 {
+		return
+	}
+	if s.store.Lines() == 0 {
+		s.log.Insert(1, runes)
+		return
+	}
+	s.log.Set(lno, runes)
+}
+
+func (s *screen) insertLine(lno int64, runes []rune) {
+	s.log.Insert(lno, runes)
+	s.marks.LinesInserted(lno, 1)
+}
+
+func (s *screen) appendLine(lno int64, runes []rune) {
+	s.log.Append(lno, runes)
+	s.marks.LinesInserted(lno+1, 1)
+}
+
+func (s *screen) deleteLine(lno int64) {
+	s.log.Delete(lno)
+	s.marks.LinesDeleted(lno, 1)
 }
 
 // clampCursor keeps the cursor within the buffer and within its line. maxCol is

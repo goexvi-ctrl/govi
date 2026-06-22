@@ -1,0 +1,179 @@
+package engine
+
+import (
+	"strings"
+	"testing"
+)
+
+// drive feeds a key script to the engine. ESC is '\x1b', Enter is '\r',
+// Backspace is '\x7f'; all other runes are sent as plain key events.
+func drive(e *Engine, keys string) {
+	for _, r := range keys {
+		switch r {
+		case '\x1b':
+			e.Input(KeyEvent{Key: KeyEscape})
+		case '\r', '\n':
+			e.Input(KeyEvent{Key: KeyEnter})
+		case '\x7f':
+			e.Input(KeyEvent{Key: KeyBackspace})
+		default:
+			e.Input(KeyEvent{Rune: r})
+		}
+	}
+}
+
+func bufText(e *Engine) string {
+	n := e.scr.store.Lines()
+	rows := make([]string, 0, n)
+	for i := int64(1); i <= n; i++ {
+		ln, _ := e.scr.store.Get(i)
+		rows = append(rows, string(ln))
+	}
+	return strings.Join(rows, "\n")
+}
+
+// viCase runs a key script against initial content and checks the result.
+func viCase(t *testing.T, name, initial, keys, want string) {
+	t.Helper()
+	e, _, _ := newTestEngine(t, initial)
+	drive(e, keys)
+	if got := bufText(e); got != want {
+		t.Errorf("%s: keys %q on %q\n got %q\nwant %q", name, keys, initial, got, want)
+	}
+}
+
+func TestViMotionsAndDelete(t *testing.T) {
+	viCase(t, "x", "hello\n", "x", "ello")
+	viCase(t, "3x", "hello\n", "3x", "lo")
+	viCase(t, "dw", "hello world\n", "dw", "world")
+	viCase(t, "dw-last-word", "foo bar\n", "wdw", "foo ")
+	viCase(t, "dw-eol-keeps-newline", "foo\nbar\n", "dw", "\nbar")
+	viCase(t, "d$", "hello world\n", "wd$", "hello ")
+	viCase(t, "D", "hello world\n", "wD", "hello ")
+	viCase(t, "dd", "a\nb\nc\n", "dd", "b\nc")
+	viCase(t, "2dd", "a\nb\nc\nd\n", "2dd", "c\nd")
+	viCase(t, "dj", "a\nb\nc\n", "dj", "c")
+	viCase(t, "dG", "a\nb\nc\n", "dG", "")
+	viCase(t, "de", "hello world\n", "de", " world")
+	viCase(t, "df-inclusive", "a,b,c\n", "df,", "b,c")
+	viCase(t, "dt", "a,b,c\n", "dt,", ",b,c")
+}
+
+func TestViChange(t *testing.T) {
+	viCase(t, "cw", "hello world\n", "cwbye\x1b", "bye world")
+	viCase(t, "cc", "old line\nkeep\n", "ccnew\x1b", "new\nkeep")
+	viCase(t, "C", "hello world\n", "wCthere\x1b", "hello there")
+	viCase(t, "s", "abc\n", "sX\x1b", "Xbc")
+}
+
+func TestViInsert(t *testing.T) {
+	viCase(t, "i", "bc\n", "iA\x1b", "Abc")
+	viCase(t, "a", "ac\n", "ab\x1b", "abc")
+	viCase(t, "A", "ab\n", "Ac\x1b", "abc")
+	viCase(t, "I", "  bc\n", "IA\x1b", "  Abc")
+	viCase(t, "o", "a\nc\n", "ob\x1b", "a\nb\nc")
+	viCase(t, "O", "b\nc\n", "Oa\x1b", "a\nb\nc")
+}
+
+func TestViInsertNewline(t *testing.T) {
+	// Move to column 5 (the 'w'), insert "foo\nbar" splitting the line.
+	viCase(t, "split", "helloworld\n", "5lifoo\rbar\x1b", "hellofoo\nbarworld")
+}
+
+func TestViYankPut(t *testing.T) {
+	viCase(t, "yyp", "one\ntwo\n", "yyp", "one\none\ntwo")
+	viCase(t, "yyP", "one\ntwo\n", "yyP", "one\none\ntwo")
+	viCase(t, "dd-p", "a\nb\nc\n", "ddp", "b\na\nc")
+	viCase(t, "x-p-swap", "ab\n", "xp", "ba")
+	viCase(t, "char-yank-put", "abc\n", "ylp", "aabc")
+}
+
+func TestViNamedRegister(t *testing.T) {
+	e, _, _ := newTestEngine(t, "hello\nworld\n")
+	drive(e, `"ayy`) // yank line 1 into register a
+	drive(e, "j")    // to line 2
+	drive(e, `"ap`)  // put register a below
+	if got := bufText(e); got != "hello\nworld\nhello" {
+		t.Fatalf("named register put: got %q", got)
+	}
+}
+
+func TestViJoinAndTilde(t *testing.T) {
+	viCase(t, "J", "foo\nbar\n", "J", "foo bar")
+	viCase(t, "J-no-space-before-paren", "foo\n)x\n", "J", "foo)x")
+	viCase(t, "tilde", "abc\n", "~", "Abc")
+	viCase(t, "3tilde", "abcd\n", "3~", "ABCd")
+}
+
+func TestViReplace(t *testing.T) {
+	viCase(t, "r", "abc\n", "rX", "Xbc")
+	viCase(t, "3r", "abcd\n", "3rX", "XXXd")
+	viCase(t, "R", "abcdef\n", "RXYZ\x1b", "XYZdef")
+}
+
+func TestViUndoRedo(t *testing.T) {
+	e, _, _ := newTestEngine(t, "hello\n")
+	drive(e, "x")
+	if bufText(e) != "ello" {
+		t.Fatalf("after x: %q", bufText(e))
+	}
+	drive(e, "u")
+	if bufText(e) != "hello" {
+		t.Fatalf("after u: %q", bufText(e))
+	}
+	e.Input(KeyEvent{Rune: 'r', Mods: ModCtrl}) // ^R redo
+	if bufText(e) != "ello" {
+		t.Fatalf("after ^R: %q", bufText(e))
+	}
+}
+
+func TestViDotRepeat(t *testing.T) {
+	viCase(t, "x-dot", "hello\n", "x..", "lo")
+	viCase(t, "dw-dot", "a b c d\n", "dw.", "c d")
+	viCase(t, "insert-dot", "\n", "ix\x1b.", "xx")
+	viCase(t, "count-dot-override", "aaaaaaa\n", "x3.", "aaa")
+}
+
+func TestViCounts(t *testing.T) {
+	e, _, _ := newTestEngine(t, "abcdefgh\n")
+	drive(e, "3l")
+	if e.scr.cursor.Col != 3 {
+		t.Fatalf("3l -> col %d, want 3", e.scr.cursor.Col)
+	}
+	drive(e, "2h")
+	if e.scr.cursor.Col != 1 {
+		t.Fatalf("2h -> col %d, want 1", e.scr.cursor.Col)
+	}
+}
+
+func TestViWordMotions(t *testing.T) {
+	e, _, _ := newTestEngine(t, "foo bar baz\n")
+	drive(e, "w")
+	if e.scr.cursor.Col != 4 {
+		t.Fatalf("w -> col %d, want 4", e.scr.cursor.Col)
+	}
+	drive(e, "w")
+	if e.scr.cursor.Col != 8 {
+		t.Fatalf("ww -> col %d, want 8", e.scr.cursor.Col)
+	}
+	drive(e, "b")
+	if e.scr.cursor.Col != 4 {
+		t.Fatalf("b -> col %d, want 4", e.scr.cursor.Col)
+	}
+	drive(e, "e")
+	if e.scr.cursor.Col != 6 {
+		t.Fatalf("e -> col %d, want 6", e.scr.cursor.Col)
+	}
+}
+
+func TestViGotoLine(t *testing.T) {
+	e, _, _ := newTestEngine(t, "a\nb\nc\nd\ne\n")
+	drive(e, "G")
+	if e.scr.cursor.Line != 5 {
+		t.Fatalf("G -> line %d, want 5", e.scr.cursor.Line)
+	}
+	drive(e, "2G")
+	if e.scr.cursor.Line != 2 {
+		t.Fatalf("2G -> line %d, want 2", e.scr.cursor.Line)
+	}
+}

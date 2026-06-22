@@ -2,7 +2,10 @@ module govi
 
 go 1.26
 
-require github.com/gdamore/tcell/v2 v2.13.10
+require (
+	github.com/creack/pty v1.1.24
+	github.com/gdamore/tcell/v2 v2.13.10
+)
 
 require (
 	github.com/gdamore/encoding v1.0.1 // indirect
