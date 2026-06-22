@@ -190,66 +190,31 @@ func (e *Engine) colonKey(ev KeyEvent) {
 	}
 }
 
-// runColon handles a tiny set of ex commands so the editor can be saved and
-// exited. The real ex parser and command table arrive in Phase 4.
-func (e *Engine) runColon(cmd string) {
+// writeFile saves the buffer to path, atomically via a temp file + rename, and
+// returns the line and byte counts written.
+func (e *Engine) writeFile(path string) (lines, bytes int64, err error) {
 	s := e.scr
-	switch cmd {
-	case "":
-		// no-op
-	case "q", "q!":
-		if cmd == "q" && s.modified {
-			s.msg, s.msgKind = "No write since last change (use :q! to override)", MsgError
-			return
-		}
-		e.quit = true
-	case "w":
-		e.write()
-	case "wq", "x", "x!", "wq!":
-		if e.write() {
-			e.quit = true
-		}
-	default:
-		s.msg, s.msgKind = fmt.Sprintf("The %q command is not yet implemented", cmd), MsgError
-	}
-}
-
-// write saves the buffer to its file, atomically via a temp file + rename.
-// Returns true on success.
-func (e *Engine) write() bool {
-	s := e.scr
-	if s.name == "" {
-		s.msg, s.msgKind = "No current filename", MsgError
-		return false
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(s.name), ".govi-*")
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".govi-*")
 	if err != nil {
-		s.msg, s.msgKind = err.Error(), MsgError
-		return false
+		return 0, 0, err
 	}
 	tmpName := tmp.Name()
-	w := tmp
 	n := s.store.Lines()
 	var bytesOut int64
 	for i := int64(1); i <= n; i++ {
 		line, _ := s.store.Get(i)
 		b := []byte(string(line))
-		w.Write(b)
-		w.Write([]byte{'\n'})
+		tmp.Write(b)
+		tmp.Write([]byte{'\n'})
 		bytesOut += int64(len(b)) + 1
 	}
-	if err := w.Close(); err != nil {
+	if err := tmp.Close(); err != nil {
 		os.Remove(tmpName)
-		s.msg, s.msgKind = err.Error(), MsgError
-		return false
+		return 0, 0, err
 	}
-	if err := os.Rename(tmpName, s.name); err != nil {
+	if err := os.Rename(tmpName, path); err != nil {
 		os.Remove(tmpName)
-		s.msg, s.msgKind = err.Error(), MsgError
-		return false
+		return 0, 0, err
 	}
-	s.modified = false
-	s.msg = fmt.Sprintf("%q: %d lines, %d bytes", filepath.Base(s.name), n, bytesOut)
-	s.msgKind = MsgInfo
-	return true
+	return n, bytesOut, nil
 }

@@ -46,6 +46,38 @@ func RunGoviVi(s ViSession) (string, error) {
 	return string(out), nil
 }
 
+// RunGoviEx runs an ex session against the govi engine by typing each command
+// on the colon line, then writing and quitting. It returns the file contents.
+func RunGoviEx(s ExSession) (string, error) {
+	dir, err := os.MkdirTemp("", "govi-self-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(dir)
+
+	file := filepath.Join(dir, "buf.txt")
+	if err := os.WriteFile(file, []byte(s.Input), 0o644); err != nil {
+		return "", err
+	}
+
+	eng := engine.New(nopFrontend{}, engine.Options{})
+	if err := eng.Open(file); err != nil {
+		return "", err
+	}
+	eng.Resize(23, 80)
+
+	for _, cmd := range s.Commands {
+		feedKeys(eng, ":"+cmd+"\r")
+	}
+	feedKeys(eng, ":wq\r")
+
+	out, err := os.ReadFile(file)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
 // feedKeys translates a raw keystroke script into engine events.
 func feedKeys(eng *engine.Engine, keys string) {
 	for _, r := range keys {

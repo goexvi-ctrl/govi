@@ -1,0 +1,70 @@
+package engine
+
+import "testing"
+
+// exCase runs an ex command line (or several, separated by '\n') against initial
+// content and checks the buffer result.
+func exCase(t *testing.T, name, initial string, cmds []string, want string) {
+	t.Helper()
+	e, _, _ := newTestEngine(t, initial)
+	for _, c := range cmds {
+		if err := e.exExecute(c); err != nil {
+			t.Fatalf("%s: %q: %v", name, c, err)
+		}
+	}
+	if got := bufText(e); got != want {
+		t.Errorf("%s: %v on %q\n got %q\nwant %q", name, cmds, initial, got, want)
+	}
+}
+
+func TestExDelete(t *testing.T) {
+	exCase(t, "delete-range", "a\nb\nc\nd\n", []string{"2,3d"}, "a\nd")
+	exCase(t, "delete-current", "a\nb\nc\n", []string{"2", "d"}, "a\nc")
+	exCase(t, "delete-count", "a\nb\nc\nd\n", []string{"2d 2"}, "a\nd")
+	exCase(t, "delete-all", "a\nb\nc\n", []string{"%d"}, "")
+	exCase(t, "delete-dollar", "a\nb\nc\n", []string{"$d"}, "a\nb")
+}
+
+func TestExMove(t *testing.T) {
+	exCase(t, "move-end", "1\n2\n3\n", []string{"1m$"}, "2\n3\n1")
+	exCase(t, "move-top", "1\n2\n3\n", []string{"3m0"}, "3\n1\n2")
+	exCase(t, "move-range", "a\nb\nc\nd\n", []string{"1,2m4"}, "c\nd\na\nb")
+}
+
+func TestExCopy(t *testing.T) {
+	exCase(t, "copy-end", "1\n2\n3\n", []string{"1t$"}, "1\n2\n3\n1")
+	exCase(t, "copy-co", "1\n2\n", []string{"1co0"}, "1\n1\n2")
+	exCase(t, "copy-range", "a\nb\nc\n", []string{"1,2t$"}, "a\nb\nc\na\nb")
+}
+
+func TestExJoin(t *testing.T) {
+	exCase(t, "join-range", "a\nb\nc\nd\n", []string{"1,3j"}, "a b c\nd")
+	exCase(t, "join-current", "a\nb\nc\n", []string{"1j"}, "a b\nc")
+}
+
+func TestExYankPut(t *testing.T) {
+	exCase(t, "yank-put", "a\nb\nc\n", []string{"1y", "$pu"}, "a\nb\nc\na")
+	exCase(t, "move-via-named", "x\ny\n", []string{`1d a`, `$pu a`}, "y\nx")
+}
+
+func TestExShift(t *testing.T) {
+	exCase(t, "shift-right", "a\nb\n", []string{"1>"}, "\ta\nb")
+	exCase(t, "shift-left", "\ta\nb\n", []string{"1<"}, "a\nb")
+}
+
+func TestExAddressOnlyGoto(t *testing.T) {
+	e, _, _ := newTestEngine(t, "a\nb\nc\nd\n")
+	if err := e.exExecute("3"); err != nil {
+		t.Fatal(err)
+	}
+	if e.scr.cursor.Line != 3 {
+		t.Fatalf("goto: line %d, want 3", e.scr.cursor.Line)
+	}
+}
+
+func TestExSubstituteStubbed(t *testing.T) {
+	e, _, _ := newTestEngine(t, "a\n")
+	if err := e.exExecute("%s/a/b/"); err == nil {
+		t.Fatal("substitute should report not-yet-implemented in Phase 4")
+	}
+}
