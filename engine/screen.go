@@ -38,7 +38,9 @@ type screen struct {
 	// search state
 	lastPattern   string
 	lastSearchDir searchDir
-	ignorecase    bool
+
+	opts options
+	maps mapTable
 }
 
 // lineCount returns the number of lines in the buffer, treating an empty buffer

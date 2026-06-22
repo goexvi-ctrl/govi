@@ -202,6 +202,8 @@ func (e *Engine) shift(c *exCmd, dir int) error {
 		return err
 	}
 	s := e.scr
+	ts := s.opts.tabstop
+	sw := s.opts.shiftwidth
 	e.beginChange()
 	for ln := l1; ln <= l2; ln++ {
 		line := s.lineRunes(ln)
@@ -212,7 +214,7 @@ func (e *Engine) shift(c *exCmd, dir int) error {
 				width++
 				i++
 			} else if line[i] == '\t' {
-				width += defaultTabstop - width%defaultTabstop
+				width += ts - width%ts
 				i++
 			} else {
 				break
@@ -221,11 +223,11 @@ func (e *Engine) shift(c *exCmd, dir int) error {
 		if i == len(line) {
 			continue // blank line: vi leaves it unchanged
 		}
-		newWidth := width + dir*exDefaultShiftwidth
+		newWidth := width + dir*sw
 		if newWidth < 0 {
 			newWidth = 0
 		}
-		s.setLine(ln, append(makeIndent(newWidth), line[i:]...))
+		s.setLine(ln, append(makeIndent(newWidth, ts), line[i:]...))
 	}
 	e.endChange()
 	s.cursor = Pos{Line: clampLine(s, l2), Col: s.firstNonBlank(clampLine(s, l2))}
@@ -234,9 +236,9 @@ func (e *Engine) shift(c *exCmd, dir int) error {
 
 // makeIndent builds leading whitespace of the given display width using tabs to
 // the tabstop then spaces, matching vi's default (no expandtab) indentation.
-func makeIndent(width int) []rune {
-	tabs := width / defaultTabstop
-	spaces := width % defaultTabstop
+func makeIndent(width, tabstop int) []rune {
+	tabs := width / tabstop
+	spaces := width % tabstop
 	out := make([]rune, 0, tabs+spaces)
 	for i := 0; i < tabs; i++ {
 		out = append(out, '\t')

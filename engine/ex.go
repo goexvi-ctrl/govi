@@ -53,6 +53,11 @@ func init() {
 		{"substitute", 1, (*Engine).exSubstitute},
 		{"global", 1, (*Engine).exGlobal},
 		{"vglobal", 1, (*Engine).exVglobal},
+		{"set", 2, (*Engine).exSet},
+		{"map", 3, (*Engine).exMap},
+		{"unmap", 3, (*Engine).exUnmap},
+		{"abbreviate", 2, (*Engine).exAbbreviate},
+		{"unabbreviate", 4, (*Engine).exUnabbreviate},
 	}
 }
 

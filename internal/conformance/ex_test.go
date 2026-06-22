@@ -34,6 +34,10 @@ var exConformanceCases = []struct {
 	{"global-delete", "keep\ndrop x\nkeep\ndrop y\n", []string{"g/drop/d"}},
 	{"global-subst", "a1\nb\na2\n", []string{"g/a/s/a/X/"}},
 	{"vglobal-delete", "a\nb\na\nc\n", []string{"v/a/d"}},
+	{"set-ic-subst", "Foo foo FOO\n", []string{"set ic", "s/foo/x/g"}},
+	{"set-noic-subst", "Foo foo FOO\n", []string{"s/foo/x/g"}},
+	{"set-sw-shift", "x\n", []string{"set sw=4", "1>"}},
+	{"set-ts-shift", "\tx\n", []string{"set ts=4 sw=4", "1<"}},
 }
 
 // TestExConformance pins govi's ex commands to nvi using the headless ex-batch

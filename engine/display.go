@@ -6,19 +6,16 @@ package engine
 // terminal dependency; frontends call DisplayCells to turn a DisplayLine into a
 // flat run of styled cells to paint.
 
-// defaultTabstop is the column width of a tab until the options subsystem
-// (Phase 6) supplies the 'tabstop' setting.
-const defaultTabstop = 8
-
 // runeWidth returns the number of display columns rune r occupies when it
-// begins at display column col. Tabs advance to the next tabstop; control
-// characters render as a two-cell ^X form; other runes occupy one column.
+// begins at display column col, given the tabstop. Tabs advance to the next
+// tabstop; control characters render as a two-cell ^X form; other runes occupy
+// one column.
 //
-// TODO(phase6+): East Asian wide runes (width 2) and the 'tabstop' option.
-func runeWidth(r rune, col int) int {
+// TODO(phase7+): East Asian wide runes (width 2).
+func runeWidth(r rune, col, tabstop int) int {
 	switch {
 	case r == '\t':
-		return defaultTabstop - col%defaultTabstop
+		return tabstop - col%tabstop
 	case r < 0x20:
 		return 2 // ^A .. ^Z etc.
 	case r == 0x7f:
@@ -29,13 +26,13 @@ func runeWidth(r rune, col int) int {
 }
 
 // makeDisplayLine builds a DisplayLine from logical buffer runes, computing the
-// per-rune display width. Text aliases the caller's slice and must be treated
-// as read-only by the frontend.
-func makeDisplayLine(runes []rune) DisplayLine {
+// per-rune display width using the given tabstop. Text aliases the caller's
+// slice and must be treated as read-only by the frontend.
+func makeDisplayLine(runes []rune, tabstop int) DisplayLine {
 	widths := make([]int8, len(runes))
 	col := 0
 	for i, r := range runes {
-		w := runeWidth(r, col)
+		w := runeWidth(r, col, tabstop)
 		widths[i] = int8(w)
 		col += w
 	}

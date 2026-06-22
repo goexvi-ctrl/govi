@@ -348,18 +348,32 @@ func toggleCaseRune(r rune) rune {
 // openLine implements o/O: open a new line and enter insert mode.
 func (e *Engine) openLine(m *vimode, below bool) {
 	s := e.scr
+	var indent []rune
+	if s.opts.autoindent && s.store.Lines() > 0 {
+		indent = leadingWhitespace(s.lineRunes(s.cursor.Line))
+	}
 	e.beginChange()
 	if s.store.Lines() == 0 {
-		s.log.Insert(1, []rune{})
-		s.cursor = Pos{Line: 1, Col: 0}
+		s.log.Insert(1, cloneR(indent))
+		s.cursor = Pos{Line: 1, Col: len(indent)}
 	} else if below {
-		s.appendLine(s.cursor.Line, []rune{})
-		s.cursor = Pos{Line: s.cursor.Line + 1, Col: 0}
+		s.appendLine(s.cursor.Line, cloneR(indent))
+		s.cursor = Pos{Line: s.cursor.Line + 1, Col: len(indent)}
 	} else {
-		s.insertLine(s.cursor.Line, []rune{})
-		s.cursor = Pos{Line: s.cursor.Line, Col: 0}
+		s.insertLine(s.cursor.Line, cloneR(indent))
+		s.cursor = Pos{Line: s.cursor.Line, Col: len(indent)}
 	}
 	m.startInsert(e, s.cursor, false, map[bool]rune{true: 'o', false: 'O'}[below])
+}
+
+// leadingWhitespace returns a copy of the run of spaces/tabs at the start of a
+// line, used for autoindent.
+func leadingWhitespace(line []rune) []rune {
+	i := 0
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	return cloneR(line[:i])
 }
 
 // synthOperator runs op over the motion given by motionKey, honoring the count.

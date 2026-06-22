@@ -24,6 +24,8 @@ type Engine struct {
 	scr *screen
 	vi  *vimode
 
+	mapPending []rune // runes accumulating toward a possible map LHS
+
 	file *os.File // open handle backing a paged buffer, if any
 	quit bool
 }
@@ -46,6 +48,8 @@ func (e *Engine) setBuffer(store buffer.LineStore, name string) {
 		cursor: Pos{Line: 1, Col: 0},
 		top:    1,
 		mode:   ModeCommand,
+		opts:   defaultOptions(),
+		maps:   newMapTable(),
 	}
 	e.vi = newVimode()
 }
@@ -120,15 +124,19 @@ func (e *Engine) Input(ev Event) {
 		e.Resize(v.Rows, v.Cols)
 		return
 	case StringEvent:
+		// Pasted/literal text is dispatched directly, bypassing map expansion.
 		for _, r := range v.Text {
-			e.key(KeyEvent{Rune: r})
+			e.dispatchRune(r)
 		}
 	case KeyEvent:
-		e.key(v)
+		e.handleKeyEvent(v)
 	case InterruptEvent:
+		e.flushMapPending()
 		e.interrupt()
+	case TimeoutEvent:
+		e.mapTimeout()
 	default:
-		// SuspendEvent, TimeoutEvent: nothing to do in Phase 2.
+		// SuspendEvent: nothing to do.
 	}
 
 	e.scr.clampCursor()
@@ -155,10 +163,11 @@ func (e *Engine) interrupt() {
 	e.fe.Bell()
 }
 
-// key dispatches a single keypress according to the current mode. Command,
+// dispatchKey routes a single keypress to the current mode's handler. Command,
 // insert, and replace modes are handled by the vi state machine (vi.go); the
-// command line (':' ex commands and '/' '?' searches) is handled here.
-func (e *Engine) key(ev KeyEvent) {
+// command line (':' ex commands and '/' '?' searches) is handled here. Map
+// expansion happens upstream in handleKeyEvent.
+func (e *Engine) dispatchKey(ev KeyEvent) {
 	if e.scr.mode == ModeExColon {
 		e.cmdlineKey(ev)
 		return

@@ -49,6 +49,9 @@ var viConformanceCases = []struct {
 	{"search-next-delete", "x\nfoo\ny\nfoo\n", "/foo\rnD"},
 	{"search-back-change", "foo\nbar\nfoo\n", "G?foo\rcwBAZ\x1b"},
 	{"search-regex-delete", "abc123\n", "/[0-9]\rD"},
+	{"map-command", "a\nb\nc\nd\n", ":map X dd\rXX"},
+	{"autoindent-open", "    foo\n", ":set ai\robar\x1b"},
+	{"abbrev-insert", "\n", ":ab teh the\riteh \x1b"},
 }
 
 // TestViConformance pins govi's vi-mode behavior to nvi. It needs both an nvi

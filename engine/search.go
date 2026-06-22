@@ -27,7 +27,7 @@ func (e *Engine) compilePattern(p string) (*regex.Regex, error) {
 		}
 		p = e.scr.lastPattern
 	}
-	re, err := regex.Compile(p, regex.Options{Magic: true, IgnoreCase: e.scr.ignorecase})
+	re, err := regex.Compile(p, regex.Options{Magic: e.scr.opts.magic, IgnoreCase: e.scr.opts.ignorecase})
 	if err != nil {
 		return nil, err
 	}
@@ -41,9 +41,11 @@ func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (Pos, bool
 	s := e.scr
 	n := s.lineCount()
 
+	ws := s.opts.wrapscan
+
 	if dir == searchFwd {
 		// Start just past the cursor on the current line, then following lines,
-		// wrapping back to the start.
+		// wrapping back to the start if wrapscan is set.
 		for i := int64(0); i <= n; i++ {
 			lno := from.Line + i
 			startCol := 0
@@ -51,6 +53,9 @@ func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (Pos, bool
 				startCol = from.Col + 1
 			}
 			if lno > n {
+				if !ws {
+					break
+				}
 				lno -= n // wrap
 			}
 			line := s.lineRunes(lno)
@@ -64,8 +69,13 @@ func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (Pos, bool
 	// Backward.
 	for i := int64(0); i <= n; i++ {
 		lno := from.Line - i
-		for lno < 1 {
-			lno += n
+		if lno < 1 {
+			if !ws {
+				break
+			}
+			for lno < 1 {
+				lno += n
+			}
 		}
 		line := s.lineRunes(lno)
 		limit := len(line)

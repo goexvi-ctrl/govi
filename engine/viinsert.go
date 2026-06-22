@@ -32,13 +32,20 @@ func (m *vimode) startInsert(e *Engine, pos Pos, replace bool, cmd rune) {
 func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 	switch {
 	case ev.Key == KeyEscape:
+		e.maybeExpandAbbrev()
 		m.finishInsert(e)
 	case ev.Key == KeyEnter || ev.Rune == '\r' || ev.Rune == '\n':
+		e.maybeExpandAbbrev()
 		m.insertNewline(e)
 		m.insertText = append(m.insertText, '\n')
 	case ev.Key == KeyBackspace || ev.Rune == 0x7f || ev.Rune == '\b':
 		m.insertBackspace(e)
 	case ev.Rune != 0:
+		// Typing a non-word character triggers abbreviation expansion of the
+		// word just completed.
+		if !isWordRune(ev.Rune) {
+			e.maybeExpandAbbrev()
+		}
 		m.insertRune(e, ev.Rune)
 		m.insertText = append(m.insertText, ev.Rune)
 	}
@@ -69,8 +76,14 @@ func (m *vimode) insertNewline(e *Engine) {
 	head := cloneR(line[:col])
 	tail := cloneR(line[col:])
 	s.setLine(s.cursor.Line, head)
-	s.appendLine(s.cursor.Line, tail)
-	s.cursor = Pos{Line: s.cursor.Line + 1, Col: 0}
+
+	var indent []rune
+	if s.opts.autoindent {
+		indent = leadingWhitespace(line)
+	}
+	newContent := append(cloneR(indent), tail...)
+	s.appendLine(s.cursor.Line, newContent)
+	s.cursor = Pos{Line: s.cursor.Line + 1, Col: len(indent)}
 }
 
 func (m *vimode) insertBackspace(e *Engine) {
