@@ -69,9 +69,22 @@ func textRows(rows int) int {
 	return rows - 1
 }
 
+// Selection is a half-open caret range [A, B) in buffer coordinates that the
+// host wants drawn highlighted (reverse video). A and B may be given in either
+// order.
+type Selection struct {
+	A, B engine.Pos
+}
+
 // Compose lays out view v into a rows x cols grid. rows is the full height
 // including the status row.
 func Compose(v engine.View, rows, cols int) Grid {
+	return ComposeSel(v, rows, cols, nil)
+}
+
+// ComposeSel is Compose with an optional selection highlighted over the editor
+// text.
+func ComposeSel(v engine.View, rows, cols int, sel *Selection) Grid {
 	if rows < 1 {
 		rows = 1
 	}
@@ -88,7 +101,7 @@ func Compose(v engine.View, rows, cols int) Grid {
 		g.composeExMode(v)
 		return g
 	}
-	g.composeEditor(v)
+	g.composeEditor(v, sel)
 	return g
 }
 
@@ -131,8 +144,8 @@ func (g *Grid) composeExMode(v engine.View) {
 }
 
 // composeEditor draws the wrapped buffer text, gutter, tilde filler, status
-// line, and positions the cursor.
-func (g *Grid) composeEditor(v engine.View) {
+// line, and positions the cursor. sel, if non-nil, is drawn highlighted.
+func (g *Grid) composeEditor(v engine.View, sel *Selection) {
 	rows := textRows(g.Rows)
 	top := v.Viewport().Top
 	gutter := engine.GutterWidth(v.LineCount(), v.Number())
@@ -144,7 +157,9 @@ func (g *Grid) composeEditor(v engine.View) {
 	row := 0
 	lno := top
 	for row < rows && lno <= v.LineCount() {
-		cells := engine.DisplayCells(v.Line(lno))
+		dl := v.Line(lno)
+		cells := engine.DisplayCells(dl)
+		ds, de := selSpan(dl, lno, sel) // selected display-column interval
 		first := true
 		for i := 0; (i < len(cells) || first) && row < rows; i += textW {
 			if gutter > 0 && first {
@@ -152,11 +167,17 @@ func (g *Grid) composeEditor(v engine.View) {
 			}
 			x := gutter
 			for j := i; j < i+textW && j < len(cells); j++ {
+				st := cells[j].Style
+				if j >= ds && j < de {
+					st |= engine.StyleReverse
+				}
 				// Continuation cells (Rune == 0) follow a wide glyph; the wide
 				// rune is drawn at the leading cell, so leave these blank but keep
 				// the column advancing so wrap math stays aligned.
 				if cells[j].Rune != 0 {
-					g.set(x, row, cells[j].Rune, cells[j].Style)
+					g.set(x, row, cells[j].Rune, st)
+				} else if st&engine.StyleReverse != 0 {
+					g.set(x, row, ' ', st)
 				}
 				x++
 			}
@@ -219,6 +240,96 @@ func (g *Grid) placeCursor(v engine.View, rows, gutter, textW int) {
 	g.CursorX = x
 	g.CursorY = y
 	g.CursorVisible = true
+}
+
+// selSpan returns the half-open display-column interval [ds, de) of sel on the
+// logical line lno, or (0, 0) if the line is not within the selection.
+func selSpan(dl engine.DisplayLine, lno int64, sel *Selection) (int, int) {
+	if sel == nil {
+		return 0, 0
+	}
+	a, b := sel.A, sel.B
+	if a.Line > b.Line || (a.Line == b.Line && a.Col > b.Col) {
+		a, b = b, a
+	}
+	if lno < a.Line || lno > b.Line {
+		return 0, 0
+	}
+	startCol := 0
+	if lno == a.Line {
+		startCol = a.Col
+	}
+	endCol := len(dl.Text)
+	if lno == b.Line {
+		endCol = b.Col
+	}
+	ds := engine.DisplayColumn(dl, startCol)
+	de := engine.DisplayColumn(dl, endCol)
+	if de < ds {
+		de = ds
+	}
+	return ds, de
+}
+
+// Locate maps a screen cell (x, y) to the buffer caret position it sits on,
+// inverting the editor layout (gutter, wrapping, scroll). It is the counterpart
+// to composeEditor used by a GUI to turn a mouse click into a caret. A click
+// past the last line returns the end of the last line.
+func Locate(v engine.View, rows, cols, x, y int) engine.Pos {
+	tr := textRows(rows)
+	if y < 0 {
+		y = 0
+	}
+	if y >= tr {
+		y = tr - 1
+	}
+	gutter := engine.GutterWidth(v.LineCount(), v.Number())
+	textW := cols - gutter
+	if textW < 1 {
+		textW = 1
+	}
+
+	row := 0
+	lno := v.Viewport().Top
+	for lno <= v.LineCount() {
+		dl := v.Line(lno)
+		segs := wrapRowsOf(dl, textW)
+		for seg := 0; seg < segs; seg++ {
+			if row == y {
+				dcol := seg*textW + (x - gutter)
+				if dcol < 0 {
+					dcol = 0
+				}
+				return engine.Pos{Line: lno, Col: caretRuneIndex(dl, dcol)}
+			}
+			row++
+			if row >= tr {
+				break
+			}
+		}
+		if row >= tr {
+			break
+		}
+		lno++
+	}
+	last := v.LineCount()
+	return engine.Pos{Line: last, Col: len(v.Line(last).Text)}
+}
+
+// caretRuneIndex converts a display column to the caret rune index on dl: the
+// index of the rune whose cell contains dcol, or len(runes) at/after the end.
+func caretRuneIndex(dl engine.DisplayLine, dcol int) int {
+	if dcol <= 0 {
+		return 0
+	}
+	acc := 0
+	for i, w := range dl.Widths {
+		if dcol < acc+int(w) {
+			return i
+		}
+		acc += int(w)
+	}
+	return len(dl.Widths)
 }
 
 // wrapRowsOf returns how many screen rows a display line occupies at textW.

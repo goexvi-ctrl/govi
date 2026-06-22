@@ -41,10 +41,16 @@ func (h *host) Bell()                                     { h.bellPending = true
 func (h *host) SetTitle(s string)                         { h.title = s }
 
 var (
-	eng    *engine.Engine
-	fe     *host
-	curGr  grid.Grid
-	gridOK bool
+	eng     *engine.Engine
+	fe      *host
+	curGr   grid.Grid
+	gridOK  bool
+	curRows int
+	curCols int
+
+	selActive bool
+	selA      engine.Pos
+	selB      engine.Pos
 )
 
 func main() {} // required for c-archive builds
@@ -208,8 +214,13 @@ func GoviCompose(rows, cols C.int) {
 		gridOK = false
 		return
 	}
+	curRows, curCols = int(rows), int(cols)
+	var sel *grid.Selection
+	if selActive {
+		sel = &grid.Selection{A: selA, B: selB}
+	}
 	eng.WithView(func(v engine.View) {
-		curGr = grid.Compose(v, int(rows), int(cols))
+		curGr = grid.ComposeSel(v, int(rows), int(cols), sel)
 	})
 	gridOK = true
 }
@@ -253,6 +264,130 @@ func GoviRowText(y C.int) *C.char {
 	}
 	return C.CString(string(runes[:last+1]))
 }
+
+// GoviRowStyle returns a string the same length as GoviRowText's row in which
+// each character is '1' where that cell is highlighted (selection / reverse
+// video) and '0' otherwise (malloc'd; caller frees).
+//
+//export GoviRowStyle
+func GoviRowStyle(y C.int) *C.char {
+	if !gridOK || int(y) < 0 || int(y) >= curGr.Rows {
+		return C.CString("")
+	}
+	flags := make([]byte, curGr.Cols)
+	last := -1
+	for x := 0; x < curGr.Cols; x++ {
+		if curGr.At(x, int(y)).Style&engine.StyleReverse != 0 {
+			flags[x] = '1'
+			last = x
+		} else {
+			flags[x] = '0'
+		}
+	}
+	return C.CString(string(flags[:last+1]))
+}
+
+// GoviCellToPos maps a screen cell (x, y) to the buffer caret it sits on,
+// writing the 1-based line into *line and the rune index into *col. Backs
+// click/drag-to-position.
+//
+//export GoviCellToPos
+func GoviCellToPos(x, y C.int, line *C.longlong, col *C.int) {
+	if eng == nil {
+		return
+	}
+	eng.WithView(func(v engine.View) {
+		p := grid.Locate(v, curRows, curCols, int(x), int(y))
+		*line = C.longlong(p.Line)
+		*col = C.int(p.Col)
+	})
+}
+
+// GoviSetSelection sets (active != 0) or clears the highlighted caret range
+// [a, b). The range is redrawn on the next GoviCompose.
+//
+//export GoviSetSelection
+func GoviSetSelection(active C.int, l1 C.longlong, c1 C.int, l2 C.longlong, c2 C.int) {
+	selActive = active != 0
+	selA = engine.Pos{Line: int64(l1), Col: int(c1)}
+	selB = engine.Pos{Line: int64(l2), Col: int(c2)}
+}
+
+// GoviMoveCursor positions the cursor caret (click-to-position).
+//
+//export GoviMoveCursor
+func GoviMoveCursor(line C.longlong, col C.int) {
+	if eng != nil {
+		eng.MoveCursorTo(int64(line), int(col))
+	}
+}
+
+// GoviRangeText returns the text in the caret range [a, b) (malloc'd; caller
+// frees). Backs copy/cut.
+//
+//export GoviRangeText
+func GoviRangeText(l1 C.longlong, c1 C.int, l2 C.longlong, c2 C.int) *C.char {
+	if eng == nil {
+		return C.CString("")
+	}
+	return C.CString(eng.RangeText(pos(l1, c1), pos(l2, c2)))
+}
+
+// GoviDeleteRange deletes the caret range [a, b). Backs cut and
+// delete-over-selection.
+//
+//export GoviDeleteRange
+func GoviDeleteRange(l1 C.longlong, c1 C.int, l2 C.longlong, c2 C.int) {
+	if eng != nil {
+		eng.DeleteRange(pos(l1, c1), pos(l2, c2))
+	}
+}
+
+// GoviReplaceType deletes [a, b) and enters insert mode with text as the first
+// run (GUI replace-on-type).
+//
+//export GoviReplaceType
+func GoviReplaceType(l1 C.longlong, c1 C.int, l2 C.longlong, c2 C.int, text *C.char) {
+	if eng != nil {
+		eng.ReplaceSelectionType(pos(l1, c1), pos(l2, c2), C.GoString(text))
+	}
+}
+
+// GoviReplaceText deletes [a, b) and inserts text in command mode (GUI paste
+// over a selection).
+//
+//export GoviReplaceText
+func GoviReplaceText(l1 C.longlong, c1 C.int, l2 C.longlong, c2 C.int, text *C.char) {
+	if eng != nil {
+		eng.ReplaceSelectionText(pos(l1, c1), pos(l2, c2), C.GoString(text))
+	}
+}
+
+// GoviInsertText inserts text at the cursor caret (GUI paste, no selection).
+//
+//export GoviInsertText
+func GoviInsertText(text *C.char) {
+	if eng != nil {
+		eng.InsertText(C.GoString(text))
+	}
+}
+
+// GoviEndPos writes the caret at the very end of the buffer (last line, past
+// its last rune) into *line/*col. Backs Select All.
+//
+//export GoviEndPos
+func GoviEndPos(line *C.longlong, col *C.int) {
+	if eng == nil {
+		return
+	}
+	eng.WithView(func(v engine.View) {
+		last := v.LineCount()
+		*line = C.longlong(last)
+		*col = C.int(len(v.Line(last).Text))
+	})
+}
+
+func pos(l C.longlong, c C.int) engine.Pos { return engine.Pos{Line: int64(l), Col: int(c)} }
 
 // GoviCursorX / GoviCursorY / GoviCursorVisible expose the cursor cell.
 //

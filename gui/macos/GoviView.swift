@@ -37,6 +37,15 @@ final class GoviView: NSView {
     private var cols = 1
     private var timer: Timer?
 
+    // Mouse selection state, in buffer caret coordinates (1-based line, rune
+    // index). selActive mirrors the bridge's highlighted range.
+    private typealias Caret = (line: Int64, col: Int)
+    private var selActive = false
+    private var selStart: Caret = (1, 0)
+    private var selEnd: Caret = (1, 0)
+    private var dragAnchor: Caret = (1, 0)
+    private var dragging = false
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         measureFont()
@@ -134,9 +143,141 @@ final class GoviView: NSView {
         }
     }
 
+    // MARK: - Mouse selection
+
+    private func caretAt(_ event: NSEvent) -> Caret {
+        let p = convert(event.locationInWindow, from: nil)
+        let x = Int(p.x / cellW)
+        let y = Int(p.y / cellH)
+        var line: Int64 = 0
+        var col: Int32 = 0
+        GoviCellToPos(Int32(x), Int32(y), &line, &col)
+        return (line, Int(col))
+    }
+
+    private func setSelection(_ a: Caret, _ b: Caret) {
+        if a == b {
+            clearSelection()
+            return
+        }
+        selActive = true
+        selStart = a
+        selEnd = b
+        GoviSetSelection(1, a.line, Int32(a.col), b.line, Int32(b.col))
+    }
+
+    private func clearSelection() {
+        if !selActive { return }
+        selActive = false
+        GoviSetSelection(0, 0, 0, 0, 0)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        let caret = caretAt(event)
+        dragAnchor = caret
+        dragging = true
+        clearSelection()
+        GoviMoveCursor(caret.line, Int32(caret.col))
+        step()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard dragging else { return }
+        let caret = caretAt(event)
+        setSelection(dragAnchor, caret)
+        GoviMoveCursor(caret.line, Int32(caret.col))
+        step()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        dragging = false
+    }
+
+    // MARK: - Clipboard (Edit menu / standard shortcuts)
+
+    @objc func copy(_ sender: Any?) {
+        guard selActive else { return }
+        let s = bridgeString(GoviRangeText(selStart.line, Int32(selStart.col),
+                                           selEnd.line, Int32(selEnd.col)))
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(s, forType: .string)
+    }
+
+    @objc func cut(_ sender: Any?) {
+        guard selActive else { return }
+        copy(sender)
+        GoviDeleteRange(selStart.line, Int32(selStart.col), selEnd.line, Int32(selEnd.col))
+        clearSelection()
+        step()
+    }
+
+    @objc func paste(_ sender: Any?) {
+        guard let s = NSPasteboard.general.string(forType: .string) else { return }
+        var buf = Array(s.utf8CString)
+        if selActive {
+            buf.withUnsafeMutableBufferPointer {
+                GoviReplaceText(selStart.line, Int32(selStart.col),
+                                selEnd.line, Int32(selEnd.col), $0.baseAddress)
+            }
+            clearSelection()
+        } else {
+            buf.withUnsafeMutableBufferPointer { GoviInsertText($0.baseAddress) }
+        }
+        step()
+    }
+
+    @objc override func selectAll(_ sender: Any?) {
+        var line: Int64 = 0
+        var col: Int32 = 0
+        GoviEndPos(&line, &col)
+        setSelection((1, 0), (line, Int(col)))
+        needsDisplay = true
+    }
+
+    private func bridgeString(_ c: UnsafeMutablePointer<CChar>?) -> String {
+        guard let c = c else { return "" }
+        defer { GoviFree(c) }
+        return String(cString: c)
+    }
+
     // MARK: - Input
 
+    private func isPrintable(_ e: NSEvent) -> Bool {
+        let f = e.modifierFlags
+        if f.contains(.command) || f.contains(.control) { return false }
+        if e.specialKey != nil { return false }
+        if e.keyCode == 53 { return false } // escape
+        guard let c = e.charactersIgnoringModifiers, !c.isEmpty else { return false }
+        for s in c.unicodeScalars where s.value < 0x20 { return false }
+        return true
+    }
+
     override func keyDown(with event: NSEvent) {
+        // GUI-standard: with an active selection, typing replaces it (and you
+        // keep typing in insert mode); Backspace/Delete removes it; any other
+        // key cancels the selection and is then handled normally.
+        if selActive {
+            if isPrintable(event) {
+                let s = event.characters ?? ""
+                var buf = Array(s.utf8CString)
+                buf.withUnsafeMutableBufferPointer {
+                    GoviReplaceType(selStart.line, Int32(selStart.col),
+                                    selEnd.line, Int32(selEnd.col), $0.baseAddress)
+                }
+                clearSelection()
+                return step()
+            }
+            if let sk = event.specialKey, sk == .delete || sk == .deleteForward {
+                GoviDeleteRange(selStart.line, Int32(selStart.col),
+                                selEnd.line, Int32(selEnd.col))
+                clearSelection()
+                return step()
+            }
+            clearSelection()
+        }
+
         let flags = event.modifierFlags
         var mods: Int32 = 0
         if flags.contains(.control) { mods |= GoviView.modCtrl }
@@ -195,6 +336,20 @@ final class GoviView: NSView {
         bounds.fill()
 
         let n = Int(GoviRows())
+
+        // Selection highlight: fill the background of reverse-video cells before
+        // painting glyphs over them.
+        if selActive {
+            NSColor.selectedTextBackgroundColor.setFill()
+            for y in 0..<n {
+                guard let st = rowStyle(y) else { continue }
+                for (x, flag) in st.enumerated() where flag == "1" {
+                    NSRect(x: CGFloat(x) * cellW, y: CGFloat(y) * cellH,
+                           width: cellW, height: cellH).fill()
+                }
+            }
+        }
+
         for y in 0..<n {
             drawRow(y)
         }
@@ -227,6 +382,12 @@ final class GoviView: NSView {
 
     private func rowText(_ y: Int) -> String? {
         guard let c = GoviRowText(Int32(y)) else { return nil }
+        defer { GoviFree(c) }
+        return String(cString: c)
+    }
+
+    private func rowStyle(_ y: Int) -> String? {
+        guard let c = GoviRowStyle(Int32(y)) else { return nil }
         defer { GoviFree(c) }
         return String(cString: c)
     }

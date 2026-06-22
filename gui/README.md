@@ -68,6 +68,24 @@ gui/build/Govi.app/Contents/MacOS/Govi /path/to/file
 Use it like vi: `i` to insert, `Esc`, `:w`, `:q`, `dd`, `/pattern`, etc. All
 editing is handled by the embedded engine.
 
+### Mouse and clipboard
+
+In addition to vi keys, the window supports the usual GUI text affordances:
+
+- **Click** to move the cursor.
+- **Click-drag** to highlight a selection.
+- **Cmd-C / Cmd-X / Cmd-V** (and the Edit menu) copy / cut / paste via the macOS
+  system pasteboard; **Cmd-A** selects the whole buffer.
+- With a selection active, **typing any character or pasting replaces it** (and
+  leaves you in insert mode), and **Backspace/Delete removes it** — standard GUI
+  behavior. Vi command keys apply only when nothing is selected.
+
+These are GUI-layer features (vi has no selection concept). They are driven by a
+few engine primitives in `engine/gui.go` (`MoveCursorTo`, `RangeText`,
+`DeleteRange`, `ReplaceSelection*`, `InsertText`) and the cell↔caret mapping in
+`frontend/grid` (`Locate`, selection highlighting), all unit-tested in pure Go.
+The engine core remains free of any selection or clipboard concept.
+
 ## Tested
 
 The engine→grid path the app relies on is covered in pure Go by

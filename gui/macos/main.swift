@@ -53,6 +53,18 @@ func makeMenu() -> NSMenu {
     appMenu.addItem(withTitle: "Quit \(name)",
                     action: #selector(NSApplication.terminate(_:)),
                     keyEquivalent: "q")
+
+    // Edit menu: Cut/Copy/Paste/Select All route through the responder chain to
+    // GoviView's overrides, so the standard Cmd-X/C/V/A shortcuts work.
+    let editItem = NSMenuItem()
+    mainMenu.addItem(editItem)
+    let editMenu = NSMenu(title: "Edit")
+    editItem.submenu = editMenu
+    editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+    editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+    editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+    editMenu.addItem(NSMenuItem.separator())
+    editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
     return mainMenu
 }
 
