@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"strings"
 
 	"govi/engine/regex"
 )
@@ -106,6 +107,82 @@ func (e *Engine) startSearch(pattern string, dir searchDir) error {
 	e.scr.cursor = pos
 	e.scr.clampCursor()
 	return nil
+}
+
+// fileInfo implements ^G: show the file name, modified flag, and position.
+func (e *Engine) fileInfo() {
+	s := e.scr
+	name := s.name
+	if name == "" {
+		name = "[No file]"
+	}
+	mod := ""
+	if s.modified {
+		mod = " [Modified]"
+	}
+	n := s.lineCount()
+	pct := int64(0)
+	if n > 0 {
+		pct = (s.cursor.Line * 100) / n
+	}
+	s.msg = fmt.Sprintf("%q%s: line %d of %d [%d%%]", name, mod, s.cursor.Line, n, pct)
+	s.msgKind = MsgInfo
+}
+
+// wordAt returns the word (sequence of word runes) covering or following column
+// col on the given line, or "" if none.
+func (s *screen) wordAt(lno int64, col int) string {
+	line := s.lineRunes(lno)
+	if len(line) == 0 {
+		return ""
+	}
+	if col >= len(line) {
+		col = len(line) - 1
+	}
+	// If not on a word rune, scan forward to one.
+	for col < len(line) && !isWordRune(line[col]) {
+		col++
+	}
+	if col >= len(line) {
+		return ""
+	}
+	start := col
+	for start > 0 && isWordRune(line[start-1]) {
+		start--
+	}
+	end := col
+	for end < len(line) && isWordRune(line[end]) {
+		end++
+	}
+	return string(line[start:end])
+}
+
+// searchCurrentWord implements ^A: search for the word under the cursor as a
+// whole word. opposite searches backward.
+func (e *Engine) searchCurrentWord(opposite bool) error {
+	word := e.scr.wordAt(e.scr.cursor.Line, e.scr.cursor.Col)
+	if word == "" {
+		return fmt.Errorf("Cursor not in a word")
+	}
+	pattern := `\<` + regexEscape(word) + `\>`
+	dir := searchFwd
+	if opposite {
+		dir = searchBack
+	}
+	return e.startSearch(pattern, dir)
+}
+
+// regexEscape backslash-escapes the BRE metacharacters in a literal word.
+func regexEscape(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case '.', '*', '[', ']', '^', '$', '\\':
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // repeatSearch implements n (same direction) and N (opposite).

@@ -39,6 +39,12 @@ func (m *vimode) operate(e *Engine, op, reg rune, mot motion) {
 		// a line's last word does not swallow the newline.
 		p2.Line--
 		p2.Col = s.lineLen(p2.Line)
+		// For the line-oriented motions, if the start is at or before the first
+		// non-blank the whole span becomes linewise.
+		if mot.promote && p1.Col <= s.firstNonBlank(p1.Line) {
+			m.operateLines(e, op, reg, p1.Line, p2.Line)
+			return
+		}
 	}
 	m.operateChars(e, op, reg, p1, p2)
 }

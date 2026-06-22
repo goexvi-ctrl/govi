@@ -34,6 +34,7 @@ type vimode struct {
 	insertEnter Pos    // where insert began
 	insertCmd   rune   // command that entered insert (i/a/o/O/c/R...)
 	insertCount int    // repeat count for the insertion
+	literalNext bool   // ^V was typed; insert the next key literally
 
 	// dot repeat
 	rec       []KeyEvent
@@ -163,7 +164,7 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 	case 'd', 'c', 'y':
 		m.startOperator(r)
 		return
-	case 'f', 'F', 't', 'T', 'r', 'm', '`', '\'', 'Z':
+	case 'f', 'F', 't', 'T', 'r', 'm', '`', '\'', 'Z', '[', ']', '@', 'z':
 		m.pending = r
 		return
 	}
@@ -184,9 +185,10 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 	m.editKey(e, r)
 }
 
-// ctrlKey handles control-key commands (scrolling and redo).
+// ctrlKey handles control-key commands (scrolling, movement aliases, info).
 func (m *vimode) ctrlKey(e *Engine, r rune) {
 	s := e.scr
+	count := effCount(m.count)
 	switch r {
 	case 'f': // forward a screen
 		s.cursor.Line += int64(max(1, s.rows-2))
@@ -202,8 +204,21 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 		if s.top > 1 {
 			s.top--
 		}
+	case 'j', 'n': // move down (aliases for j)
+		s.cursor.Line += int64(count)
+	case 'p': // move up (alias for k)
+		s.cursor.Line -= int64(count)
+	case 'g': // file information
+		e.fileInfo()
+	case 'a': // search forward for the word under the cursor
+		if err := e.searchCurrentWord(false); err != nil {
+			s.msg, s.msgKind = err.Error(), MsgError
+		}
 	case 'r': // redraw the screen (no-op here; the frontend repaints each input)
 	}
+	// Control commands consume any preceding count.
+	m.count = 0
+	m.haveCount = false
 }
 
 // doUndoCommand implements nvi's undo. A literal 'u' (fromDot == false) toggles
@@ -285,11 +300,17 @@ func (m *vimode) applyMotionOrOp(e *Engine, mot motion, ok bool) {
 	e.scr.clampCursor()
 }
 
-// charArg handles the character following an f/F/t/T/r/m/`/' command.
+// charArg handles the character following an f/F/t/T/r/m/`/'/Z/[/]/@/z command.
 func (m *vimode) charArg(e *Engine, ev KeyEvent) {
 	key := m.pending
 	m.pending = 0
 	c := ev.Rune
+	if ev.Key == KeyEnter {
+		c = '\r'
+	}
+	if ev.Key == KeyEscape {
+		return // cancel
+	}
 	if c == 0 {
 		return
 	}
@@ -318,6 +339,60 @@ func (m *vimode) charArg(e *Engine, ev KeyEvent) {
 		default:
 			e.fe.Bell()
 		}
+	case '[':
+		if c == '[' {
+			m.doMotion(e, sectionBackMotion, 0)
+		} else {
+			e.fe.Bell()
+		}
+	case ']':
+		if c == ']' {
+			m.doMotion(e, sectionFwdMotion, 0)
+		} else {
+			e.fe.Bell()
+		}
+	case '@':
+		e.execBuffer(c)
+	case 'z':
+		e.screenPosition(c)
+	}
+}
+
+// execBuffer implements @<buffer>: run the named register's contents as vi
+// commands.
+func (e *Engine) execBuffer(name rune) {
+	txt := e.scr.regs.Get(name)
+	if txt.Empty() {
+		e.fe.Bell()
+		return
+	}
+	for i, ln := range txt.Lines {
+		if i > 0 {
+			e.dispatchRune('\n')
+		}
+		for _, r := range ln {
+			e.dispatchRune(r)
+		}
+	}
+}
+
+// screenPosition implements z<type>: redraw with the current line at the top
+// (CR/+), center (.), or bottom (-) of the screen.
+func (e *Engine) screenPosition(typ rune) {
+	s := e.scr
+	switch typ {
+	case '\r', '\n', '+':
+		s.top = s.cursor.Line
+	case '.':
+		s.top = s.cursor.Line - int64(s.rows/2)
+	case '-':
+		s.top = s.cursor.Line - int64(s.rows-1)
+	default:
+		e.fe.Bell()
+		return
+	}
+	if s.top < 1 {
+		s.top = 1
 	}
 }
 
@@ -365,6 +440,12 @@ func (m *vimode) editKey(e *Engine, r rune) {
 		e.joinLines(m)
 	case '~':
 		e.toggleCase(m)
+	case '&':
+		if err := e.repeatSubst(); err != nil {
+			s.msg, s.msgKind = err.Error(), MsgError
+		} else {
+			m.changed = true
+		}
 	case 'i':
 		e.enterInsert(m, s.cursor, false, 'i')
 	case 'I':

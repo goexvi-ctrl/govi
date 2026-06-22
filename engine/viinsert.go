@@ -30,6 +30,44 @@ func (m *vimode) startInsert(e *Engine, pos Pos, replace bool, cmd rune) {
 }
 
 func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
+	// ^V quotes the next key: insert it literally with no special handling.
+	if m.literalNext {
+		m.literalNext = false
+		r := ev.Rune
+		if r == 0 {
+			switch ev.Key {
+			case KeyEnter:
+				r = '\r'
+			case KeyEscape:
+				r = 0x1b
+			case KeyTab:
+				r = '\t'
+			}
+		}
+		if r != 0 {
+			m.insertRune(e, r)
+			m.insertText = append(m.insertText, r)
+		}
+		return
+	}
+
+	// Insert-mode control commands.
+	if ev.Mods&ModCtrl != 0 && ev.Key == KeyNone {
+		switch ev.Rune {
+		case 'v': // literal next
+			m.literalNext = true
+		case 'w': // erase the word before the cursor
+			m.insertWordErase(e)
+		case 't': // shift the current line right by shiftwidth
+			m.insertShift(e, +1)
+		case 'd': // shift the current line left by shiftwidth
+			m.insertShift(e, -1)
+		case 'h': // erase the previous character
+			m.insertBackspace(e)
+		}
+		return
+	}
+
 	switch {
 	case ev.Key == KeyEscape:
 		e.maybeExpandAbbrev()
@@ -103,6 +141,64 @@ func (m *vimode) insertBackspace(e *Engine) {
 		s.setLine(prev, merged)
 		s.deleteLine(s.cursor.Line)
 		s.cursor = Pos{Line: prev, Col: prevLen}
+	}
+}
+
+// insertWordErase implements ^W: delete the whitespace and word before the
+// cursor.
+func (m *vimode) insertWordErase(e *Engine) {
+	s := e.scr
+	line := s.lineRunes(s.cursor.Line)
+	col := clampIdx(s.cursor.Col, len(line))
+	i := col
+	for i > 0 && (line[i-1] == ' ' || line[i-1] == '\t') {
+		i--
+	}
+	if i > 0 {
+		if isWordRune(line[i-1]) {
+			for i > 0 && isWordRune(line[i-1]) {
+				i--
+			}
+		} else {
+			for i > 0 && !isWordRune(line[i-1]) && line[i-1] != ' ' && line[i-1] != '\t' {
+				i--
+			}
+		}
+	}
+	nl := append(cloneR(line[:i]), line[col:]...)
+	s.setLine(s.cursor.Line, nl)
+	s.cursor.Col = i
+}
+
+// insertShift implements ^T / ^D: shift the current line's indentation by one
+// shiftwidth, moving the cursor with the text.
+func (m *vimode) insertShift(e *Engine, dir int) {
+	s := e.scr
+	line := s.lineRunes(s.cursor.Line)
+	ts, sw := s.opts.tabstop, s.opts.shiftwidth
+	width, i := 0, 0
+	for i < len(line) {
+		if line[i] == ' ' {
+			width++
+			i++
+		} else if line[i] == '\t' {
+			width += ts - width%ts
+			i++
+		} else {
+			break
+		}
+	}
+	newWidth := width + dir*sw
+	if newWidth < 0 {
+		newWidth = 0
+	}
+	indent := makeIndent(newWidth, ts)
+	nl := append(cloneR(indent), line[i:]...)
+	s.setLine(s.cursor.Line, nl)
+	// Adjust the cursor by the change in the indent's rune length.
+	s.cursor.Col += len(indent) - i
+	if s.cursor.Col < 0 {
+		s.cursor.Col = 0
 	}
 }
 

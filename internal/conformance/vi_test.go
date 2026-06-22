@@ -56,6 +56,19 @@ var viConformanceCases = []struct {
 	{"x-at-end", "abc\n", "$x"},
 	{"r-at-end", "abc\n", "$rZ"},
 	{"change-last-char", "abc\n", "$cXdef\x1b"},
+	// Newly added commands.
+	{"match-paren", "a(bcd)e\n", "f(d%"},
+	{"match-from-inside", "x[ab]y\n", "ld%"},
+	{"paragraph-fwd", "a\nb\n\nc\nd\n", "d}"},
+	{"paragraph-back", "a\n\nb\nc\n", "Gd{"},
+	{"sentence-fwd", "One two. Three four.\n", "d)"},
+	{"underscore", "  one\n  two\n  three\n", "d_"},
+	{"section-fwd", "code\n{\nblock\n}\nmore\n", "d]]"},
+	{"ctrl-down", "a\nb\nc\nd\n", "\x0e\x0edd"},      // ^N ^N dd
+	{"amp-repeat-subst", "foo\nfoo foo\n", ":s/foo/X/\rj&"},
+	{"macro-at", "dd\nfoo\nbar\n", `"ayyj@a`}, // reg a = "dd"; @a deletes line 2
+	{"insert-ctrl-w", "\n", "ihello world\x17X\x1b"},
+	{"insert-ctrl-t", "x\n", ":set sw=4\ri\x14\x1b"},
 }
 
 // TestViConformance pins govi's vi-mode behavior to nvi. It needs both an nvi

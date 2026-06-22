@@ -28,6 +28,8 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 	global := strings.ContainsRune(flags, 'g')
 
 	s := e.scr
+	s.lastSubstRepl = repl
+	s.lastSubstFlags = flags
 	e.beginChange()
 	any := false
 	var lastLine int64
@@ -58,6 +60,34 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 		return fmt.Errorf("No match on lines %d,%d", l1, l2)
 	}
 	s.cursor = Pos{Line: clampLine(s, lastLine), Col: s.firstNonBlank(clampLine(s, lastLine))}
+	return nil
+}
+
+// repeatSubst implements & (and :&): repeat the last substitute on the current
+// line.
+func (e *Engine) repeatSubst() error {
+	s := e.scr
+	if s.lastPattern == "" {
+		return fmt.Errorf("No previous substitution")
+	}
+	re, err := e.compilePattern("")
+	if err != nil {
+		return err
+	}
+	global := strings.ContainsRune(s.lastSubstFlags, 'g')
+	lno := s.cursor.Line
+	out, _, replaced := substituteLine(re, s.lineRunes(lno), []rune(s.lastSubstRepl), global)
+	if !replaced {
+		return fmt.Errorf("No match")
+	}
+	e.beginChange()
+	segs := splitRunes(out, '\n')
+	s.setLine(lno, segs[0])
+	for i := 1; i < len(segs); i++ {
+		s.appendLine(lno+int64(i-1), segs[i])
+	}
+	e.endChange()
+	s.cursor = Pos{Line: lno, Col: s.firstNonBlank(lno)}
 	return nil
 }
 

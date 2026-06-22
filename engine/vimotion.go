@@ -8,6 +8,10 @@ type motion struct {
 	to        Pos
 	linewise  bool
 	inclusive bool
+	// promote marks the line-oriented exclusive motions (} { ) ( ]] [[) that
+	// become linewise for an operator when the motion ends in column 0 and the
+	// start is at or before the line's first non-blank (POSIX vi rule).
+	promote bool
 }
 
 // Synthetic motion keys for the mark motions, which carry a char argument.
@@ -21,7 +25,9 @@ func isMotionKey(r rune) bool {
 	case 'h', 'l', ' ', '0', '^', '$', '|',
 		'w', 'b', 'e', 'W', 'B', 'E',
 		'j', 'k', '+', '-', 'G', 'H', 'M', 'L',
-		';', ',':
+		';', ',',
+		'%', '(', ')', '{', '}', '_',
+		sectionFwdMotion, sectionBackMotion:
 		return true
 	}
 	return false
@@ -129,6 +135,22 @@ func (e *Engine) computeMotion(key rune, count int, explicit bool, charArg rune)
 			return motion{}, false
 		}
 		return e.findMotion(reverseFind(e.vi.findCmd), e.vi.findChar, count)
+	case '%':
+		return e.matchMotion()
+	case '(':
+		return e.sentenceBack(count)
+	case ')':
+		return e.sentenceFwd(count)
+	case '{':
+		return e.paragraphBack(count)
+	case '}':
+		return e.paragraphFwd(count)
+	case '_':
+		return e.underscoreMotion(count)
+	case sectionFwdMotion:
+		return e.sectionFwd(count)
+	case sectionBackMotion:
+		return e.sectionBack(count)
 	case markCharMotion:
 		if mk, ok := s.marks.Get(charArg); ok {
 			return motion{to: Pos{Line: mk.Line, Col: mk.Col}}, true

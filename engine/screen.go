@@ -35,9 +35,11 @@ type screen struct {
 	colon     []rune
 	cmdPrefix rune
 
-	// search state
-	lastPattern   string
-	lastSearchDir searchDir
+	// search and substitute state
+	lastPattern    string
+	lastSearchDir  searchDir
+	lastSubstRepl  string
+	lastSubstFlags string
 
 	opts options
 	maps mapTable
