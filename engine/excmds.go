@@ -201,6 +201,16 @@ func (e *Engine) shift(c *exCmd, dir int) error {
 	if err != nil {
 		return err
 	}
+	e.shiftLines(l1, l2, dir)
+	s := e.scr
+	s.cursor = Pos{Line: clampLine(s, l2), Col: s.firstNonBlank(clampLine(s, l2))}
+	return nil
+}
+
+// shiftLines shifts the indentation of lines [l1,l2] by dir shiftwidths (dir +1
+// right, -1 left), rebuilding the leading whitespace with tabs to the tabstop.
+// Shared by the ex < > commands and the vi < > operators.
+func (e *Engine) shiftLines(l1, l2 int64, dir int) {
 	s := e.scr
 	ts := s.opts.Int("tabstop")
 	sw := s.opts.Int("shiftwidth")
@@ -230,8 +240,6 @@ func (e *Engine) shift(c *exCmd, dir int) error {
 		s.setLine(ln, append(makeIndent(newWidth, ts), line[i:]...))
 	}
 	e.endChange()
-	s.cursor = Pos{Line: clampLine(s, l2), Col: s.firstNonBlank(clampLine(s, l2))}
-	return nil
 }
 
 // makeIndent builds leading whitespace of the given display width using tabs to

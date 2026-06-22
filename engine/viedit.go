@@ -30,6 +30,19 @@ func (m *vimode) operate(e *Engine, op, reg rune, mot motion) {
 		e.startFilter(clampLine(s, l1), clampLine(s, l2))
 		return
 	}
+	// The < and > shift operators always work on whole lines.
+	if op == '>' || op == '<' {
+		l1, l2 := minmaxLine(s.cursor.Line, mot.to.Line)
+		l1, l2 = clampLine(s, l1), clampLine(s, l2)
+		dir := 1
+		if op == '<' {
+			dir = -1
+		}
+		e.shiftLines(l1, l2, dir)
+		s.cursor = Pos{Line: l1, Col: s.firstNonBlank(l1)}
+		m.changed = true
+		return
+	}
 	if mot.linewise {
 		l1, l2 := minmaxLine(s.cursor.Line, mot.to.Line)
 		l1, l2 = clampLine(s, l1), clampLine(s, l2)

@@ -184,7 +184,7 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 	case '"':
 		m.awaitReg = true
 		return
-	case 'd', 'c', 'y', '!':
+	case 'd', 'c', 'y', '!', '>', '<':
 		m.startOperator(r)
 		return
 	case 'f', 'F', 't', 'T', 'r', 'm', '`', '\'', 'Z', '[', ']', '@', 'z', '#':
