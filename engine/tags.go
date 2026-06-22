@@ -105,7 +105,7 @@ func (e *Engine) tagPop() error {
 // lookupTag scans the tags file(s) for name, returning the target file and ex
 // command.
 func (e *Engine) lookupTag(name string) (file, excmd string, err error) {
-	for _, tagsPath := range strings.Fields(e.scr.opts.tags) {
+	for _, tagsPath := range strings.Fields(e.scr.opts.Str("tags")) {
 		f, ferr := os.Open(tagsPath)
 		if ferr != nil {
 			continue

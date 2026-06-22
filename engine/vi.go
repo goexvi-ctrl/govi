@@ -503,7 +503,7 @@ func (m *vimode) editKey(e *Engine, r rune) {
 	case 'J':
 		e.joinLines(m)
 	case '~':
-		if s.opts.tildeop {
+		if s.opts.Bool("tildeop") {
 			m.startOperator('~')
 		} else {
 			e.toggleCase(m)

@@ -403,7 +403,7 @@ func toggleCaseRune(r rune) rune {
 func (e *Engine) openLine(m *vimode, below bool) {
 	s := e.scr
 	var indent []rune
-	if s.opts.autoindent && s.store.Lines() > 0 {
+	if s.opts.Bool("autoindent") && s.store.Lines() > 0 {
 		indent = leadingWhitespace(s.lineRunes(s.cursor.Line))
 	}
 	e.beginChange()

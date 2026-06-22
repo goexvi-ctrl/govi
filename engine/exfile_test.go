@@ -71,7 +71,7 @@ func TestEditPreservesOptions(t *testing.T) {
 		t.Fatalf("after :edit: %q", bufText(e))
 	}
 	// Options and maps must survive the file switch.
-	if !e.scr.opts.autoindent || e.scr.opts.shiftwidth != 3 {
+	if !e.scr.opts.Bool("autoindent") || e.scr.opts.Int("shiftwidth") != 3 {
 		t.Fatal("options not preserved across :edit")
 	}
 	if _, ok := e.scr.maps.command["X"]; !ok {

@@ -105,6 +105,9 @@ type View interface {
 	// ExTranscript returns the scrolling ex-mode output lines; non-nil only
 	// while Mode() == ModeExText.
 	ExTranscript() []string
+	// PendingOutput returns multi-line command output to overlay on the screen
+	// (e.g. :set all) until the next keypress; nil when there is none.
+	PendingOutput() []string
 }
 
 // LineRange is an inclusive 1-based range of buffer lines.

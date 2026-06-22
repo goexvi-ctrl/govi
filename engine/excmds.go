@@ -202,8 +202,8 @@ func (e *Engine) shift(c *exCmd, dir int) error {
 		return err
 	}
 	s := e.scr
-	ts := s.opts.tabstop
-	sw := s.opts.shiftwidth
+	ts := s.opts.Int("tabstop")
+	sw := s.opts.Int("shiftwidth")
 	e.beginChange()
 	for ln := l1; ln <= l2; ln++ {
 		line := s.lineRunes(ln)

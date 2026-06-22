@@ -4,21 +4,21 @@ import "testing"
 
 func TestSetBool(t *testing.T) {
 	e, _, _ := newTestEngine(t, "x\n")
-	if e.scr.opts.autoindent {
+	if e.scr.opts.Bool("autoindent") {
 		t.Fatal("autoindent should default off")
 	}
 	if err := e.exExecute("set ai"); err != nil {
 		t.Fatal(err)
 	}
-	if !e.scr.opts.autoindent {
+	if !e.scr.opts.Bool("autoindent") {
 		t.Fatal("set ai did not enable autoindent")
 	}
 	e.exExecute("set noai")
-	if e.scr.opts.autoindent {
+	if e.scr.opts.Bool("autoindent") {
 		t.Fatal("set noai did not disable autoindent")
 	}
 	e.exExecute("set ai!")
-	if !e.scr.opts.autoindent {
+	if !e.scr.opts.Bool("autoindent") {
 		t.Fatal("set ai! did not toggle on")
 	}
 }
@@ -28,11 +28,11 @@ func TestSetNumeric(t *testing.T) {
 	if err := e.exExecute("set ts=4 sw=2"); err != nil {
 		t.Fatal(err)
 	}
-	if e.scr.opts.tabstop != 4 {
-		t.Fatalf("tabstop = %d, want 4", e.scr.opts.tabstop)
+	if e.scr.opts.Int("tabstop") != 4 {
+		t.Fatalf("tabstop = %d, want 4", e.scr.opts.Int("tabstop"))
 	}
-	if e.scr.opts.shiftwidth != 2 {
-		t.Fatalf("shiftwidth = %d, want 2", e.scr.opts.shiftwidth)
+	if e.scr.opts.Int("shiftwidth") != 2 {
+		t.Fatalf("shiftwidth = %d, want 2", e.scr.opts.Int("shiftwidth"))
 	}
 }
 

@@ -2,67 +2,168 @@ package engine
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
 )
 
-// options holds the editor settings controlled by :set, corresponding to nvi's
-// O_* options (common/options.c). Only the options that affect implemented
-// behavior are present; more can be added as features land.
+// Options are stored generically by name so the full nvi option set is easy to
+// carry. Only some options drive implemented behavior; the rest are recognized
+// and settable (and listed by :set all) but inert. This mirrors nvi's O_*
+// table (common/options.c, options_def.h).
+
+type optType int
+
+const (
+	optBool optType = iota
+	optNum
+	optStr
+)
+
+type optDef struct {
+	name string
+	abbr string // short form, or ""
+	typ  optType
+	dB   bool
+	dN   int
+	dS   string
+}
+
+// optDefs is the option table. Defaults follow nvi's. A boolean shown without
+// "no" in nvi's :set all is default-on (dB true).
+var optDefs = []optDef{
+	{name: "altwerase", typ: optBool},
+	{name: "autoindent", abbr: "ai", typ: optBool},
+	{name: "autoprint", abbr: "ap", typ: optBool, dB: true},
+	{name: "autowrite", abbr: "aw", typ: optBool},
+	{name: "backup", typ: optStr},
+	{name: "beautify", abbr: "bf", typ: optBool},
+	{name: "cdpath", typ: optStr},
+	{name: "cedit", typ: optStr},
+	{name: "columns", abbr: "co", typ: optNum, dN: 80},
+	{name: "comment", typ: optBool},
+	{name: "directory", abbr: "dir", typ: optStr, dS: "/tmp"},
+	{name: "edcompatible", abbr: "ed", typ: optBool},
+	{name: "errorbells", abbr: "eb", typ: optBool},
+	{name: "escapetime", typ: optNum, dN: 1},
+	{name: "exrc", typ: optBool},
+	{name: "extended", typ: optBool},
+	{name: "filec", typ: optStr},
+	{name: "flash", typ: optBool, dB: true},
+	{name: "hardtabs", abbr: "ht", typ: optNum},
+	{name: "iclower", typ: optBool},
+	{name: "ignorecase", abbr: "ic", typ: optBool},
+	{name: "keytime", typ: optNum, dN: 6},
+	{name: "leftright", typ: optBool},
+	{name: "lines", typ: optNum, dN: 24},
+	{name: "lisp", typ: optBool},
+	{name: "list", typ: optBool},
+	{name: "lock", typ: optBool, dB: true},
+	{name: "magic", typ: optBool, dB: true},
+	{name: "matchtime", typ: optNum, dN: 7},
+	{name: "mesg", typ: optBool, dB: true},
+	{name: "modeline", typ: optBool},
+	{name: "number", abbr: "nu", typ: optBool},
+	{name: "octal", typ: optBool},
+	{name: "open", typ: optBool, dB: true},
+	{name: "optimize", abbr: "opt", typ: optBool, dB: true},
+	{name: "paragraphs", abbr: "para", typ: optStr, dS: "IPLPPPQPP LIpplpipbp"},
+	{name: "path", typ: optStr},
+	{name: "print", typ: optStr},
+	{name: "prompt", typ: optBool, dB: true},
+	{name: "readonly", abbr: "ro", typ: optBool},
+	{name: "redraw", abbr: "re", typ: optBool},
+	{name: "remap", typ: optBool, dB: true},
+	{name: "report", typ: optNum, dN: 5},
+	{name: "ruler", typ: optBool},
+	{name: "scroll", abbr: "scr", typ: optNum},
+	{name: "searchincr", typ: optBool},
+	{name: "secure", typ: optBool},
+	{name: "sections", abbr: "sect", typ: optStr, dS: "NHSHH HUnhsh"},
+	{name: "shell", abbr: "sh", typ: optStr, dS: "/bin/sh"},
+	{name: "shellmeta", typ: optStr, dS: "~{[*?$`'\"\\"},
+	{name: "shiftwidth", abbr: "sw", typ: optNum, dN: 8},
+	{name: "showmatch", abbr: "sm", typ: optBool},
+	{name: "showmode", abbr: "smd", typ: optBool},
+	{name: "sidescroll", typ: optNum, dN: 16},
+	{name: "slowopen", abbr: "slow", typ: optBool},
+	{name: "sourceany", typ: optBool},
+	{name: "tabstop", abbr: "ts", typ: optNum, dN: 8},
+	{name: "taglength", abbr: "tl", typ: optNum},
+	{name: "tags", typ: optStr, dS: "tags"},
+	{name: "term", typ: optStr},
+	{name: "terse", typ: optBool},
+	{name: "tildeop", abbr: "to", typ: optBool},
+	{name: "timeout", typ: optBool, dB: true},
+	{name: "ttywerase", typ: optBool},
+	{name: "verbose", typ: optBool},
+	{name: "warn", typ: optBool, dB: true},
+	{name: "window", abbr: "w", typ: optNum},
+	{name: "windowname", typ: optBool},
+	{name: "wraplen", abbr: "wl", typ: optNum},
+	{name: "wrapmargin", abbr: "wm", typ: optNum},
+	{name: "wrapscan", abbr: "ws", typ: optBool, dB: true},
+	{name: "writeany", abbr: "wa", typ: optBool},
+}
+
+// optByName resolves a name or abbreviation to its definition.
+var optByName = func() map[string]*optDef {
+	m := make(map[string]*optDef, len(optDefs)*2)
+	for i := range optDefs {
+		d := &optDefs[i]
+		m[d.name] = d
+		if d.abbr != "" {
+			m[d.abbr] = d
+		}
+	}
+	return m
+}()
+
+// options holds the per-screen option values.
 type options struct {
-	autoindent bool
-	ignorecase bool
-	magic      bool
-	wrapscan   bool
-	number     bool
-	list       bool
-	tabstop    int
-	shiftwidth int
-	tags       string
-	tildeop    bool
+	b map[string]bool
+	i map[string]int
+	s map[string]string
 }
 
 func defaultOptions() options {
-	return options{
-		magic:      true,
-		wrapscan:   true,
-		tabstop:    8,
-		shiftwidth: 8,
-		tags:       "tags",
+	o := options{b: map[string]bool{}, i: map[string]int{}, s: map[string]string{}}
+	for i := range optDefs {
+		d := &optDefs[i]
+		switch d.typ {
+		case optBool:
+			o.b[d.name] = d.dB
+		case optNum:
+			o.i[d.name] = d.dN
+		case optStr:
+			o.s[d.name] = d.dS
+		}
 	}
-}
-
-// optAbbrev maps option names and their standard abbreviations to a canonical
-// name.
-var optAbbrev = map[string]string{
-	"autoindent": "autoindent", "ai": "autoindent",
-	"ignorecase": "ignorecase", "ic": "ignorecase",
-	"magic":    "magic",
-	"wrapscan": "wrapscan", "ws": "wrapscan",
-	"number": "number", "nu": "number",
-	"list":       "list",
-	"tabstop":    "tabstop", "ts": "tabstop",
-	"shiftwidth": "shiftwidth", "sw": "shiftwidth",
-	"tags":    "tags",
-	"tildeop": "tildeop", "to": "tildeop",
-}
-
-func optIsBool(canon string) bool {
-	switch canon {
-	case "tabstop", "shiftwidth", "tags":
-		return false
+	// Environment-derived defaults, like nvi.
+	if sh := os.Getenv("SHELL"); sh != "" {
+		o.s["shell"] = sh
 	}
-	return true
+	if term := os.Getenv("TERM"); term != "" {
+		o.s["term"] = term
+	}
+	return o
 }
 
-func optIsString(canon string) bool { return canon == "tags" }
+// Accessors used by the rest of the engine.
+func (o options) Bool(name string) bool  { return o.b[name] }
+func (o options) Int(name string) int    { return o.i[name] }
+func (o options) Str(name string) string { return o.s[name] }
 
 // exSet implements :set.
 func (e *Engine) exSet(c *exCmd) error {
 	arg := strings.TrimSpace(c.arg)
-	if arg == "" || arg == "all" {
-		e.scr.msg, e.scr.msgKind = e.optSummary(), MsgInfo
+	if arg == "" {
+		e.showOptions(false)
+		return nil
+	}
+	if arg == "all" {
+		e.showOptions(true)
 		return nil
 	}
 	for _, tok := range strings.Fields(arg) {
@@ -79,44 +180,32 @@ func (e *Engine) setOne(tok string) error {
 	// name=value
 	if i := strings.IndexByte(tok, '='); i >= 0 {
 		name, val := tok[:i], tok[i+1:]
-		canon, ok := optAbbrev[name]
+		d, ok := optByName[name]
 		if !ok {
 			return fmt.Errorf("set: no %s option", name)
 		}
-		if optIsString(canon) {
-			if canon == "tags" {
-				o.tags = val
+		switch d.typ {
+		case optStr:
+			o.s[d.name] = val
+		case optNum:
+			n, err := strconv.Atoi(val)
+			if err != nil {
+				return fmt.Errorf("set: %s: illegal value %q", d.name, val)
 			}
-			return nil
-		}
-		n, err := strconv.Atoi(val)
-		if err != nil {
-			return fmt.Errorf("set: %s: illegal value %q", canon, val)
-		}
-		switch canon {
-		case "tabstop":
-			if n < 1 {
-				n = 1
-			}
-			o.tabstop = n
-		case "shiftwidth":
-			if n < 1 {
-				n = 1
-			}
-			o.shiftwidth = n
+			o.i[d.name] = n
 		default:
-			return fmt.Errorf("set: %s is not a numeric option", canon)
+			return fmt.Errorf("set: %s is not a settable-value option", d.name)
 		}
 		return nil
 	}
 
-	// name?  (query)
+	// name? (query)
 	if strings.HasSuffix(tok, "?") {
-		canon, ok := optAbbrev[tok[:len(tok)-1]]
+		d, ok := optByName[tok[:len(tok)-1]]
 		if !ok {
 			return fmt.Errorf("set: no %s option", tok[:len(tok)-1])
 		}
-		e.scr.msg, e.scr.msgKind = e.optDisplay(canon), MsgInfo
+		e.scr.msg, e.scr.msgKind = e.optDisplay(d), MsgInfo
 		return nil
 	}
 
@@ -130,102 +219,120 @@ func (e *Engine) setOne(tok string) error {
 	// noname  (clear a boolean)
 	val := true
 	name := tok
-	if strings.HasPrefix(tok, "no") {
-		if _, ok := optAbbrev[tok]; !ok { // "number" starts with "no"? no; safe
-			val = false
-			name = tok[2:]
-		}
+	if _, known := optByName[tok]; !known && strings.HasPrefix(tok, "no") {
+		val = false
+		name = tok[2:]
 	}
-	canon, ok := optAbbrev[name]
+	d, ok := optByName[name]
 	if !ok {
 		return fmt.Errorf("set: no %s option", name)
 	}
-	if !optIsBool(canon) {
-		return fmt.Errorf("set: %s is not a boolean option", canon)
+	if d.typ != optBool {
+		return fmt.Errorf("set: %s is not a boolean option", d.name)
 	}
-	cur := e.optBool(canon)
-	switch {
-	case toggle:
-		e.setBool(canon, !cur)
-	default:
-		e.setBool(canon, val)
+	if toggle {
+		o.b[d.name] = !o.b[d.name]
+	} else {
+		o.b[d.name] = val
 	}
 	return nil
 }
 
-func (e *Engine) optBool(canon string) bool {
+// optDisplay formats one option as nvi does: "name"/"noname" for booleans,
+// "name=value" for numerics and strings (strings quoted).
+func (e *Engine) optDisplay(d *optDef) string {
 	o := &e.scr.opts
-	switch canon {
-	case "autoindent":
-		return o.autoindent
-	case "ignorecase":
-		return o.ignorecase
-	case "magic":
-		return o.magic
-	case "wrapscan":
-		return o.wrapscan
-	case "number":
-		return o.number
-	case "list":
-		return o.list
-	case "tildeop":
-		return o.tildeop
-	}
-	return false
-}
-
-func (e *Engine) setBool(canon string, v bool) {
-	o := &e.scr.opts
-	switch canon {
-	case "autoindent":
-		o.autoindent = v
-	case "ignorecase":
-		o.ignorecase = v
-	case "magic":
-		o.magic = v
-	case "wrapscan":
-		o.wrapscan = v
-	case "number":
-		o.number = v
-	case "list":
-		o.list = v
-	case "tildeop":
-		o.tildeop = v
-	}
-}
-
-func (e *Engine) optDisplay(canon string) string {
-	if optIsBool(canon) {
-		if e.optBool(canon) {
-			return canon
+	switch d.typ {
+	case optBool:
+		if o.b[d.name] {
+			return d.name
 		}
-		return "no" + canon
+		return "no" + d.name
+	case optNum:
+		return fmt.Sprintf("%s=%d", d.name, o.i[d.name])
+	default:
+		return fmt.Sprintf("%s=%q", d.name, o.s[d.name])
 	}
-	o := &e.scr.opts
-	switch canon {
-	case "tabstop":
-		return fmt.Sprintf("tabstop=%d", o.tabstop)
-	case "shiftwidth":
-		return fmt.Sprintf("shiftwidth=%d", o.shiftwidth)
-	case "tags":
-		return fmt.Sprintf("tags=%s", o.tags)
-	}
-	return canon
 }
 
-func (e *Engine) optSummary() string {
-	canon := map[string]bool{}
-	for _, c := range optAbbrev {
-		canon[c] = true
+// isDefault reports whether option d currently holds its default value.
+func (e *Engine) isDefault(d *optDef) bool {
+	o := &e.scr.opts
+	switch d.typ {
+	case optBool:
+		return o.b[d.name] == d.dB
+	case optNum:
+		return o.i[d.name] == d.dN
+	default:
+		return o.s[d.name] == d.dS
 	}
-	names := make([]string, 0, len(canon))
-	for c := range canon {
-		names = append(names, c)
+}
+
+// showOptions renders the option list (all, or only those changed from their
+// defaults) as a multi-column grid and shows it. Long values get their own
+// full-width line, matching nvi's :set output layout.
+func (e *Engine) showOptions(all bool) {
+	width := e.scr.cols
+	if width < 1 {
+		width = 80
 	}
-	sort.Strings(names)
-	parts := make([]string, len(names))
-	for i, c := range names {
-		parts[i] = e.optDisplay(c)
+
+	// Collect and format the options to show.
+	var entries []string
+	longBool := 1
+	for i := range optDefs {
+		d := &optDefs[i]
+		if !all && e.isDefault(d) {
+			continue
+		}
+		entries = append(entries, e.optDisplay(d))
+		if d.typ == optBool {
+			if l := len(e.optDisplay(d)); l > longBool {
+				longBool = l
+			}
+		}
 	}
-	return strings.Join(parts, " ")
+	sort.Strings(entries)
+	if len(entries) == 0 {
+		return
+	}
+
+	colW := longBool + 2
+	var short, long []string
+	for _, en := range entries {
+		if len(en) <= longBool {
+			short = append(short, en)
+		} else {
+			long = append(long, en)
+		}
+	}
+
+	cols := width / colW
+	if cols < 1 {
+		cols = 1
+	}
+	rows := (len(short) + cols - 1) / cols
+
+	var out []string
+	for r := 0; r < rows; r++ {
+		var b strings.Builder
+		for c := 0; c < cols; c++ {
+			idx := c*rows + r
+			if idx >= len(short) {
+				continue
+			}
+			s := short[idx]
+			b.WriteString(s)
+			// Pad, except after the last column of the row.
+			if c < cols-1 && c*rows+rows+r < len(short)+rows {
+				for k := len(s); k < colW; k++ {
+					b.WriteByte(' ')
+				}
+			}
+		}
+		out = append(out, strings.TrimRight(b.String(), " "))
+	}
+	out = append(out, long...)
+
+	e.showOutput(out)
 }

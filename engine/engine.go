@@ -139,6 +139,9 @@ func (e *Engine) MapPending() bool { return len(e.mapPending) > 0 }
 func (e *Engine) Resize(rows, cols int) {
 	e.scr.rows = rows
 	e.scr.cols = cols
+	// Keep the columns/lines options in step with the terminal geometry.
+	e.scr.opts.i["columns"] = cols
+	e.scr.opts.i["lines"] = rows + 1
 	e.scr.clampCursor()
 	e.scr.scrollToCursor()
 	e.fe.Render(view{e.scr}, ChangeSet{Full: true})
@@ -161,6 +164,17 @@ func (e *Engine) snap() snap {
 // Input feeds one event to the engine and repaints as needed.
 func (e *Engine) Input(ev Event) {
 	before := e.snap()
+
+	// A pending output overlay (e.g. :set all) is dismissed by the next key.
+	if e.scr.pendingOutput != nil {
+		switch ev.(type) {
+		case KeyEvent, StringEvent, InterruptEvent:
+			e.scr.pendingOutput = nil
+			e.mapPending = nil
+			e.fe.Render(view{e.scr}, ChangeSet{Full: true})
+			return
+		}
+	}
 
 	switch v := ev.(type) {
 	case ResizeEvent:

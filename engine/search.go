@@ -28,7 +28,7 @@ func (e *Engine) compilePattern(p string) (*regex.Regex, error) {
 		}
 		p = e.scr.lastPattern
 	}
-	re, err := regex.Compile(p, regex.Options{Magic: e.scr.opts.magic, IgnoreCase: e.scr.opts.ignorecase})
+	re, err := regex.Compile(p, regex.Options{Magic: e.scr.opts.Bool("magic"), IgnoreCase: e.scr.opts.Bool("ignorecase")})
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (Pos, bool
 	s := e.scr
 	n := s.lineCount()
 
-	ws := s.opts.wrapscan
+	ws := s.opts.Bool("wrapscan")
 
 	if dir == searchFwd {
 		// Start just past the cursor on the current line, then following lines,

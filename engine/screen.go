@@ -38,6 +38,10 @@ type screen struct {
 	// exTranscript is the scrolling output shown while mode == ModeExText.
 	exTranscript []string
 
+	// pendingOutput is multi-line command output (e.g. :set all) shown over the
+	// buffer in vi mode until the next keypress.
+	pendingOutput []string
+
 	// search and substitute state
 	lastPattern    string
 	lastSearchDir  searchDir
@@ -152,7 +156,7 @@ func (s *screen) clampCursor() {
 // textCols returns the number of columns available for buffer text after the
 // line-number gutter.
 func (s *screen) textCols() int {
-	w := s.cols - GutterWidth(s.lineCount(), s.opts.number)
+	w := s.cols - GutterWidth(s.lineCount(), s.opts.Bool("number"))
 	if w < 1 {
 		w = 1
 	}
@@ -164,7 +168,7 @@ func (s *screen) textCols() int {
 func (s *screen) displayWidth(lno int64) int {
 	col := 0
 	for _, r := range s.lineRunes(lno) {
-		col += runeWidth(r, col, s.opts.tabstop)
+		col += runeWidth(r, col, s.opts.Int("tabstop"))
 	}
 	return col
 }
@@ -175,7 +179,7 @@ func (s *screen) displayColOf(lno int64, col int) int {
 	runes := s.lineRunes(lno)
 	c := 0
 	for i := 0; i < col && i < len(runes); i++ {
-		c += runeWidth(runes[i], c, s.opts.tabstop)
+		c += runeWidth(runes[i], c, s.opts.Int("tabstop"))
 	}
 	return c
 }
@@ -186,7 +190,7 @@ func (s *screen) colAtDisplay(lno int64, dcol int) int {
 	runes := s.lineRunes(lno)
 	c := 0
 	for i, r := range runes {
-		w := runeWidth(r, c, s.opts.tabstop)
+		w := runeWidth(r, c, s.opts.Int("tabstop"))
 		if c+w > dcol {
 			return i
 		}

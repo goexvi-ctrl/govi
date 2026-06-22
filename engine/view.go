@@ -8,7 +8,7 @@ type view struct{ s *screen }
 func (v view) LineCount() int64 { return v.s.lineCount() }
 
 func (v view) Line(lno int64) DisplayLine {
-	return makeDisplayLine(v.s.lineRunes(lno), v.s.opts.tabstop)
+	return makeDisplayLine(v.s.lineRunes(lno), v.s.opts.Int("tabstop"))
 }
 
 func (v view) Cursor() Pos { return v.s.cursor }
@@ -36,6 +36,8 @@ func (v view) Name() string { return v.s.name }
 
 func (v view) Modified() bool { return v.s.modified }
 
-func (v view) Number() bool { return v.s.opts.number }
+func (v view) Number() bool { return v.s.opts.Bool("number") }
 
 func (v view) ExTranscript() []string { return v.s.exTranscript }
+
+func (v view) PendingOutput() []string { return v.s.pendingOutput }

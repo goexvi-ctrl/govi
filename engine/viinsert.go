@@ -134,7 +134,7 @@ func (m *vimode) insertNewline(e *Engine) {
 	s.setLine(s.cursor.Line, head)
 
 	var indent []rune
-	if s.opts.autoindent {
+	if s.opts.Bool("autoindent") {
 		indent = leadingWhitespace(line)
 	}
 	newContent := append(cloneR(indent), tail...)
@@ -193,7 +193,7 @@ func (m *vimode) insertWordErase(e *Engine) {
 func (m *vimode) insertShift(e *Engine, dir int) {
 	s := e.scr
 	line := s.lineRunes(s.cursor.Line)
-	ts, sw := s.opts.tabstop, s.opts.shiftwidth
+	ts, sw := s.opts.Int("tabstop"), s.opts.Int("shiftwidth")
 	width, i := 0, 0
 	for i < len(line) {
 		if line[i] == ' ' {

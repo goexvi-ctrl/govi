@@ -38,6 +38,18 @@ func (e *Engine) exEcho(s string) {
 	e.scr.exTranscript = append(e.scr.exTranscript, s)
 }
 
+// showOutput presents multi-line command output: appended to the transcript in
+// ex mode, or shown as an overlay (dismissed by the next key) in vi mode.
+func (e *Engine) showOutput(lines []string) {
+	if e.scr.mode == ModeExText {
+		for _, l := range lines {
+			e.exEcho(l)
+		}
+		return
+	}
+	e.scr.pendingOutput = lines
+}
+
 // printLine emits a line of command output: to the transcript in ex mode, or to
 // the message line in vi mode.
 func (e *Engine) printLine(s string) {
