@@ -82,6 +82,11 @@ var viConformanceCases = []struct {
 	{"shift-right-count", "a\nb\nc\n", "2>>"},
 	{"shift-right-motion", "a\nb\nc\n", ">j"},
 	{"shift-left-motion", "\ta\n\tb\nc\n", "<j"},
+	{"U-restore", "hello\n", "xxxU"},
+	{"U-idempotent", "hello\n", "xxxUU"},
+	{"U-snapshot-refresh", "hello\nworld\n", "xjxkxU"},
+	{"U-then-u", "hello\n", "xxxUu"},
+	{"U-then-edit", "abcdef\n", "xUx"},
 }
 
 // TestViConformance pins govi's vi-mode behavior to nvi. It needs both an nvi

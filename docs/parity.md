@@ -57,7 +57,7 @@ bug-for-bug parity; rows are validated against the nvi oracle where marked.
 | `p P` | put | yes | ✅✔ | char/line-wise, count |
 | `Q` | switch to ex mode | yes | 🟡 | basic ex transcript; `:visual` returns |
 | `r R` | replace char / replace mode | yes | ✅✔ | |
-| `U` | restore line | yes | ❌ | |
+| `U` | restore line | yes | ✅✔ | undoes the run of changes on the current line |
 | `u` | undo (toggle) | yes | ✅✔ | directional `u`/`.` model |
 | `x X` | delete char | yes | ✅✔ | |
 | `z` | screen positioning (`z↵` `z.` `z-`) | yes | 🟡 | no `z^`/`z+`/count2 |

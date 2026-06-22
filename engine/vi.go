@@ -479,6 +479,8 @@ func (m *vimode) editKey(e *Engine, r rune) {
 		}
 	case 'Q':
 		e.enterExMode()
+	case 'U':
+		m.restoreLine(e)
 	case 'u':
 		m.doUndoCommand(e, false)
 	case '.':
@@ -537,6 +539,33 @@ func (m *vimode) editKey(e *Engine, r rune) {
 	case 'R':
 		e.enterInsert(m, s.cursor, true, 'R')
 	}
+}
+
+// restoreLine implements U: undo the run of change sets confined to the current
+// line, restoring it to the state it had when the cursor last arrived. Like u,
+// it leaves the undo direction such that a following u redoes one step.
+func (m *vimode) restoreLine(e *Engine) {
+	s := e.scr
+	line := s.cursor.Line
+	var cur undo.Pos
+	undid := false
+	for {
+		c, ok := s.log.UndoLineOnly(line)
+		if !ok {
+			break
+		}
+		cur = c
+		undid = true
+	}
+	if !undid {
+		e.fe.Bell()
+		return
+	}
+	s.cursor = Pos{Line: cur.Line, Col: cur.Col}
+	s.clampCursor()
+	s.modified = true
+	m.lastStepRedo = false // a following 'u' redoes the most recent undone step
+	m.dotUndo = true
 }
 
 // repeatDot replays the last buffer-changing command. A count before '.'

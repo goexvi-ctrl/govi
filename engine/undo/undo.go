@@ -146,6 +146,23 @@ func (l *Log) Undo() (cursor Pos, ok bool) {
 	return cs.before, true
 }
 
+// UndoLineOnly undoes the most recent change set, but only if every record in
+// it is on line lno. It returns the restore cursor and whether it undid
+// anything. This backs vi's U command, which restores the current line by
+// rolling back the changes confined to it.
+func (l *Log) UndoLineOnly(lno int64) (cursor Pos, ok bool) {
+	if len(l.undo) == 0 {
+		return Pos{}, false
+	}
+	cs := l.undo[len(l.undo)-1]
+	for _, r := range cs.recs {
+		if r.lno != lno {
+			return Pos{}, false
+		}
+	}
+	return l.Undo()
+}
+
 // Redo replays the most recently undone change set and returns the cursor
 // position to restore. ok is false if there is nothing to redo.
 func (l *Log) Redo() (cursor Pos, ok bool) {
