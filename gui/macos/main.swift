@@ -17,10 +17,9 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     let window: NSWindow
     let view: GoviView
 
-    // open creates an editor for path (empty path = an empty buffer) and shows
-    // its window. Returns nil if the file could not be opened.
-    @discardableResult
-    static func open(path: String) -> EditorWindow? {
+    // make creates an editor for path (empty path = an empty buffer) without
+    // presenting it. Returns nil if the file could not be opened.
+    private static func make(path: String) -> EditorWindow? {
         let handle = path.withCString { GoviStart(UnsafeMutablePointer(mutating: $0)) }
         guard handle != 0 else {
             let alert = NSAlert()
@@ -30,8 +29,29 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         }
         let w = EditorWindow(handle: handle, path: path)
         windows.insert(w)
-        w.show()
         return w
+    }
+
+    // open presents path in a new standalone window.
+    @discardableResult
+    static func open(path: String) -> EditorWindow? {
+        guard let w = make(path: path) else { return nil }
+        w.showStandalone()
+        return w
+    }
+
+    // openTab presents path as a new tab in keyWindow's tab group, or as a
+    // standalone window if there is no key window to tab into.
+    static func openTab(in keyWindow: NSWindow?, path: String) {
+        guard let w = make(path: path) else { return }
+        if let key = keyWindow, key !== w.window {
+            key.addTabbedWindow(w.window, ordered: .above)
+            w.window.makeKeyAndOrderFront(nil)
+            w.window.makeFirstResponder(w.view)
+            w.view.updateGeometry()
+        } else {
+            w.showStandalone()
+        }
     }
 
     private init(handle: Int64, path: String) {
@@ -46,9 +66,14 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         window.contentView = view
         window.delegate = self
         window.isReleasedWhenClosed = false
+        // Native macOS tabbing: a shared identifier lets these windows be tabbed
+        // together and dragged between windows; .automatic respects the user's
+        // "prefer tabs" setting for Cmd-N while still allowing explicit tabs.
+        window.tabbingIdentifier = "govi"
+        window.tabbingMode = .automatic
     }
 
-    private func show() {
+    private func showStandalone() {
         EditorWindow.cascadePoint = window.cascadeTopLeft(from: EditorWindow.cascadePoint)
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(view)
@@ -76,6 +101,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // File > New: an empty window.
     @objc func newWindow(_ sender: Any?) {
         EditorWindow.open(path: "")
+    }
+
+    // File > New Tab: an empty tab in the current window's tab group.
+    @objc func newTab(_ sender: Any?) {
+        EditorWindow.openTab(in: NSApp.keyWindow, path: "")
+    }
+
+    // The "+" button in the tab bar routes here through the responder chain.
+    @objc func newWindowForTab(_ sender: Any?) {
+        EditorWindow.openTab(in: NSApp.keyWindow, path: "")
     }
 
     // Settings… (Cmd-,)
@@ -125,6 +160,8 @@ func makeMenu(target: AppDelegate) -> NSMenu {
     fileItem.submenu = fileMenu
     let newItem = fileMenu.addItem(withTitle: "New", action: #selector(AppDelegate.newWindow(_:)), keyEquivalent: "n")
     newItem.target = target
+    let tabItem = fileMenu.addItem(withTitle: "New Tab", action: #selector(AppDelegate.newTab(_:)), keyEquivalent: "t")
+    tabItem.target = target
     let openItem = fileMenu.addItem(withTitle: "Open…", action: #selector(AppDelegate.openWindow(_:)), keyEquivalent: "o")
     openItem.target = target
     fileMenu.addItem(NSMenuItem.separator())
@@ -141,6 +178,17 @@ func makeMenu(target: AppDelegate) -> NSMenu {
     editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
     editMenu.addItem(NSMenuItem.separator())
     editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+
+    // Window menu. AppKit fills it with the window list and, because the windows
+    // use native tabbing, the tab commands (Show Tab Bar, Show All Tabs, Merge
+    // All Windows, Move Tab to New Window).
+    let windowItem = NSMenuItem()
+    mainMenu.addItem(windowItem)
+    let windowMenu = NSMenu(title: "Window")
+    windowItem.submenu = windowMenu
+    windowMenu.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+    windowMenu.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+    NSApplication.shared.windowsMenu = windowMenu
 
     return mainMenu
 }

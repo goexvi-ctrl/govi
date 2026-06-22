@@ -257,6 +257,12 @@ final class GoviView: NSView, NSTextInputClient {
         dragging = false
     }
 
+    // The tab bar's "+" button is shown by AppKit when this is found in the key
+    // window's responder chain; it adds a new tab to this window's group.
+    @objc override func newWindowForTab(_ sender: Any?) {
+        EditorWindow.openTab(in: window, path: "")
+    }
+
     // MARK: - Clipboard (Edit menu / standard shortcuts)
 
     @objc func copy(_ sender: Any?) {

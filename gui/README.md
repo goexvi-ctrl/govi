@@ -70,15 +70,21 @@ editing is handled by the embedded engine.
 
 ### Windows
 
-The app is multi-window — each window has its own embedded engine instance:
+The app is multi-window and multi-tab — every window *and* every tab has its own
+embedded engine instance:
 
 - **Cmd-N** opens a new empty window.
+- **Cmd-T** (or the tab bar's "+") opens a new empty tab in the current window.
 - **Cmd-O** opens one or more files (each in its own window).
-- **Cmd-W** (or `:q`) closes the current window; the app quits when the last
-  window closes.
+- **Cmd-W** (or `:q`) closes the current tab/window; the app quits when the last
+  one closes.
+
+Tabbing uses native macOS window tabbing, so dragging tabs between windows,
+merging windows, and "Move Tab to New Window" (in the Window menu) all work with
+no extra code: each tab is a separate `NSWindow` sharing a tabbing identifier.
 
 This is enabled by the handle-based libgovi API: `GoviStart` returns a handle for
-one editor and every call takes it, so windows are fully independent.
+one editor and every call takes it, so windows and tabs are fully independent.
 
 ### Settings
 
