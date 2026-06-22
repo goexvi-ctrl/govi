@@ -143,7 +143,46 @@ func (s *screen) clampCursor() {
 	}
 }
 
-// scrollToCursor adjusts top so the cursor line is visible.
+// textCols returns the number of columns available for buffer text after the
+// line-number gutter.
+func (s *screen) textCols() int {
+	w := s.cols - GutterWidth(s.lineCount(), s.opts.number)
+	if w < 1 {
+		w = 1
+	}
+	return w
+}
+
+// displayWidth returns the total display width (columns) of line lno, with tabs
+// and control characters expanded per the tabstop.
+func (s *screen) displayWidth(lno int64) int {
+	col := 0
+	for _, r := range s.lineRunes(lno) {
+		col += runeWidth(r, col, s.opts.tabstop)
+	}
+	return col
+}
+
+// screenLines returns the number of physical screen rows line lno occupies when
+// wrapped to the text width (at least 1).
+func (s *screen) screenLines(lno int64) int {
+	return wrapRows(s.displayWidth(lno), s.textCols())
+}
+
+// wrapRows returns how many rows of the given width a span of dw display columns
+// occupies (at least 1).
+func wrapRows(dw, w int) int {
+	if w < 1 {
+		w = 1
+	}
+	if dw <= 0 {
+		return 1
+	}
+	return (dw + w - 1) / w
+}
+
+// scrollToCursor adjusts top so the cursor's line is fully visible, accounting
+// for line wrapping (a long line occupies several screen rows).
 func (s *screen) scrollToCursor() {
 	if s.rows <= 0 {
 		return
@@ -151,10 +190,25 @@ func (s *screen) scrollToCursor() {
 	if s.cursor.Line < s.top {
 		s.top = s.cursor.Line
 	}
-	if s.cursor.Line > s.top+int64(s.rows)-1 {
-		s.top = s.cursor.Line - int64(s.rows) + 1
-	}
 	if s.top < 1 {
 		s.top = 1
+	}
+	// Advance top one logical line at a time until the cursor line fits within
+	// the visible screen rows.
+	for s.top < s.cursor.Line {
+		used := 0
+		bottom := s.top
+		for ln := s.top; ln <= s.lineCount(); ln++ {
+			r := s.screenLines(ln)
+			if used+r > s.rows {
+				break
+			}
+			used += r
+			bottom = ln
+		}
+		if s.cursor.Line <= bottom {
+			break
+		}
+		s.top++
 	}
 }

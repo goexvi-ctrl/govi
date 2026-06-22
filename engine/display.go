@@ -1,5 +1,21 @@
 package engine
 
+import "strconv"
+
+// GutterWidth returns the width of the line-number gutter for a buffer with the
+// given line count, or 0 when numbering is off. It is shared by the engine's
+// wrap/scroll math and the frontend so both agree on the text area width.
+func GutterWidth(lineCount int64, number bool) int {
+	if !number {
+		return 0
+	}
+	digits := len(strconv.FormatInt(lineCount, 10))
+	if digits < 5 {
+		digits = 5
+	}
+	return digits + 1 // numbers right-aligned, then a space
+}
+
 // Display layout helpers. The engine is authoritative over how buffer runes map
 // to display cells (tab expansion, control-character representation, rune width)
 // so every frontend renders identically. These are pure functions with no

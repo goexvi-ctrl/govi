@@ -130,29 +130,40 @@ func (f *Frontend) Render(v engine.View, _ engine.ChangeSet) {
 	rows := textRows(h)
 	top := v.Viewport().Top
 	gutter := gutterWidth(v)
+	textW := w - gutter
+	if textW < 1 {
+		textW = 1
+	}
 
-	for row := 0; row < rows; row++ {
-		lno := top + int64(row)
-		if lno > v.LineCount() {
-			f.scr.SetContent(0, row, '~', nil, tc.StyleDefault)
-			continue
-		}
-		if gutter > 0 {
-			f.drawGutter(lno, row, gutter)
-		}
+	// Draw logical lines from `top`, wrapping each onto continuation rows until
+	// the screen is full.
+	row := 0
+	lno := top
+	for row < rows && lno <= v.LineCount() {
 		cells := engine.DisplayCells(v.Line(lno))
-		x := gutter
-		for _, c := range cells {
-			if x >= w {
-				break
+		first := true
+		// Emit at least one row even for an empty line.
+		for i := 0; (i < len(cells) || first) && row < rows; i += textW {
+			if gutter > 0 && first {
+				f.drawGutter(lno, row, gutter)
 			}
-			f.scr.SetContent(x, row, c.Rune, nil, styleFor(c.Style))
-			x++
+			x := gutter
+			for j := i; j < i+textW && j < len(cells); j++ {
+				f.scr.SetContent(x, row, cells[j].Rune, nil, styleFor(cells[j].Style))
+				x++
+			}
+			row++
+			first = false
 		}
+		lno++
+	}
+	// Tildes for rows past the end of the buffer.
+	for ; row < rows; row++ {
+		f.scr.SetContent(0, row, '~', nil, tc.StyleDefault)
 	}
 
 	f.drawStatus(v, w, rows)
-	f.placeCursor(v, rows, gutter)
+	f.placeCursor(v, rows, gutter, textW)
 	f.scr.Show()
 }
 
@@ -189,16 +200,9 @@ func (f *Frontend) drawText(s string, row, w int) {
 }
 
 // gutterWidth returns the width of the line-number gutter (0 when :set number
-// is off).
+// is off), shared with the engine's wrap math.
 func gutterWidth(v engine.View) int {
-	if !v.Number() {
-		return 0
-	}
-	digits := len(strconv.FormatInt(v.LineCount(), 10))
-	if digits < 5 {
-		digits = 5
-	}
-	return digits + 1 // numbers right-aligned, then a space
+	return engine.GutterWidth(v.LineCount(), v.Number())
 }
 
 func (f *Frontend) drawGutter(lno int64, row, gutter int) {
@@ -228,21 +232,46 @@ func (f *Frontend) drawStatus(v engine.View, w, row int) {
 	}
 }
 
-func (f *Frontend) placeCursor(v engine.View, rows, gutter int) {
+func (f *Frontend) placeCursor(v engine.View, rows, gutter, textW int) {
 	if v.Mode() == engine.ModeExColon {
 		msg, _ := v.Message()
 		f.scr.ShowCursor(len([]rune(msg)), rows) // end of the colon line
 		return
 	}
 	cur := v.Cursor()
-	dl := v.Line(cur.Line)
-	x := gutter + engine.DisplayColumn(dl, cur.Col)
-	y := int(cur.Line - v.Viewport().Top)
+	top := v.Viewport().Top
+
+	// Screen row: sum the wrapped row counts of lines [top, cur.Line) then add
+	// the cursor's wrapped row within its own line.
+	y := 0
+	for ln := top; ln < cur.Line; ln++ {
+		y += wrapRowsOf(v.Line(ln), textW)
+	}
+	dx := engine.DisplayColumn(v.Line(cur.Line), cur.Col)
+	y += dx / textW
+	x := gutter + dx%textW
+
 	if y < 0 || y >= rows {
 		f.scr.HideCursor()
 		return
 	}
 	f.scr.ShowCursor(x, y)
+}
+
+// wrapRowsOf returns how many screen rows a display line occupies at the given
+// text width.
+func wrapRowsOf(dl engine.DisplayLine, textW int) int {
+	w := 0
+	for _, n := range dl.Widths {
+		w += int(n)
+	}
+	if w <= 0 {
+		return 1
+	}
+	if textW < 1 {
+		textW = 1
+	}
+	return (w + textW - 1) / textW
 }
 
 func styleFor(s engine.Style) tc.Style {

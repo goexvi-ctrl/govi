@@ -120,6 +120,37 @@ func TestFrontendNumberGutter(t *testing.T) {
 	}
 }
 
+func TestFrontendWrapsLongLines(t *testing.T) {
+	// Width 10; a 25-column line wraps onto three rows.
+	_, sim := setup(t, "abcdefghijklmnopqrstuvwxy\nnext\n", 10, 6)
+	rows := rowsOf(t, sim)
+	if rows[0] != "abcdefghij" {
+		t.Errorf("row0 = %q", rows[0])
+	}
+	if rows[1] != "klmnopqrst" {
+		t.Errorf("row1 = %q", rows[1])
+	}
+	if rows[2] != "uvwxy" {
+		t.Errorf("row2 = %q", rows[2])
+	}
+	if rows[3] != "next" {
+		t.Errorf("row3 (next logical line) = %q, want next", rows[3])
+	}
+	if rows[4] != "~" {
+		t.Errorf("row4 = %q, want ~", rows[4])
+	}
+}
+
+func TestFrontendCursorOnWrappedLine(t *testing.T) {
+	eng, sim := setup(t, "abcdefghijklmnopqrstuvwxy\n", 10, 6)
+	eng.Input(engine.KeyEvent{Rune: '$'}) // last char, col 24
+	x, y, _ := sim.GetCursor()
+	// col 24 -> display col 24 -> row 24/10 = 2, x = 24%10 = 4
+	if x != 4 || y != 2 {
+		t.Fatalf("cursor at (%d,%d), want (4,2)", x, y)
+	}
+}
+
 func TestFrontendColonLine(t *testing.T) {
 	eng, sim := setup(t, "x\n", 20, 3)
 	eng.Input(engine.KeyEvent{Rune: ':'})
