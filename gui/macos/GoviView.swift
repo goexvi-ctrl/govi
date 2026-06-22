@@ -4,10 +4,14 @@ import Cocoa
 // composed character grid and forwards key events into the embedded engine.
 // The engine runs in-process (via libgovi); this view is the "terminal" it
 // renders to.
-final class GoviView: NSView {
+final class GoviView: NSView, NSTextInputClient {
     // Engine-event modifier bits (must match engine.Mod).
     private static let modCtrl: Int32 = 1
     private static let modAlt: Int32 = 2
+
+    // Pending marked (uncommitted) text from a dead key or IME, e.g. the "¨"
+    // after Option-u, shown at the cursor until the next key composes it.
+    private var markedText = ""
 
     // Special-key codes (must match engine.SpecialKey).
     private enum SK {
@@ -266,89 +270,146 @@ final class GoviView: NSView {
 
     // MARK: - Input
 
-    private func isPrintable(_ e: NSEvent) -> Bool {
-        let f = e.modifierFlags
-        if f.contains(.command) || f.contains(.control) { return false }
-        if e.specialKey != nil { return false }
-        if e.keyCode == 53 { return false } // escape
-        guard let c = e.charactersIgnoringModifiers, !c.isEmpty else { return false }
-        for s in c.unicodeScalars where s.value < 0x20 { return false }
+    // keyDown splits input two ways. Control-modified keys are vi commands and
+    // are translated directly, so Cocoa's built-in Emacs-style key bindings
+    // (which would turn ^F/^B/^A/... into cursor motions) never see them.
+    // Everything else is handed to the text input system via interpretKeyEvents
+    // so plain typing, Option-accents (Option-o -> o-slash), dead keys
+    // (Option-u then u -> u-umlaut), and IMEs compose correctly; the composed
+    // result arrives back through the NSTextInputClient methods below.
+    override func keyDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control) {
+            handleControlKey(event)
+            return
+        }
+        interpretKeyEvents([event])
+    }
+
+    private func handleControlKey(_ event: NSEvent) {
+        if selActive { clearSelection() } // a command cancels the selection
+        var mods: Int32 = GoviView.modCtrl
+        if event.modifierFlags.contains(.option) { mods |= GoviView.modAlt }
+        guard let chars = event.charactersIgnoringModifiers, !chars.isEmpty else { return }
+        for scalar in chars.unicodeScalars {
+            GoviKeyRune(Int32(scalar.value), mods)
+        }
+        step()
+    }
+
+    // replaceWithText replaces the active selection with s and returns true, or
+    // returns false if there was no selection (GUI replace-on-type / paste).
+    private func replaceWithText(_ s: String) -> Bool {
+        guard selActive else { return false }
+        var buf = Array(s.utf8CString)
+        buf.withUnsafeMutableBufferPointer {
+            GoviReplaceType(selStart.line, Int32(selStart.col),
+                            selEnd.line, Int32(selEnd.col), $0.baseAddress)
+        }
+        clearSelection()
+        step()
         return true
     }
 
-    override func keyDown(with event: NSEvent) {
-        // GUI-standard: with an active selection, typing replaces it (and you
-        // keep typing in insert mode); Backspace/Delete removes it; any other
-        // key cancels the selection and is then handled normally.
-        if selActive {
-            if isPrintable(event) {
-                let s = event.characters ?? ""
-                var buf = Array(s.utf8CString)
-                buf.withUnsafeMutableBufferPointer {
-                    GoviReplaceType(selStart.line, Int32(selStart.col),
-                                    selEnd.line, Int32(selEnd.col), $0.baseAddress)
-                }
-                clearSelection()
-                return step()
-            }
-            if let sk = event.specialKey, sk == .delete || sk == .deleteForward {
-                GoviDeleteRange(selStart.line, Int32(selStart.col),
-                                selEnd.line, Int32(selEnd.col))
-                clearSelection()
-                return step()
-            }
-            clearSelection()
-        }
+    private func deleteSelection() {
+        GoviDeleteRange(selStart.line, Int32(selStart.col), selEnd.line, Int32(selEnd.col))
+        clearSelection()
+        step()
+    }
 
-        let flags = event.modifierFlags
-        var mods: Int32 = 0
-        if flags.contains(.control) { mods |= GoviView.modCtrl }
-        if flags.contains(.option) { mods |= GoviView.modAlt }
+    // MARK: - NSTextInputClient
 
-        if let sk = event.specialKey {
-            switch sk {
-            case .upArrow: GoviKeySpecial(SK.up, mods); return step()
-            case .downArrow: GoviKeySpecial(SK.down, mods); return step()
-            case .leftArrow: GoviKeySpecial(SK.left, mods); return step()
-            case .rightArrow: GoviKeySpecial(SK.right, mods); return step()
-            case .pageUp: GoviKeySpecial(SK.pageUp, mods); return step()
-            case .pageDown: GoviKeySpecial(SK.pageDown, mods); return step()
-            case .home: GoviKeySpecial(SK.home, mods); return step()
-            case .end: GoviKeySpecial(SK.end, mods); return step()
-            case .delete: GoviKeySpecial(SK.backspace, mods); return step()
-            case .deleteForward: GoviKeySpecial(SK.delete, mods); return step()
-            case .carriageReturn, .enter, .newline:
-                GoviKeySpecial(SK.enter, mods); return step()
-            case .tab:
-                GoviKeyRune(9, mods); return step()
-            default: break
-            }
-        }
-
-        // Escape has no specialKey case; identify it by key code.
-        if event.keyCode == 53 {
-            GoviKeySpecial(SK.escape, mods)
-            return step()
-        }
-
-        guard let chars = event.charactersIgnoringModifiers, !chars.isEmpty else { return }
-
-        if flags.contains(.control) {
-            // Ctrl-letter: send the base character carrying the Ctrl modifier so
-            // the engine's key tables match (e.g. Ctrl-F -> 'f' + ModCtrl).
-            for scalar in chars.unicodeScalars {
-                GoviKeyRune(Int32(scalar.value), mods)
-            }
-            return step()
-        }
-
-        if chars.count == 1, let scalar = chars.unicodeScalars.first {
-            GoviKeyRune(Int32(scalar.value), mods)
-        } else {
-            var buf = Array(chars.utf8CString)
-            buf.withUnsafeMutableBufferPointer { GoviText($0.baseAddress) }
+    func insertText(_ string: Any, replacementRange: NSRange) {
+        markedText = ""
+        let s = Self.asString(string)
+        if s.isEmpty { return }
+        if replaceWithText(s) { return } // typed over a selection
+        for scalar in s.unicodeScalars {
+            GoviKeyRune(Int32(scalar.value), 0)
         }
         step()
+    }
+
+    override func doCommand(by selector: Selector) {
+        switch NSStringFromSelector(selector) {
+        case "insertNewline:", "insertLineBreak:", "insertParagraphSeparator:":
+            if replaceWithText("\n") { return }
+            sendSpecial(SK.enter)
+        case "insertTab:":
+            if selActive { clearSelection() }
+            GoviKeyRune(9, 0)
+            step()
+        case "deleteBackward:":
+            if selActive { deleteSelection(); return }
+            sendSpecial(SK.backspace)
+        case "deleteForward:":
+            if selActive { deleteSelection(); return }
+            sendSpecial(SK.delete)
+        case "cancelOperation:":
+            if selActive { clearSelection() }
+            sendSpecial(SK.escape)
+        case "moveUp:": sendSpecial(SK.up)
+        case "moveDown:": sendSpecial(SK.down)
+        case "moveLeft:": sendSpecial(SK.left)
+        case "moveRight:": sendSpecial(SK.right)
+        case "moveToBeginningOfLine:", "moveToBeginningOfParagraph:": sendSpecial(SK.home)
+        case "moveToEndOfLine:", "moveToEndOfParagraph:": sendSpecial(SK.end)
+        case "scrollPageUp:", "pageUp:", "pageUpAndModifySelection:": sendSpecial(SK.pageUp)
+        case "scrollPageDown:", "pageDown:", "pageDownAndModifySelection:": sendSpecial(SK.pageDown)
+        default:
+            break // ignore Emacs-style bindings we don't want
+        }
+    }
+
+    private func sendSpecial(_ key: Int32) {
+        if selActive { clearSelection() }
+        GoviKeySpecial(key, 0)
+        step()
+    }
+
+    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        markedText = Self.asString(string)
+        needsDisplay = true
+    }
+
+    func unmarkText() {
+        if !markedText.isEmpty {
+            markedText = ""
+            needsDisplay = true
+        }
+    }
+
+    func hasMarkedText() -> Bool { !markedText.isEmpty }
+
+    func selectedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }
+
+    func markedRange() -> NSRange {
+        markedText.isEmpty
+            ? NSRange(location: NSNotFound, length: 0)
+            : NSRange(location: 0, length: markedText.utf16.count)
+    }
+
+    func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
+        nil
+    }
+
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
+
+    func characterIndex(for point: NSPoint) -> Int { NSNotFound }
+
+    // firstRect tells the input system where the cursor is (in screen
+    // coordinates) so the dead-key/IME candidate window appears there.
+    func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+        let r = NSRect(x: CGFloat(GoviCursorX()) * cellW, y: CGFloat(GoviCursorY()) * cellH,
+                       width: cellW, height: cellH)
+        let inWindow = convert(r, to: nil)
+        return window?.convertToScreen(inWindow) ?? r
+    }
+
+    private static func asString(_ v: Any) -> String {
+        if let s = v as? String { return s }
+        if let a = v as? NSAttributedString { return a.string }
+        if let n = v as? NSString { return n as String }
+        return ""
     }
 
     // MARK: - Drawing
@@ -376,7 +437,23 @@ final class GoviView: NSView {
             drawRow(y)
         }
 
-        if GoviCursorVisible() != 0 {
+        // Marked (uncommitted) text from a dead key/IME: draw it underlined at
+        // the cursor and skip the block cursor while it is pending.
+        if !markedText.isEmpty {
+            let cx = Int(GoviCursorX())
+            let cy = Int(GoviCursorY())
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: font, .foregroundColor: fgColor,
+                .underlineStyle: NSUnderlineStyle.single.rawValue,
+            ]
+            for (i, ch) in markedText.enumerated() {
+                let r = NSRect(x: CGFloat(cx + i) * cellW, y: CGFloat(cy) * cellH,
+                               width: cellW, height: cellH)
+                bgColor.setFill()
+                r.fill()
+                (String(ch) as NSString).draw(at: r.origin, withAttributes: attrs)
+            }
+        } else if GoviCursorVisible() != 0 {
             let cx = Int(GoviCursorX())
             let cy = Int(GoviCursorY())
             let rect = NSRect(x: CGFloat(cx) * cellW, y: CGFloat(cy) * cellH,

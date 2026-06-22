@@ -86,6 +86,16 @@ In addition to vi keys, the window supports the usual GUI text affordances:
   leaves you in insert mode), and **Backspace/Delete removes it** — standard GUI
   behavior. Vi command keys apply only when nothing is selected.
 
+### International text input
+
+Typed text goes through the macOS text-input system (`NSTextInputClient` /
+`interpretKeyEvents`), so Option-accented characters and dead keys compose
+normally: **Option-o** produces `o`-slash, and **Option-u** then **u** produces
+`u`-umlaut (the `¨` shows underlined at the cursor as marked text until the next
+key composes it). IMEs work the same way. Control keys (`^F`, `^D`, `^R`, …) are
+handled directly so they stay vi commands rather than triggering Cocoa's
+built-in Emacs-style key bindings.
+
 These are GUI-layer features (vi has no selection concept). They are driven by a
 few engine primitives in `engine/gui.go` (`MoveCursorTo`, `RangeText`,
 `DeleteRange`, `ReplaceSelection*`, `InsertText`) and the cell↔caret mapping in
