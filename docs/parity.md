@@ -115,7 +115,7 @@ parity row can be checked against the source description quickly.
 | `:cd`/`:chdir` | yes | ❌ | |
 | `:di[splay] b\|c\|s\|t` | yes | ❌ | buffers/screens/tags inspector |
 | `:he[lp]` | yes | ❌ | |
-| `:o[pen]` | yes | — | unimplemented in nvi itself |
+| `:o[pen]` | yes | — | non-objective (also unimplemented in nvi); distinct from vi `o` |
 | `:bg` `:fg` `:res[ize]` | yes | ❌ | needs split screens |
 | `:su[spend]`/`:st[op]` | yes | ❌ | job control |
 | `:cs[cope]` | yes | — | cscope integration; out of scope |
@@ -144,6 +144,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | `showmatch` (sm) | yes | ✅✔ | bracket flash on insert (matchtime) |
 | `columns`/`lines` | yes | ✅ | track terminal geometry |
 | `shell` | yes | ✅ | used by `!` filter |
+| `lisp`, `redraw`, `slowopen`/`slow`, `optimize`/`opt` | yes | — | non-objectives (see below); settable but never drive behavior |
 | all other options | yes | ⚙️ | recognized/settable, inert |
 
 ## Subsystems
@@ -174,8 +175,25 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | Cscope integration | yes | — | out of scope |
 | Message catalogs (i18n) | yes | — | English only; out of scope |
 | File encodings | iconv | 🟡 | UTF-8 only |
-| Perl / Tcl scripting | yes | — | out of scope |
+| Perl / Tcl scripting | yes | — | non-objective (see below) |
 | GUI backends (motif/gtk/ipc) | yes | — | boundary ready; no GUI frontend yet |
+
+## Non-objectives (explicitly out of scope)
+
+These nvi features are deliberately **not** goals of govi. They are listed for
+completeness and to keep them from being mistaken for unfinished work (❌). The
+options among them remain settable so `:set all` matches nvi, but they will
+never drive behavior.
+
+| Feature | Why excluded |
+|---|---|
+| Tcl/Tk scripting (`engine/10`) | scripting embedding is out of scope |
+| Perl scripting | scripting embedding is out of scope |
+| `lisp` mode | a no-op in nvi itself; nothing to match |
+| `redraw` option | terminal-optimization hint; govi repaints every input |
+| `slowopen` / `slow` option | slow-terminal drawing mode; irrelevant to govi's renderer |
+| `optimize` / `opt` option | terminal-output optimization; irrelevant to govi's renderer |
+| Ex `:open` command | unimplemented in nvi too; not the vi-mode `o` command |
 
 ---
 
