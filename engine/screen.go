@@ -29,8 +29,16 @@ type screen struct {
 	msg     string
 	msgKind MessageKind
 
-	// colon holds the in-progress ex command line while mode == ModeExColon.
-	colon []rune
+	// colon holds the in-progress command line while mode == ModeExColon;
+	// cmdPrefix is the prompt character (':', '/', or '?') that determines how
+	// the line is executed on Enter.
+	colon     []rune
+	cmdPrefix rune
+
+	// search state
+	lastPattern   string
+	lastSearchDir searchDir
+	ignorecase    bool
 }
 
 // lineCount returns the number of lines in the buffer, treating an empty buffer

@@ -23,6 +23,17 @@ var exConformanceCases = []struct {
 	{"shift-right", "a\nb\n", []string{"1>"}},
 	{"shift-left", "        a\nb\n", []string{"1<"}},
 	{"multi", "one\ntwo\nthree\nfour\n", []string{"1m$", "2,3d"}},
+	{"subst-first", "one one one\n", []string{"s/one/1/"}},
+	{"subst-global", "one one one\n", []string{"s/one/1/g"}},
+	{"subst-whole", "foo\nbar\nfoo\n", []string{"%s/o/0/g"}},
+	{"subst-range", "a\na\na\na\n", []string{"2,3s/a/b/"}},
+	{"subst-amp", "cat dog\n", []string{"s/cat/[&]/"}},
+	{"subst-backref", "John Smith\n", []string{`%s/\([A-Za-z]*\) \([A-Za-z]*\)/\2 \1/`}},
+	{"subst-anchored", "aaa\nbbb\n", []string{`%s/^/> /`}},
+	{"subst-class", "a1b2c3\n", []string{"s/[0-9]//g"}},
+	{"global-delete", "keep\ndrop x\nkeep\ndrop y\n", []string{"g/drop/d"}},
+	{"global-subst", "a1\nb\na2\n", []string{"g/a/s/a/X/"}},
+	{"vglobal-delete", "a\nb\na\nc\n", []string{"v/a/d"}},
 }
 
 // TestExConformance pins govi's ex commands to nvi using the headless ex-batch

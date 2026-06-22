@@ -28,25 +28,32 @@ type exCmdDef struct {
 	fn   func(*Engine, *exCmd) error
 }
 
-var exCmds = []exCmdDef{
-	{"delete", 1, (*Engine).exDelete},
-	{"move", 1, (*Engine).exMove},
-	{"copy", 2, (*Engine).exCopy},
-	{"t", 1, (*Engine).exCopy},
-	{"yank", 1, (*Engine).exYank},
-	{"put", 2, (*Engine).exPut},
-	{"join", 1, (*Engine).exJoin},
-	{"write", 1, (*Engine).exWrite},
-	{"wq", 2, (*Engine).exWriteQuit},
-	{"xit", 1, (*Engine).exWriteQuit},
-	{"quit", 1, (*Engine).exQuit},
-	{"read", 1, (*Engine).exRead},
-	{">", 1, (*Engine).exShiftRight},
-	{"<", 1, (*Engine).exShiftLeft},
-	{"=", 1, (*Engine).exLineNumber},
-	{"substitute", 1, (*Engine).exSubstitute},
-	{"global", 1, (*Engine).exGlobal},
-	{"vglobal", 1, (*Engine).exVglobal},
+// exCmds is populated in init() rather than as a static initializer: some
+// command handlers (global) call back into exExecute -> findCmd -> exCmds, and
+// a static initializer would form an initialization cycle.
+var exCmds []exCmdDef
+
+func init() {
+	exCmds = []exCmdDef{
+		{"delete", 1, (*Engine).exDelete},
+		{"move", 1, (*Engine).exMove},
+		{"copy", 2, (*Engine).exCopy},
+		{"t", 1, (*Engine).exCopy},
+		{"yank", 1, (*Engine).exYank},
+		{"put", 2, (*Engine).exPut},
+		{"join", 1, (*Engine).exJoin},
+		{"write", 1, (*Engine).exWrite},
+		{"wq", 2, (*Engine).exWriteQuit},
+		{"xit", 1, (*Engine).exWriteQuit},
+		{"quit", 1, (*Engine).exQuit},
+		{"read", 1, (*Engine).exRead},
+		{">", 1, (*Engine).exShiftRight},
+		{"<", 1, (*Engine).exShiftLeft},
+		{"=", 1, (*Engine).exLineNumber},
+		{"substitute", 1, (*Engine).exSubstitute},
+		{"global", 1, (*Engine).exGlobal},
+		{"vglobal", 1, (*Engine).exVglobal},
+	}
 }
 
 // runColon executes the ex command typed on the vi colon line.

@@ -315,8 +315,19 @@ func (m *vimode) editKey(e *Engine, r rune) {
 	s := e.scr
 	switch r {
 	case ':':
-		s.mode = ModeExColon
-		s.colon = nil
+		e.enterCmdline(':')
+	case '/':
+		e.enterCmdline('/')
+	case '?':
+		e.enterCmdline('?')
+	case 'n':
+		if err := e.repeatSearch(false); err != nil {
+			s.msg, s.msgKind = err.Error(), MsgError
+		}
+	case 'N':
+		if err := e.repeatSearch(true); err != nil {
+			s.msg, s.msgKind = err.Error(), MsgError
+		}
 	case 'u':
 		m.doUndoCommand(e, false)
 	case '.':

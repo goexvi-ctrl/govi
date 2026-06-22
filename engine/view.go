@@ -20,9 +20,14 @@ func (v view) Viewport() Viewport {
 }
 
 func (v view) Message() (string, MessageKind) {
-	// While entering a colon command, the message line shows the command.
+	// While entering a command line, the message line shows the prompt prefix
+	// (':', '/', or '?') followed by what has been typed.
 	if v.s.mode == ModeExColon {
-		return ":" + string(v.s.colon), MsgNone
+		prefix := v.s.cmdPrefix
+		if prefix == 0 {
+			prefix = ':'
+		}
+		return string(prefix) + string(v.s.colon), MsgNone
 	}
 	return v.s.msg, v.s.msgKind
 }

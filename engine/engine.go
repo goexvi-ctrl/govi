@@ -157,29 +157,37 @@ func (e *Engine) interrupt() {
 
 // key dispatches a single keypress according to the current mode. Command,
 // insert, and replace modes are handled by the vi state machine (vi.go); the
-// colon line is handled here until the ex parser arrives in Phase 4.
+// command line (':' ex commands and '/' '?' searches) is handled here.
 func (e *Engine) key(ev KeyEvent) {
 	if e.scr.mode == ModeExColon {
-		e.colonKey(ev)
+		e.cmdlineKey(ev)
 		return
 	}
 	e.vi.key(e, ev)
 }
 
-func (e *Engine) colonKey(ev KeyEvent) {
+// enterCmdline starts command-line input with the given prompt prefix.
+func (e *Engine) enterCmdline(prefix rune) {
+	e.scr.mode = ModeExColon
+	e.scr.cmdPrefix = prefix
+	e.scr.colon = nil
+}
+
+func (e *Engine) cmdlineKey(ev KeyEvent) {
 	s := e.scr
 	switch {
 	case ev.Key == KeyEnter || ev.Rune == '\r' || ev.Rune == '\n':
-		cmd := strings.TrimSpace(string(s.colon))
+		line := string(s.colon)
+		prefix := s.cmdPrefix
 		s.mode = ModeCommand
 		s.colon = nil
-		e.runColon(cmd)
+		e.runCmdline(prefix, line)
 	case ev.Key == KeyEscape:
 		s.mode = ModeCommand
 		s.colon = nil
 	case ev.Key == KeyBackspace || ev.Rune == 0x7f || ev.Rune == '\b':
 		if len(s.colon) == 0 {
-			s.mode = ModeCommand // backspacing past the ':' leaves colon mode
+			s.mode = ModeCommand // backspacing past the prompt leaves the line
 		} else {
 			s.colon = s.colon[:len(s.colon)-1]
 		}
@@ -187,6 +195,22 @@ func (e *Engine) colonKey(ev KeyEvent) {
 		if ev.Rune != 0 {
 			s.colon = append(s.colon, ev.Rune)
 		}
+	}
+}
+
+// runCmdline dispatches a completed command line by its prompt prefix.
+func (e *Engine) runCmdline(prefix rune, line string) {
+	switch prefix {
+	case '/':
+		if err := e.startSearch(line, searchFwd); err != nil {
+			e.scr.msg, e.scr.msgKind = err.Error(), MsgError
+		}
+	case '?':
+		if err := e.startSearch(line, searchBack); err != nil {
+			e.scr.msg, e.scr.msgKind = err.Error(), MsgError
+		}
+	default:
+		e.runColon(strings.TrimSpace(line))
 	}
 }
 

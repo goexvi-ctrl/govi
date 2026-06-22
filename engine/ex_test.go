@@ -62,9 +62,20 @@ func TestExAddressOnlyGoto(t *testing.T) {
 	}
 }
 
-func TestExSubstituteStubbed(t *testing.T) {
-	e, _, _ := newTestEngine(t, "a\n")
-	if err := e.exExecute("%s/a/b/"); err == nil {
-		t.Fatal("substitute should report not-yet-implemented in Phase 4")
-	}
+func TestExSubstitute(t *testing.T) {
+	exCase(t, "subst-first", "one one\n", []string{"s/one/1/"}, "1 one")
+	exCase(t, "subst-global", "one one\n", []string{"s/one/1/g"}, "1 1")
+	exCase(t, "subst-range", "a\na\na\n", []string{"1,2s/a/b/"}, "b\nb\na")
+	exCase(t, "subst-whole", "foo\nfoo\n", []string{"%s/o/0/g"}, "f00\nf00")
+	exCase(t, "subst-amp", "cat\n", []string{"s/cat/[&]/"}, "[cat]")
+	exCase(t, "subst-backref", "John Smith\n", []string{`s/\([A-Za-z]*\) \([A-Za-z]*\)/\2 \1/`}, "Smith John")
+	exCase(t, "subst-upper", "hello\n", []string{`s/.*/\U&/`}, "HELLO")
+	exCase(t, "subst-delete", "axbxc\n", []string{"s/x//g"}, "abc")
+	exCase(t, "subst-newline", "a,b,c\n", []string{`s/,/\n/g`}, "a\nb\nc")
+}
+
+func TestExGlobal(t *testing.T) {
+	exCase(t, "global-delete", "keep\ndrop x\nkeep\ndrop y\n", []string{"g/drop/d"}, "keep\nkeep")
+	exCase(t, "global-subst", "a1\nb\na2\n", []string{"g/a/s/a/X/"}, "X1\nb\nX2")
+	exCase(t, "vglobal-delete", "a\nb\na\nc\n", []string{"v/a/d"}, "a\na")
 }
