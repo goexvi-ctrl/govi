@@ -303,6 +303,38 @@ func GoviCellToPos(x, y C.int, line *C.longlong, col *C.int) {
 	})
 }
 
+// GoviWordRange writes the caret range a double-click at cell (x, y) selects
+// (word under the cursor) into the out-params.
+//
+//export GoviWordRange
+func GoviWordRange(x, y C.int, l1 *C.longlong, c1 *C.int, l2 *C.longlong, c2 *C.int) {
+	if eng == nil {
+		return
+	}
+	eng.WithView(func(v engine.View) {
+		p := grid.Locate(v, curRows, curCols, int(x), int(y))
+		a, b := eng.WordRange(p.Line, p.Col)
+		*l1, *c1 = C.longlong(a.Line), C.int(a.Col)
+		*l2, *c2 = C.longlong(b.Line), C.int(b.Col)
+	})
+}
+
+// GoviLineRange writes the caret range a triple-click at cell (x, y) selects
+// (the whole logical line) into the out-params.
+//
+//export GoviLineRange
+func GoviLineRange(x, y C.int, l1 *C.longlong, c1 *C.int, l2 *C.longlong, c2 *C.int) {
+	if eng == nil {
+		return
+	}
+	eng.WithView(func(v engine.View) {
+		p := grid.Locate(v, curRows, curCols, int(x), int(y))
+		a, b := eng.LineSelectRange(p.Line)
+		*l1, *c1 = C.longlong(a.Line), C.int(a.Col)
+		*l2, *c2 = C.longlong(b.Line), C.int(b.Col)
+	})
+}
+
 // GoviSetSelection sets (active != 0) or clears the highlighted caret range
 // [a, b). The range is redrawn on the next GoviCompose.
 //

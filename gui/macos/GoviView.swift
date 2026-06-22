@@ -145,13 +145,16 @@ final class GoviView: NSView {
 
     // MARK: - Mouse selection
 
-    private func caretAt(_ event: NSEvent) -> Caret {
+    private func cellAt(_ event: NSEvent) -> (x: Int32, y: Int32) {
         let p = convert(event.locationInWindow, from: nil)
-        let x = Int(p.x / cellW)
-        let y = Int(p.y / cellH)
+        return (Int32(p.x / cellW), Int32(p.y / cellH))
+    }
+
+    private func caretAt(_ event: NSEvent) -> Caret {
+        let c = cellAt(event)
         var line: Int64 = 0
         var col: Int32 = 0
-        GoviCellToPos(Int32(x), Int32(y), &line, &col)
+        GoviCellToPos(c.x, c.y, &line, &col)
         return (line, Int(col))
     }
 
@@ -174,6 +177,25 @@ final class GoviView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+
+        // Double-click selects the word under the cursor; triple-click selects
+        // the whole line. Both are computed by the engine (the word boundary is
+        // pluggable there).
+        if event.clickCount == 2 || event.clickCount == 3 {
+            let c = cellAt(event)
+            var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
+            if event.clickCount == 2 {
+                GoviWordRange(c.x, c.y, &l1, &c1, &l2, &c2)
+            } else {
+                GoviLineRange(c.x, c.y, &l1, &c1, &l2, &c2)
+            }
+            dragging = false
+            setSelection((l1, Int(c1)), (l2, Int(c2)))
+            GoviMoveCursor(l2, c2)
+            step()
+            return
+        }
+
         let caret = caretAt(event)
         dragAnchor = caret
         dragging = true

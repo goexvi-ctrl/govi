@@ -12,6 +12,88 @@ import "strings"
 // range [a, b) is half-open. The grid frontend maps screen cells to these
 // caret positions (see frontend/grid.Locate).
 
+// WordBoundaryFunc, given a line's runes and a rune index col within it,
+// returns the half-open range [start, end) that a double-click should select.
+// start == end means "no word here" (e.g. an empty line), in which case the
+// host selects nothing.
+//
+// This is the single extension point for what constitutes a "word". The default
+// (DefaultWordBoundary) groups runes by vi's classes (identifier runes vs.
+// punctuation vs. blanks). A host can install a richer rule via SetWordBoundary
+// -- for example a language-aware tokenizer, or one that treats '-' as a word
+// character -- without touching the rest of the editor.
+type WordBoundaryFunc func(line []rune, col int) (start, end int)
+
+// SetWordBoundary installs the function used for double-click word selection.
+// Passing nil restores the default.
+func (e *Engine) SetWordBoundary(fn WordBoundaryFunc) {
+	if fn == nil {
+		fn = DefaultWordBoundary
+	}
+	e.wordBoundary = fn
+}
+
+// DefaultWordBoundary selects the maximal run of same-class runes around col,
+// where the classes are: identifier runes (letters, digits, underscore),
+// blanks (space/tab), and any other run of punctuation. This matches vi's word
+// notion and the common editor double-click behavior.
+func DefaultWordBoundary(line []rune, col int) (int, int) {
+	n := len(line)
+	if n == 0 {
+		return 0, 0
+	}
+	if col >= n {
+		col = n - 1
+	}
+	if col < 0 {
+		col = 0
+	}
+	cls := clickClass(line[col])
+	start, end := col, col+1
+	for start > 0 && clickClass(line[start-1]) == cls {
+		start--
+	}
+	for end < n && clickClass(line[end]) == cls {
+		end++
+	}
+	return start, end
+}
+
+func clickClass(r rune) int {
+	switch {
+	case r == ' ' || r == '\t':
+		return clBlank
+	case isWordRune(r):
+		return clWord
+	default:
+		return clPunct
+	}
+}
+
+// WordRange returns the caret range a double-click at (line, col) selects, using
+// the engine's word-boundary function.
+func (e *Engine) WordRange(line int64, col int) (Pos, Pos) {
+	s := e.scr
+	line = clampLine(s, line)
+	runes := s.lineRunes(line)
+	start, end := e.wordBoundary(runes, col)
+	return Pos{Line: line, Col: start}, Pos{Line: line, Col: end}
+}
+
+// LineSelectRange returns the caret range a triple-click on line selects: the
+// whole logical line including its trailing newline (so a copy round-trips a
+// full line). On the last line, which has no following line, it ends at the
+// line's end instead.
+func (e *Engine) LineSelectRange(line int64) (Pos, Pos) {
+	s := e.scr
+	n := s.store.Lines()
+	line = clampLine(s, line)
+	if line < n {
+		return Pos{Line: line, Col: 0}, Pos{Line: line + 1, Col: 0}
+	}
+	return Pos{Line: line, Col: 0}, Pos{Line: line, Col: len(s.lineRunes(line))}
+}
+
 // MoveCursorTo positions the cursor at line/col, clamping into the buffer, and
 // scrolls it into view. Backs click-to-position.
 func (e *Engine) MoveCursorTo(line int64, col int) {

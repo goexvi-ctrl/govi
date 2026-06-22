@@ -74,6 +74,12 @@ In addition to vi keys, the window supports the usual GUI text affordances:
 
 - **Click** to move the cursor.
 - **Click-drag** to highlight a selection.
+- **Double-click** selects the word under the cursor; **triple-click** selects
+  the whole line. What counts as a "word" is decided by a pluggable function in
+  the engine (`SetWordBoundary`); the default groups identifier runes, treats
+  punctuation runs as words, and selects whitespace runs. A future language-aware
+  rule (e.g. treating `-` as a word character, or tokenizing a specific language)
+  drops in there without touching the rest of the editor.
 - **Cmd-C / Cmd-X / Cmd-V** (and the Edit menu) copy / cut / paste via the macOS
   system pasteboard; **Cmd-A** selects the whole buffer.
 - With a selection active, **typing any character or pasting replaces it** (and

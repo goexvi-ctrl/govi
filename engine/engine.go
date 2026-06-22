@@ -35,6 +35,8 @@ type Engine struct {
 	file *os.File // open handle backing a paged buffer, if any
 	quit bool
 
+	wordBoundary WordBoundaryFunc // double-click word selection (GUI hosts)
+
 	recoverPath  string    // this session's recovery file, "" if none yet
 	recoverSync  time.Time // last time the recovery file was written
 	recoverDirty bool      // changes exist that the recovery file lacks
@@ -43,7 +45,7 @@ type Engine struct {
 // New returns an Engine that renders through fe. Call Open and Resize before
 // feeding input.
 func New(fe Frontend, _ Options) *Engine {
-	e := &Engine{fe: fe}
+	e := &Engine{fe: fe, wordBoundary: DefaultWordBoundary}
 	e.setBuffer(buffer.NewMem(), "")
 	return e
 }

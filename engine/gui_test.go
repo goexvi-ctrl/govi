@@ -81,6 +81,87 @@ func TestInsertTextAndMultiline(t *testing.T) {
 	}
 }
 
+func TestWordRange(t *testing.T) {
+	e, _, _ := newTestEngine(t, "foo bar_baz, qux\n")
+	// Click inside "bar_baz" (underscore is a word rune).
+	a, b := e.WordRange(1, 5)
+	if a != (Pos{1, 4}) || b != (Pos{1, 11}) {
+		t.Errorf("WordRange in identifier = %+v..%+v, want {1,4}..{1,11}", a, b)
+	}
+	if got := e.RangeText(a, b); got != "bar_baz" {
+		t.Errorf("word text = %q, want %q", got, "bar_baz")
+	}
+	// Click on the comma (punctuation) selects just it.
+	a, b = e.WordRange(1, 11)
+	if got := e.RangeText(a, b); got != "," {
+		t.Errorf("punct word = %q, want %q", got, ",")
+	}
+	// Click on whitespace selects the run of blanks.
+	a, b = e.WordRange(1, 3)
+	if got := e.RangeText(a, b); got != " " {
+		t.Errorf("blank word = %q, want a single space", got)
+	}
+}
+
+func TestWordRangeCustom(t *testing.T) {
+	e, _, _ := newTestEngine(t, "foo-bar baz\n")
+	// Default: '-' is punctuation, so it breaks the word.
+	a, b := e.WordRange(1, 0)
+	if got := e.RangeText(a, b); got != "foo" {
+		t.Errorf("default word = %q, want %q", got, "foo")
+	}
+	// Custom boundary treating '-' as a word rune joins "foo-bar".
+	e.SetWordBoundary(func(line []rune, col int) (int, int) {
+		isW := func(r rune) bool { return r == '-' || r == '_' || (r >= 'a' && r <= 'z') }
+		n := len(line)
+		if n == 0 {
+			return 0, 0
+		}
+		if col >= n {
+			col = n - 1
+		}
+		if !isW(line[col]) {
+			return col, col + 1
+		}
+		s, en := col, col+1
+		for s > 0 && isW(line[s-1]) {
+			s--
+		}
+		for en < n && isW(line[en]) {
+			en++
+		}
+		return s, en
+	})
+	a, b = e.WordRange(1, 0)
+	if got := e.RangeText(a, b); got != "foo-bar" {
+		t.Errorf("custom word = %q, want %q", got, "foo-bar")
+	}
+	// nil restores the default.
+	e.SetWordBoundary(nil)
+	a, b = e.WordRange(1, 0)
+	if got := e.RangeText(a, b); got != "foo" {
+		t.Errorf("restored default word = %q, want %q", got, "foo")
+	}
+}
+
+func TestLineSelectRange(t *testing.T) {
+	e, _, _ := newTestEngine(t, "alpha\nbeta\n")
+	// A non-final line selects through the start of the next line (newline
+	// included), so the copied text is a full line.
+	a, b := e.LineSelectRange(1)
+	if a != (Pos{1, 0}) || b != (Pos{2, 0}) {
+		t.Errorf("LineSelectRange(1) = %+v..%+v, want {1,0}..{2,0}", a, b)
+	}
+	if got := e.RangeText(a, b); got != "alpha\n" {
+		t.Errorf("line text = %q, want %q", got, "alpha\n")
+	}
+	// The last line has no following line; it ends at end-of-line.
+	a, b = e.LineSelectRange(2)
+	if a != (Pos{2, 0}) || b != (Pos{2, 4}) {
+		t.Errorf("LineSelectRange(last) = %+v..%+v, want {2,0}..{2,4}", a, b)
+	}
+}
+
 func TestMoveCursorClamps(t *testing.T) {
 	e, _, _ := newTestEngine(t, "ab\ncd\n")
 	e.MoveCursorTo(99, 99)
