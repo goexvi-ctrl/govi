@@ -26,6 +26,9 @@ type Engine struct {
 
 	mapPending []rune // runes accumulating toward a possible map LHS
 
+	argv   []string // file argument list
+	argIdx int      // index of the current file in argv
+
 	file *os.File // open handle backing a paged buffer, if any
 	quit bool
 }
@@ -38,6 +41,8 @@ func New(fe Frontend, _ Options) *Engine {
 	return e
 }
 
+// setBuffer creates the initial screen with default editor settings. Used once
+// at New.
 func (e *Engine) setBuffer(store buffer.LineStore, name string) {
 	e.scr = &screen{
 		store:  store,
@@ -54,6 +59,22 @@ func (e *Engine) setBuffer(store buffer.LineStore, name string) {
 	e.vi = newVimode()
 }
 
+// replaceBuffer swaps the file being edited while preserving editor-global
+// state (options, maps, registers) and geometry, as vi does across :e / :n.
+func (e *Engine) replaceBuffer(store buffer.LineStore, name string) {
+	s := e.scr
+	s.store = store
+	s.log = undo.New(store)
+	s.marks = mark.New()
+	s.name = name
+	s.cursor = Pos{Line: 1, Col: 0}
+	s.top = 1
+	s.mode = ModeCommand
+	s.modified = false
+	s.colon = nil
+	e.vi = newVimode()
+}
+
 // Open loads path into the active buffer. A missing file starts an empty,
 // unsaved buffer named path (vi's "new file"). Large files are paged from disk
 // rather than read whole.
@@ -61,7 +82,7 @@ func (e *Engine) Open(path string) error {
 	store, fh, err := buffer.NewPagedFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			e.setBuffer(buffer.NewMem(), path)
+			e.replaceBuffer(buffer.NewMem(), path)
 			e.scr.msg = fmt.Sprintf("%q: new file", filepath.Base(path))
 			e.scr.msgKind = MsgInfo
 			return nil
@@ -72,10 +93,21 @@ func (e *Engine) Open(path string) error {
 		e.file.Close()
 	}
 	e.file = fh
-	e.setBuffer(store, path)
+	e.replaceBuffer(store, path)
 	e.scr.msg = fmt.Sprintf("%q: %d lines", filepath.Base(path), store.Lines())
 	e.scr.msgKind = MsgInfo
 	return nil
+}
+
+// OpenArgs sets the file argument list and opens the first file. With no
+// arguments it leaves the initial empty buffer.
+func (e *Engine) OpenArgs(args []string) error {
+	e.argv = args
+	e.argIdx = 0
+	if len(args) == 0 {
+		return nil
+	}
+	return e.Open(args[0])
 }
 
 // Close releases any file handle held by the engine.
@@ -91,6 +123,11 @@ func (e *Engine) Close() error {
 // ShouldQuit reports whether a quit command has been issued; the host event
 // loop should stop feeding input and tear down once this is true.
 func (e *Engine) ShouldQuit() bool { return e.quit }
+
+// MapPending reports whether input is buffered awaiting more keys to resolve a
+// possible map. A host can use this to arm a key-timeout (sending a
+// TimeoutEvent) so an ambiguous map prefix does not hang.
+func (e *Engine) MapPending() bool { return len(e.mapPending) > 0 }
 
 // Resize sets the viewport geometry (text rows and columns) and repaints fully.
 func (e *Engine) Resize(rows, cols int) {

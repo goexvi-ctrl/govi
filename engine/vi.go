@@ -163,7 +163,7 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 	case 'd', 'c', 'y':
 		m.startOperator(r)
 		return
-	case 'f', 'F', 't', 'T', 'r', 'm', '`', '\'':
+	case 'f', 'F', 't', 'T', 'r', 'm', '`', '\'', 'Z':
 		m.pending = r
 		return
 	}
@@ -307,6 +307,17 @@ func (m *vimode) charArg(e *Engine, ev KeyEvent) {
 		m.doMotion(e, markCharMotion, c)
 	case '\'':
 		m.doMotion(e, markLineMotion, c)
+	case 'Z':
+		switch c {
+		case 'Z': // ZZ: write if modified, then quit
+			if err := e.exExecute("x"); err != nil {
+				e.scr.msg, e.scr.msgKind = err.Error(), MsgError
+			}
+		case 'Q': // ZQ: quit without writing
+			e.quit = true
+		default:
+			e.fe.Bell()
+		}
 	}
 }
 

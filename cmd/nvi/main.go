@@ -26,12 +26,10 @@ func main() {
 	fe.Attach(eng)
 	defer eng.Close()
 
-	if args := flag.Args(); len(args) > 0 {
-		if err := eng.Open(args[0]); err != nil {
-			fe.Close()
-			fmt.Fprintf(os.Stderr, "nvi: %v\n", err)
-			os.Exit(1)
-		}
+	if err := eng.OpenArgs(flag.Args()); err != nil {
+		fe.Close()
+		fmt.Fprintf(os.Stderr, "nvi: %v\n", err)
+		os.Exit(1)
 	}
 
 	fe.Run()

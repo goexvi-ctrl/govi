@@ -44,7 +44,7 @@ func init() {
 		{"join", 1, (*Engine).exJoin},
 		{"write", 1, (*Engine).exWrite},
 		{"wq", 2, (*Engine).exWriteQuit},
-		{"xit", 1, (*Engine).exWriteQuit},
+		{"xit", 1, (*Engine).exXit},
 		{"quit", 1, (*Engine).exQuit},
 		{"read", 1, (*Engine).exRead},
 		{">", 1, (*Engine).exShiftRight},
@@ -58,6 +58,12 @@ func init() {
 		{"unmap", 3, (*Engine).exUnmap},
 		{"abbreviate", 2, (*Engine).exAbbreviate},
 		{"unabbreviate", 4, (*Engine).exUnabbreviate},
+		{"edit", 1, (*Engine).exEdit},
+		{"next", 1, (*Engine).exNext},
+		{"previous", 4, (*Engine).exPrev},
+		{"Next", 1, (*Engine).exPrev},
+		{"rewind", 3, (*Engine).exRewind},
+		{"args", 2, (*Engine).exArgs},
 	}
 }
 

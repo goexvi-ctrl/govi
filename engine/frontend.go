@@ -100,6 +100,8 @@ type View interface {
 	Name() string
 	// Modified reports whether the active buffer has unsaved changes.
 	Modified() bool
+	// Number reports whether line numbers should be shown (:set number).
+	Number() bool
 }
 
 // LineRange is an inclusive 1-based range of buffer lines.

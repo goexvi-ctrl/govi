@@ -6,6 +6,9 @@
 package tcell
 
 import (
+	"strconv"
+	"time"
+
 	tc "github.com/gdamore/tcell/v2"
 
 	"govi/engine"
@@ -50,26 +53,49 @@ func (f *Frontend) Close() {
 	}
 }
 
-// Run feeds terminal events to the engine until a quit command is issued.
+// mapTimeout is how long to wait for the next key before resolving an ambiguous
+// map prefix (the 'timeout' behavior).
+const mapTimeout = 500 * time.Millisecond
+
+// Run feeds terminal events to the engine until a quit command is issued. When
+// an ambiguous map prefix is pending it arms a timer so the prefix resolves
+// instead of hanging.
 func (f *Frontend) Run() {
 	w, h := f.scr.Size()
 	f.eng.Resize(textRows(h), w)
 
+	events := make(chan tc.Event)
+	quit := make(chan struct{})
+	go f.scr.ChannelEvents(events, quit)
+	defer close(quit)
+
 	for !f.eng.ShouldQuit() {
-		ev := f.scr.PollEvent()
-		switch ev := ev.(type) {
-		case *tc.EventResize:
-			f.scr.Sync()
-			w, h := ev.Size()
-			f.eng.Resize(textRows(h), w)
-		case *tc.EventKey:
-			f.eng.Input(translateKey(ev))
-		case *tc.EventPaste:
-			// Bracketed paste: tcell brackets the run with start/end events;
-			// for now content arrives as individual key events between them.
-		case *tc.EventInterrupt:
-			f.eng.Input(engine.InterruptEvent{})
+		var timer <-chan time.Time
+		if f.eng.MapPending() {
+			timer = time.After(mapTimeout)
 		}
+		select {
+		case ev := <-events:
+			if ev == nil {
+				return
+			}
+			f.handleEvent(ev)
+		case <-timer:
+			f.eng.Input(engine.TimeoutEvent{})
+		}
+	}
+}
+
+func (f *Frontend) handleEvent(ev tc.Event) {
+	switch ev := ev.(type) {
+	case *tc.EventResize:
+		f.scr.Sync()
+		w, h := ev.Size()
+		f.eng.Resize(textRows(h), w)
+	case *tc.EventKey:
+		f.eng.Input(translateKey(ev))
+	case *tc.EventInterrupt:
+		f.eng.Input(engine.InterruptEvent{})
 	}
 }
 
@@ -96,6 +122,7 @@ func (f *Frontend) Render(v engine.View, _ engine.ChangeSet) {
 	w, h := f.scr.Size()
 	rows := textRows(h)
 	top := v.Viewport().Top
+	gutter := gutterWidth(v)
 
 	for row := 0; row < rows; row++ {
 		lno := top + int64(row)
@@ -103,8 +130,11 @@ func (f *Frontend) Render(v engine.View, _ engine.ChangeSet) {
 			f.scr.SetContent(0, row, '~', nil, tc.StyleDefault)
 			continue
 		}
+		if gutter > 0 {
+			f.drawGutter(lno, row, gutter)
+		}
 		cells := engine.DisplayCells(v.Line(lno))
-		x := 0
+		x := gutter
 		for _, c := range cells {
 			if x >= w {
 				break
@@ -115,8 +145,35 @@ func (f *Frontend) Render(v engine.View, _ engine.ChangeSet) {
 	}
 
 	f.drawStatus(v, w, rows)
-	f.placeCursor(v, rows)
+	f.placeCursor(v, rows, gutter)
 	f.scr.Show()
+}
+
+// gutterWidth returns the width of the line-number gutter (0 when :set number
+// is off).
+func gutterWidth(v engine.View) int {
+	if !v.Number() {
+		return 0
+	}
+	digits := len(strconv.FormatInt(v.LineCount(), 10))
+	if digits < 5 {
+		digits = 5
+	}
+	return digits + 1 // numbers right-aligned, then a space
+}
+
+func (f *Frontend) drawGutter(lno int64, row, gutter int) {
+	label := strconv.FormatInt(lno, 10)
+	pad := gutter - 1 - len(label)
+	x := 0
+	for ; x < pad; x++ {
+		f.scr.SetContent(x, row, ' ', nil, tc.StyleDefault)
+	}
+	for _, r := range label {
+		f.scr.SetContent(x, row, r, nil, tc.StyleDefault)
+		x++
+	}
+	f.scr.SetContent(x, row, ' ', nil, tc.StyleDefault)
 }
 
 func (f *Frontend) drawStatus(v engine.View, w, row int) {
@@ -132,7 +189,7 @@ func (f *Frontend) drawStatus(v engine.View, w, row int) {
 	}
 }
 
-func (f *Frontend) placeCursor(v engine.View, rows int) {
+func (f *Frontend) placeCursor(v engine.View, rows, gutter int) {
 	if v.Mode() == engine.ModeExColon {
 		msg, _ := v.Message()
 		f.scr.ShowCursor(len([]rune(msg)), rows) // end of the colon line
@@ -140,7 +197,7 @@ func (f *Frontend) placeCursor(v engine.View, rows int) {
 	}
 	cur := v.Cursor()
 	dl := v.Line(cur.Line)
-	x := engine.DisplayColumn(dl, cur.Col)
+	x := gutter + engine.DisplayColumn(dl, cur.Col)
 	y := int(cur.Line - v.Viewport().Top)
 	if y < 0 || y >= rows {
 		f.scr.HideCursor()

@@ -287,6 +287,17 @@ func (e *Engine) exWriteQuit(c *exCmd) error {
 	return nil
 }
 
+// exXit implements :x and ZZ -- write only if the buffer was modified, then quit.
+func (e *Engine) exXit(c *exCmd) error {
+	if e.scr.modified {
+		if err := e.exWrite(c); err != nil {
+			return err
+		}
+	}
+	e.quit = true
+	return nil
+}
+
 func (e *Engine) exQuit(c *exCmd) error {
 	if e.scr.modified && !c.force {
 		return fmt.Errorf("No write since last change (use ! to override)")
