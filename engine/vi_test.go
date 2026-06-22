@@ -111,7 +111,9 @@ func TestViReplace(t *testing.T) {
 	viCase(t, "R", "abcdef\n", "RXYZ\x1b", "XYZdef")
 }
 
-func TestViUndoRedo(t *testing.T) {
+func TestViUndoToggle(t *testing.T) {
+	// nvi semantics: 'u' toggles undo/redo because the undo is itself the last
+	// change. 'uu' is a no-op (undo then redo).
 	e, _, _ := newTestEngine(t, "hello\n")
 	drive(e, "x")
 	if bufText(e) != "ello" {
@@ -119,11 +121,37 @@ func TestViUndoRedo(t *testing.T) {
 	}
 	drive(e, "u")
 	if bufText(e) != "hello" {
+		t.Fatalf("after u (undo): %q", bufText(e))
+	}
+	drive(e, "u")
+	if bufText(e) != "ello" {
+		t.Fatalf("after uu (redo via toggle): %q", bufText(e))
+	}
+	drive(e, "u")
+	if bufText(e) != "hello" {
+		t.Fatalf("after uuu (undo again): %q", bufText(e))
+	}
+}
+
+func TestViUndoDotWalksBack(t *testing.T) {
+	// '.' repeats the last command; after 'u' it repeats the undo, walking
+	// back through history. 'u..' undoes three changes.
+	e, _, _ := newTestEngine(t, "hello\n")
+	drive(e, "xxx") // -> "lo" (three deletions)
+	if bufText(e) != "lo" {
+		t.Fatalf("after xxx: %q", bufText(e))
+	}
+	drive(e, "u") // undo 3rd x -> "llo"
+	if bufText(e) != "llo" {
 		t.Fatalf("after u: %q", bufText(e))
 	}
-	e.Input(KeyEvent{Rune: 'r', Mods: ModCtrl}) // ^R redo
+	drive(e, ".") // undo 2nd x -> "ello"
 	if bufText(e) != "ello" {
-		t.Fatalf("after ^R: %q", bufText(e))
+		t.Fatalf("after u.: %q", bufText(e))
+	}
+	drive(e, ".") // undo 1st x -> "hello"
+	if bufText(e) != "hello" {
+		t.Fatalf("after u..: %q", bufText(e))
 	}
 }
 

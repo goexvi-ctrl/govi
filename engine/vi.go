@@ -40,6 +40,14 @@ type vimode struct {
 	dot       []KeyEvent
 	replaying bool
 	changed   bool // current command modified the buffer
+
+	// undo state (nvi semantics): a literal 'u' toggles between undo and redo,
+	// because the undo is itself recorded as the last change. '.' repeats the
+	// last command, so after 'u' it repeats the undo, walking further back
+	// through the change history. redoNext is the toggle state for literal 'u';
+	// dotUndo records that the last command was an undo, so '.' continues undoing.
+	redoNext bool
+	dotUndo  bool
 }
 
 func newVimode() *vimode { return &vimode{} }
@@ -90,8 +98,13 @@ func (m *vimode) key(e *Engine, ev KeyEvent) {
 // finishCommand records the dot command when a buffer-changing command fully
 // completes, and clears transient state.
 func (m *vimode) finishCommand(e *Engine) {
-	if m.changed && !m.replaying && len(m.rec) > 0 {
-		m.dot = append(m.dot[:0], m.rec...)
+	if m.changed {
+		if !m.replaying && len(m.rec) > 0 {
+			m.dot = append(m.dot[:0], m.rec...)
+		}
+		// A new change ends the undo toggle and makes '.' repeat this change.
+		m.dotUndo = false
+		m.redoNext = false
 	}
 	m.changed = false
 	m.count = 0
@@ -183,14 +196,33 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 		if s.top > 1 {
 			s.top--
 		}
-	case 'r': // redo
-		if cur, ok := s.log.Redo(); ok {
-			s.cursor = Pos{Line: cur.Line, Col: cur.Col}
-			s.modified = true
-		} else {
-			e.fe.Bell()
-		}
+	case 'r': // redraw the screen (no-op here; the frontend repaints each input)
 	}
+}
+
+// doUndoCommand implements nvi's undo. A literal 'u' (fromDot == false) toggles
+// between undo and redo via redoNext; a dot-repeat (fromDot == true) always
+// undoes, so '.' after 'u' walks further back through the change history.
+func (m *vimode) doUndoCommand(e *Engine, fromDot bool) {
+	s := e.scr
+	redo := !fromDot && m.redoNext
+	var cur undo.Pos
+	var ok bool
+	if redo {
+		cur, ok = s.log.Redo()
+	} else {
+		cur, ok = s.log.Undo()
+	}
+	if !ok {
+		e.fe.Bell()
+		m.redoNext = false
+		return
+	}
+	s.cursor = Pos{Line: cur.Line, Col: cur.Col}
+	s.clampCursor()
+	s.modified = true
+	m.redoNext = !redo // undid -> next 'u' redoes; redid -> next 'u' undoes
+	m.dotUndo = true   // the last command is now an undo; '.' continues undoing
 }
 
 func (m *vimode) startOperator(op rune) {
@@ -277,13 +309,7 @@ func (m *vimode) editKey(e *Engine, r rune) {
 		s.mode = ModeExColon
 		s.colon = nil
 	case 'u':
-		if cur, ok := s.log.Undo(); ok {
-			s.cursor = Pos{Line: cur.Line, Col: cur.Col}
-			s.clampCursor()
-			s.modified = true
-		} else {
-			e.fe.Bell()
-		}
+		m.doUndoCommand(e, false)
 	case '.':
 		m.repeatDot(e)
 	case 'x':
@@ -335,6 +361,14 @@ func (m *vimode) editKey(e *Engine, r rune) {
 // repeatDot replays the last buffer-changing command. A count before '.'
 // overrides the count baked into the recorded command.
 func (m *vimode) repeatDot(e *Engine) {
+	// If the last command was an undo, '.' repeats the undo, walking back
+	// through history. The repeated command is 'u', which ignores any count, so
+	// a leading count on '.' does a single undo (matching nvi).
+	if m.dotUndo {
+		m.count, m.haveCount = 0, false
+		m.doUndoCommand(e, true)
+		return
+	}
 	if len(m.dot) == 0 {
 		e.fe.Bell()
 		return

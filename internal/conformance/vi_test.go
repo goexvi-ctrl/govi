@@ -38,6 +38,10 @@ var viConformanceCases = []struct {
 	{"dot-repeat-x", "hello\n", "x.."},
 	{"dot-repeat-dw", "a b c d\n", "dw."},
 	{"undo", "hello\n", "xxu"},
+	{"undo-toggle", "hello\n", "xxuu"},
+	{"undo-toggle-3", "hello\n", "xxuuu"},
+	{"undo-dot-walk", "hello\n", "xxxu.."},
+	{"undo-dot-count", "hello\n", "xxxxu2."},
 	{"insert-newline", "helloworld\n", "5lifoo\rbar\x1b"},
 }
 
