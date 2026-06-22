@@ -4,6 +4,10 @@ Tracks what the real **nvi** (1.81.x / the 4.4BSD nex/vi reference) provides
 against **govi**, this Go reimplementation. The goal is user-perceptible
 bug-for-bug parity; rows are validated against the nvi oracle where marked.
 
+The authoritative behavior spec is the official manual in [`nvi.md`](nvi.md);
+[`nvi-index.md`](nvi-index.md) maps every command/option to its line there, so a
+parity row can be checked against the source description quickly.
+
 **Status legend**
 
 | Status | Meaning |
@@ -98,22 +102,32 @@ bug-for-bug parity; rows are validated against the nvi oracle where marked.
 | `:set` / `:set all` / `:set opt` | yes | ✅✔ | full option registry, grid display |
 | `:map` `:map!` `:unmap` | yes | ✅✔ | non-recursive |
 | `:ab[breviate]` `:una[bbreviate]` | yes | ✅✔ | |
+| `:[range]nu[mber]`/`:#` | yes | ✅ | number-prefixed print |
 | `:e[dit]` `:n[ext]` `:prev`/`:N` `:rew[ind]` `:ar[gs]` | yes | ✅✔ | argument list |
+| `:f[ile] [name]` | yes | ❌ | show/set current pathname |
 | `:ta[g]` | yes | ✅✔ | |
+| `:tagn[ext]` `:tagp[rev]` `:tagt[op]` | yes | ❌ | tag-stack walk (vi `^T`/`^]` work) |
 | `:vi[sual]` | yes | ✅ | returns from ex mode |
 | `:[range]a[ppend]`/`i[nsert]`/`c[hange]` | yes | ❌ | ex input mode |
-| `:k`/`:ma` (mark) | yes | ❌ | |
+| `:k`/`:ma` (mark) | yes | ❌ | (vi `m` works) |
 | `:u[ndo]` | yes | ❌ | (vi `u` works) |
-| `:so[urce]` `:mk[exrc]` | yes | ❌ | |
+| `:so[urce]` `:mk[exrc]` | yes | ❌ | exrc scripting |
 | `:cd`/`:chdir` | yes | ❌ | |
+| `:di[splay] b\|c\|s\|t` | yes | ❌ | buffers/screens/tags inspector |
+| `:he[lp]` | yes | ❌ | |
+| `:o[pen]` | yes | — | unimplemented in nvi itself |
+| `:bg` `:fg` `:res[ize]` | yes | ❌ | needs split screens |
+| `:su[spend]`/`:st[op]` | yes | ❌ | job control |
+| `:cs[cope]` | yes | — | cscope integration; out of scope |
 | `:pre[serve]` `:rec[over]` | yes | ✅ | crash recovery (govi format) |
-| `:ve[rsion]` `:vi[usage]` `:exu[sage]` | yes | ❌ | |
-| `:@`/`:*` (exec buffer) `:>>` etc. | yes | 🟡 | partial |
+| `:ve[rsion]` `:viu[sage]` `:exu[sage]` | yes | ❌ | |
+| `:@`/`:*` (exec buffer) `:w>>` `:wn` etc. | yes | 🟡 | partial |
 
 ## Options
 
-govi carries the full nvi option table (~70 options) — all are settable,
-queryable, and shown by `:set all`. The ones that drive behavior:
+govi carries the full nvi option table (74 options, matching the reference
+manual's Set Options section) — all are settable, queryable, and shown by
+`:set all`. The ones that drive behavior:
 
 | Option | nvi | govi | Notes |
 |---|---|---|---|
@@ -147,10 +161,18 @@ queryable, and shown by `:set all`. The ones that drive behavior:
 | Tags | yes | ✅✔ | ctags file; tag stack |
 | Wide / multibyte display | wchar | ✅✔ | East Asian width = 2 cols |
 | Line wrapping | yes | 🟡 | wraps; no `@`-fill for partial bottom line |
+| Left-right scrolling (`leftright`/`sidescroll`) | yes | ❌ | always wraps; no horizontal-scroll mode |
 | Cursor column maintenance | yes | ✅✔ | display column, sticky `$` |
+| Word search (`^A`) | yes | ✅✔ | search word under cursor |
+| Incrementing numbers (`#`) | yes | ✅✔ | `#+`/`#-` |
+| File-name completion | yes | ❌ | no path completion on the `:` line |
+| Command-line editing (`cedit`) | yes | ❌ | no ex command-line edit window |
 | Embeddable engine boundary | function-pointer table | ✅ | Go `Frontend`/`View`; tcell + headless frontends |
 | Crash recovery (`-r`) | yes | ✅ | recovery file in recdir; `:preserve`/`:recover`/`nvi -r`; govi's own format |
-| Split screens / windows | yes | ❌ | |
+| Split screens / windows (`^W` `:bg`/`:fg`/`:resize`) | yes | ❌ | |
+| Job control (`^Z` `:suspend`/`:stop`) | yes | ❌ | |
+| Cscope integration | yes | — | out of scope |
+| Message catalogs (i18n) | yes | — | English only; out of scope |
 | File encodings | iconv | 🟡 | UTF-8 only |
 | Perl / Tcl scripting | yes | — | out of scope |
 | GUI backends (motif/gtk/ipc) | yes | — | boundary ready; no GUI frontend yet |
