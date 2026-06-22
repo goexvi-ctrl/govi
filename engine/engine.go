@@ -144,6 +144,12 @@ func (e *Engine) ShouldQuit() bool { return e.quit }
 // configuration), as if typed on the colon line without the leading ':'.
 func (e *Engine) RunEx(cmd string) error { return e.exExecute(cmd) }
 
+// WithView calls fn with the read-only View of the current editor state. A host
+// that pulls state on demand (rather than reacting to Render) uses this to lay
+// out a frame between inputs. The View is valid only for the duration of the
+// call; the engine is quiescent while fn runs (it must not feed input from fn).
+func (e *Engine) WithView(fn func(View)) { fn(view{e.scr}) }
+
 // MapPending reports whether input is buffered awaiting more keys to resolve a
 // possible map. A host can use this to arm a key-timeout (sending a
 // TimeoutEvent) so an ambiguous map prefix does not hang.

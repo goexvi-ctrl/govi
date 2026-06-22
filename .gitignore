@@ -2,6 +2,9 @@
 /govi
 /bin/
 
+# macOS GUI app build products (libgovi archive, linked binary, .app bundle)
+/gui/build/
+
 # Conformance oracle: the compiled C nvi binary, fetched/built locally.
 /internal/conformance/oracle/nvi
 

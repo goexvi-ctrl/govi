@@ -168,7 +168,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | Incrementing numbers (`#`) | yes | ✅✔ | `#+`/`#-` |
 | File-name completion | yes | ❌ | no path completion on the `:` line |
 | Command-line editing (`cedit`) | yes | ❌ | no ex command-line edit window |
-| Embeddable engine boundary | function-pointer table | ✅ | Go `Frontend`/`View`; tcell + headless frontends |
+| Embeddable engine boundary | function-pointer table | ✅ | Go `Frontend`/`View`; tcell + headless + native GUI frontends |
 | Crash recovery (`-r`) | yes | ✅ | recovery file in recdir; `:preserve`/`:recover`/`nvi -r`; govi's own format |
 | Split screens / windows (`^W` `:bg`/`:fg`/`:resize`) | yes | ❌ | |
 | Job control (`^Z` `:suspend`/`:stop`) | yes | ❌ | |
@@ -176,7 +176,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | Message catalogs (i18n) | yes | — | English only; out of scope |
 | File encodings | iconv | 🟡 | UTF-8 only |
 | Perl / Tcl scripting | yes | — | non-objective (see below) |
-| GUI backends (motif/gtk/ipc) | yes | — | boundary ready; no GUI frontend yet |
+| GUI backends (motif/gtk/ipc) | yes | 🟡 | native macOS AppKit app embeds the engine (`gui/`); nvi's own backends out of scope |
 
 ## Non-objectives (explicitly out of scope)
 
