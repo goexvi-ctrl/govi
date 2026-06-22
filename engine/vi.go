@@ -35,6 +35,9 @@ type vimode struct {
 	insertCmd   rune   // command that entered insert (i/a/o/O/c/R...)
 	insertCount int    // repeat count for the insertion
 	literalNext bool   // ^V was typed; insert the next key literally
+	hexMode     bool   // ^X was typed; collecting hex digits
+	hexBuf      []rune // accumulated hex digits
+	savedInsert []rune // text of the last completed insertion (for NUL replay)
 
 	// dot repeat
 	rec       []KeyEvent
@@ -161,10 +164,10 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 	case '"':
 		m.awaitReg = true
 		return
-	case 'd', 'c', 'y':
+	case 'd', 'c', 'y', '!':
 		m.startOperator(r)
 		return
-	case 'f', 'F', 't', 'T', 'r', 'm', '`', '\'', 'Z', '[', ']', '@', 'z':
+	case 'f', 'F', 't', 'T', 'r', 'm', '`', '\'', 'Z', '[', ']', '@', 'z', '#':
 		m.pending = r
 		return
 	}
@@ -212,6 +215,18 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 		e.fileInfo()
 	case 'a': // search forward for the word under the cursor
 		if err := e.searchCurrentWord(false); err != nil {
+			s.msg, s.msgKind = err.Error(), MsgError
+		}
+	case '^': // switch to the alternate file
+		if err := e.editAlternate(); err != nil {
+			s.msg, s.msgKind = err.Error(), MsgError
+		}
+	case ']': // jump to the tag for the word under the cursor
+		if err := e.tagJumpWord(); err != nil {
+			s.msg, s.msgKind = err.Error(), MsgError
+		}
+	case 't': // pop the tag stack
+		if err := e.tagPop(); err != nil {
 			s.msg, s.msgKind = err.Error(), MsgError
 		}
 	case 'r': // redraw the screen (no-op here; the frontend repaints each input)
@@ -355,6 +370,24 @@ func (m *vimode) charArg(e *Engine, ev KeyEvent) {
 		e.execBuffer(c)
 	case 'z':
 		e.screenPosition(c)
+	case '#':
+		count := effCount(m.count)
+		m.count, m.haveCount = 0, false
+		var delta int64
+		switch c {
+		case '+', '#':
+			delta = 1
+		case '-':
+			delta = -1
+		default:
+			e.fe.Bell()
+			return
+		}
+		if err := e.editIncrement(delta, count); err != nil {
+			e.scr.msg, e.scr.msgKind = err.Error(), MsgError
+		} else {
+			m.changed = true
+		}
 	}
 }
 
@@ -414,6 +447,8 @@ func (m *vimode) editKey(e *Engine, r rune) {
 		if err := e.repeatSearch(true); err != nil {
 			s.msg, s.msgKind = err.Error(), MsgError
 		}
+	case 'Q':
+		e.enterExMode()
 	case 'u':
 		m.doUndoCommand(e, false)
 	case '.':
@@ -439,7 +474,11 @@ func (m *vimode) editKey(e *Engine, r rune) {
 	case 'J':
 		e.joinLines(m)
 	case '~':
-		e.toggleCase(m)
+		if s.opts.tildeop {
+			m.startOperator('~')
+		} else {
+			e.toggleCase(m)
+		}
 	case '&':
 		if err := e.repeatSubst(); err != nil {
 			s.msg, s.msgKind = err.Error(), MsgError

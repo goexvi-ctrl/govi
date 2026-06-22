@@ -69,6 +69,10 @@ var viConformanceCases = []struct {
 	{"macro-at", "dd\nfoo\nbar\n", `"ayyj@a`}, // reg a = "dd"; @a deletes line 2
 	{"insert-ctrl-w", "\n", "ihello world\x17X\x1b"},
 	{"insert-ctrl-t", "x\n", ":set sw=4\ri\x14\x1b"},
+	{"increment", "val 41\n", "f4#+"},
+	{"tildeop-word", "hello world\n", ":set tildeop\r~w"},
+	{"filter-operator", "c\nb\na\n", "!Gsort\r"},
+	{"filter-ex", "3\n1\n2\n", ":%!sort\r"},
 }
 
 // TestViConformance pins govi's vi-mode behavior to nvi. It needs both an nvi

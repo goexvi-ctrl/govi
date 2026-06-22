@@ -102,6 +102,9 @@ type View interface {
 	Modified() bool
 	// Number reports whether line numbers should be shown (:set number).
 	Number() bool
+	// ExTranscript returns the scrolling ex-mode output lines; non-nil only
+	// while Mode() == ModeExText.
+	ExTranscript() []string
 }
 
 // LineRange is an inclusive 1-based range of buffer lines.

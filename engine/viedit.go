@@ -20,9 +20,16 @@ func minmaxLine(a, b int64) (int64, int64) {
 	return b, a
 }
 
-// operate applies an operator (d/c/y) over the span described by mot.
+// operate applies an operator (d/c/y/!/~) over the span described by mot.
 func (m *vimode) operate(e *Engine, op, reg rune, mot motion) {
 	s := e.scr
+	// The ! filter operator always works on whole lines and defers to the
+	// colon line for its command.
+	if op == '!' {
+		l1, l2 := minmaxLine(s.cursor.Line, mot.to.Line)
+		e.startFilter(clampLine(s, l1), clampLine(s, l2))
+		return
+	}
 	if mot.linewise {
 		l1, l2 := minmaxLine(s.cursor.Line, mot.to.Line)
 		l1, l2 = clampLine(s, l1), clampLine(s, l2)
@@ -73,6 +80,19 @@ func (m *vimode) operateLines(e *Engine, op, reg rune, l1, l2 int64) {
 		e.insertEmptyLineAt(l1)
 		s.cursor = Pos{Line: l1, Col: 0}
 		m.startInsert(e, s.cursor, false, 'c')
+	case '~':
+		e.beginChange()
+		for ln := l1; ln <= l2; ln++ {
+			line := s.lineRunes(ln)
+			nl := cloneR(line)
+			for i := range nl {
+				nl[i] = toggleCaseRune(nl[i])
+			}
+			s.setLine(ln, nl)
+		}
+		e.endChange()
+		s.cursor = Pos{Line: l1, Col: s.firstNonBlank(l1)}
+		m.changed = true
 	}
 }
 
@@ -99,6 +119,34 @@ func (m *vimode) operateChars(e *Engine, op, reg rune, p1, p2 Pos) {
 		e.deleteChars(p1, p2)
 		s.cursor = p1
 		m.startInsert(e, p1, false, 'c')
+	case '~':
+		e.beginChange()
+		if p1.Line == p2.Line {
+			line := cloneR(s.lineRunes(p1.Line))
+			for i := p1.Col; i < p2.Col && i < len(line); i++ {
+				line[i] = toggleCaseRune(line[i])
+			}
+			s.setLine(p1.Line, line)
+		} else {
+			for ln := p1.Line; ln <= p2.Line; ln++ {
+				line := cloneR(s.lineRunes(ln))
+				lo, hi := 0, len(line)
+				if ln == p1.Line {
+					lo = p1.Col
+				}
+				if ln == p2.Line {
+					hi = p2.Col
+				}
+				for i := lo; i < hi && i < len(line); i++ {
+					line[i] = toggleCaseRune(line[i])
+				}
+				s.setLine(ln, line)
+			}
+		}
+		e.endChange()
+		s.cursor = p1
+		s.clampCursor()
+		m.changed = true
 	}
 }
 

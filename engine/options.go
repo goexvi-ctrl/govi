@@ -19,6 +19,8 @@ type options struct {
 	list       bool
 	tabstop    int
 	shiftwidth int
+	tags       string
+	tildeop    bool
 }
 
 func defaultOptions() options {
@@ -27,6 +29,7 @@ func defaultOptions() options {
 		wrapscan:   true,
 		tabstop:    8,
 		shiftwidth: 8,
+		tags:       "tags",
 	}
 }
 
@@ -41,15 +44,19 @@ var optAbbrev = map[string]string{
 	"list":       "list",
 	"tabstop":    "tabstop", "ts": "tabstop",
 	"shiftwidth": "shiftwidth", "sw": "shiftwidth",
+	"tags":    "tags",
+	"tildeop": "tildeop", "to": "tildeop",
 }
 
 func optIsBool(canon string) bool {
 	switch canon {
-	case "tabstop", "shiftwidth":
+	case "tabstop", "shiftwidth", "tags":
 		return false
 	}
 	return true
 }
+
+func optIsString(canon string) bool { return canon == "tags" }
 
 // exSet implements :set.
 func (e *Engine) exSet(c *exCmd) error {
@@ -75,6 +82,12 @@ func (e *Engine) setOne(tok string) error {
 		canon, ok := optAbbrev[name]
 		if !ok {
 			return fmt.Errorf("set: no %s option", name)
+		}
+		if optIsString(canon) {
+			if canon == "tags" {
+				o.tags = val
+			}
+			return nil
 		}
 		n, err := strconv.Atoi(val)
 		if err != nil {
@@ -155,6 +168,8 @@ func (e *Engine) optBool(canon string) bool {
 		return o.number
 	case "list":
 		return o.list
+	case "tildeop":
+		return o.tildeop
 	}
 	return false
 }
@@ -174,6 +189,8 @@ func (e *Engine) setBool(canon string, v bool) {
 		o.number = v
 	case "list":
 		o.list = v
+	case "tildeop":
+		o.tildeop = v
 	}
 }
 
@@ -190,6 +207,8 @@ func (e *Engine) optDisplay(canon string) string {
 		return fmt.Sprintf("tabstop=%d", o.tabstop)
 	case "shiftwidth":
 		return fmt.Sprintf("shiftwidth=%d", o.shiftwidth)
+	case "tags":
+		return fmt.Sprintf("tags=%s", o.tags)
 	}
 	return canon
 }

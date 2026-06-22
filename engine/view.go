@@ -22,7 +22,7 @@ func (v view) Viewport() Viewport {
 func (v view) Message() (string, MessageKind) {
 	// While entering a command line, the message line shows the prompt prefix
 	// (':', '/', or '?') followed by what has been typed.
-	if v.s.mode == ModeExColon {
+	if v.s.mode == ModeExColon || v.s.mode == ModeExText {
 		prefix := v.s.cmdPrefix
 		if prefix == 0 {
 			prefix = ':'
@@ -37,3 +37,5 @@ func (v view) Name() string { return v.s.name }
 func (v view) Modified() bool { return v.s.modified }
 
 func (v view) Number() bool { return v.s.opts.number }
+
+func (v view) ExTranscript() []string { return v.s.exTranscript }

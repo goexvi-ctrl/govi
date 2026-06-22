@@ -120,6 +120,13 @@ func (f *Frontend) SetTitle(title string) { f.title = title }
 func (f *Frontend) Render(v engine.View, _ engine.ChangeSet) {
 	f.scr.Clear()
 	w, h := f.scr.Size()
+
+	if v.Mode() == engine.ModeExText {
+		f.renderExMode(v, w, h)
+		f.scr.Show()
+		return
+	}
+
 	rows := textRows(h)
 	top := v.Viewport().Top
 	gutter := gutterWidth(v)
@@ -147,6 +154,38 @@ func (f *Frontend) Render(v engine.View, _ engine.ChangeSet) {
 	f.drawStatus(v, w, rows)
 	f.placeCursor(v, rows, gutter)
 	f.scr.Show()
+}
+
+// renderExMode draws the ex-mode scrolling transcript with the current prompt
+// on the bottom line.
+func (f *Frontend) renderExMode(v engine.View, w, h int) {
+	prompt, _ := v.Message() // ":" + current input
+	transcript := v.ExTranscript()
+
+	// Show the tail of the transcript above the prompt line.
+	avail := h - 1
+	start := 0
+	if len(transcript) > avail {
+		start = len(transcript) - avail
+	}
+	row := 0
+	for _, line := range transcript[start:] {
+		f.drawText(line, row, w)
+		row++
+	}
+	f.drawText(prompt, h-1, w)
+	f.scr.ShowCursor(len([]rune(prompt)), h-1)
+}
+
+func (f *Frontend) drawText(s string, row, w int) {
+	x := 0
+	for _, r := range s {
+		if x >= w {
+			break
+		}
+		f.scr.SetContent(x, row, r, nil, tc.StyleDefault)
+		x++
+	}
 }
 
 // gutterWidth returns the width of the line-number gutter (0 when :set number

@@ -26,8 +26,10 @@ type Engine struct {
 
 	mapPending []rune // runes accumulating toward a possible map LHS
 
-	argv   []string // file argument list
-	argIdx int      // index of the current file in argv
+	argv     []string // file argument list
+	argIdx   int      // index of the current file in argv
+	altFile  string   // alternate file (^^ / #), the previously edited file
+	tagStack []tagLoc // tag jump stack for ^T
 
 	file *os.File // open handle backing a paged buffer, if any
 	quit bool
@@ -79,6 +81,10 @@ func (e *Engine) replaceBuffer(store buffer.LineStore, name string) {
 // unsaved buffer named path (vi's "new file"). Large files are paged from disk
 // rather than read whole.
 func (e *Engine) Open(path string) error {
+	// Remember the file we are leaving as the alternate file.
+	if e.scr != nil && e.scr.name != "" && e.scr.name != path {
+		e.altFile = e.scr.name
+	}
 	store, fh, err := buffer.NewPagedFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -205,11 +211,14 @@ func (e *Engine) interrupt() {
 // command line (':' ex commands and '/' '?' searches) is handled here. Map
 // expansion happens upstream in handleKeyEvent.
 func (e *Engine) dispatchKey(ev KeyEvent) {
-	if e.scr.mode == ModeExColon {
+	switch e.scr.mode {
+	case ModeExColon:
 		e.cmdlineKey(ev)
-		return
+	case ModeExText:
+		e.exModeKey(ev)
+	default:
+		e.vi.key(e, ev)
 	}
-	e.vi.key(e, ev)
 }
 
 // enterCmdline starts command-line input with the given prompt prefix.

@@ -24,6 +24,16 @@ func translateKey(ev *tc.EventKey) engine.Event {
 		}
 	}
 
+	// Control keys outside the A-Z block that vi binds to commands.
+	switch ev.Key() {
+	case tc.KeyCtrlCarat: // ^^ : alternate file
+		return engine.KeyEvent{Rune: '^', Mods: mods | engine.ModCtrl}
+	case tc.KeyCtrlRightSq: // ^] : tag
+		return engine.KeyEvent{Rune: ']', Mods: mods | engine.ModCtrl}
+	case tc.KeyCtrlSpace: // ^@ / NUL
+		return engine.KeyEvent{Rune: '@', Mods: mods | engine.ModCtrl}
+	}
+
 	switch ev.Key() {
 	case tc.KeyRune:
 		return engine.KeyEvent{Rune: ev.Rune(), Mods: mods}

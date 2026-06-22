@@ -51,6 +51,16 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 		return
 	}
 
+	// ^X collects a hexadecimal character code until a non-hex key.
+	if m.hexMode {
+		if isHexDigit(ev.Rune) {
+			m.hexBuf = append(m.hexBuf, ev.Rune)
+			return
+		}
+		m.finishHex(e)
+		// fall through to process the terminating key normally
+	}
+
 	// Insert-mode control commands.
 	if ev.Mods&ModCtrl != 0 && ev.Key == KeyNone {
 		switch ev.Rune {
@@ -64,6 +74,14 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 			m.insertShift(e, -1)
 		case 'h': // erase the previous character
 			m.insertBackspace(e)
+		case 'x': // begin a hexadecimal character entry
+			m.hexMode = true
+			m.hexBuf = m.hexBuf[:0]
+		case '@': // NUL: replay the previous insertion
+			for _, r := range m.savedInsert {
+				m.insertRune(e, r)
+				m.insertText = append(m.insertText, r)
+			}
 		}
 		return
 	}
@@ -202,8 +220,45 @@ func (m *vimode) insertShift(e *Engine, dir int) {
 	}
 }
 
+func isHexDigit(r rune) bool {
+	return r >= '0' && r <= '9' || r >= 'a' && r <= 'f' || r >= 'A' && r <= 'F'
+}
+
+// finishHex inserts the character whose hex code was collected after ^X.
+func (m *vimode) finishHex(e *Engine) {
+	m.hexMode = false
+	if len(m.hexBuf) == 0 {
+		return
+	}
+	var v int64
+	for _, r := range m.hexBuf {
+		v = v*16 + int64(hexVal(r))
+	}
+	m.hexBuf = m.hexBuf[:0]
+	r := rune(v)
+	m.insertRune(e, r)
+	m.insertText = append(m.insertText, r)
+}
+
+func hexVal(r rune) int {
+	switch {
+	case r >= '0' && r <= '9':
+		return int(r - '0')
+	case r >= 'a' && r <= 'f':
+		return int(r-'a') + 10
+	case r >= 'A' && r <= 'F':
+		return int(r-'A') + 10
+	}
+	return 0
+}
+
 func (m *vimode) finishInsert(e *Engine) {
 	s := e.scr
+
+	// A pending ^X hex entry is completed by ESC.
+	if m.hexMode {
+		m.finishHex(e)
+	}
 
 	// Repeat the inserted text for a count (e.g. 3ifoo<ESC>), for single-line
 	// insertions.
@@ -216,6 +271,11 @@ func (m *vimode) finishInsert(e *Engine) {
 	}
 
 	changed := len(m.insertText) > 0 || m.insertCmd == 'o' || m.insertCmd == 'O' || m.insertCmd == 'c'
+
+	// Remember this insertion for a later NUL replay.
+	if len(m.insertText) > 0 {
+		m.savedInsert = append(m.savedInsert[:0], m.insertText...)
+	}
 
 	m.inserting = false
 	m.replaceMode = false

@@ -64,6 +64,13 @@ func init() {
 		{"Next", 1, (*Engine).exPrev},
 		{"rewind", 3, (*Engine).exRewind},
 		{"args", 2, (*Engine).exArgs},
+		{"tag", 2, (*Engine).exTag},
+		{"!", 1, (*Engine).exBang},
+		{"&", 1, (*Engine).exAmp},
+		{"print", 1, (*Engine).exPrint},
+		{"number", 2, (*Engine).exNumber},
+		{"list", 1, (*Engine).exList},
+		{"visual", 2, (*Engine).exVisual},
 	}
 }
 
@@ -167,7 +174,7 @@ func (p *exParser) parseName() string {
 		return ""
 	}
 	switch p.peek() {
-	case '<', '>', '=', '&', '~', '#', '*':
+	case '<', '>', '=', '&', '~', '#', '*', '!':
 		return string(p.next())
 	}
 	var b strings.Builder

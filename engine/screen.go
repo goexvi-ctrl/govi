@@ -35,6 +35,9 @@ type screen struct {
 	colon     []rune
 	cmdPrefix rune
 
+	// exTranscript is the scrolling output shown while mode == ModeExText.
+	exTranscript []string
+
 	// search and substitute state
 	lastPattern    string
 	lastSearchDir  searchDir

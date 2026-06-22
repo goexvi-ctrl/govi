@@ -91,6 +91,49 @@ func (e *Engine) repeatSubst() error {
 	return nil
 }
 
+// exAmp implements :[range]& -- repeat the last substitute over the range.
+func (e *Engine) exAmp(c *exCmd) error {
+	l1, l2, err := e.rangeNoCount(c)
+	if err != nil {
+		return err
+	}
+	s := e.scr
+	if s.lastPattern == "" {
+		return fmt.Errorf("No previous substitution")
+	}
+	re, err := e.compilePattern("")
+	if err != nil {
+		return err
+	}
+	global := strings.ContainsRune(s.lastSubstFlags, 'g')
+	e.beginChange()
+	any := false
+	var last int64
+	lno := l1
+	end := l2
+	for lno <= end {
+		out, _, replaced := substituteLine(re, s.lineRunes(lno), []rune(s.lastSubstRepl), global)
+		if replaced {
+			any = true
+			last = lno
+			segs := splitRunes(out, '\n')
+			s.setLine(lno, segs[0])
+			for i := 1; i < len(segs); i++ {
+				s.appendLine(lno+int64(i-1), segs[i])
+			}
+			end += int64(len(segs) - 1)
+			lno += int64(len(segs) - 1)
+		}
+		lno++
+	}
+	e.endChange()
+	if !any {
+		return fmt.Errorf("No match")
+	}
+	s.cursor = Pos{Line: clampLine(s, last), Col: s.firstNonBlank(clampLine(s, last))}
+	return nil
+}
+
 // substituteLine applies re to a single line, replacing the first match or all
 // matches (global). It returns the new line runes (which may contain '\n'), the
 // number of replacements, and whether anything changed.
