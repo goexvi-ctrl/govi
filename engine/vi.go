@@ -41,16 +41,20 @@ type vimode struct {
 	replaying bool
 	changed   bool // current command modified the buffer
 
-	// undo state (nvi semantics): a literal 'u' toggles between undo and redo,
-	// because the undo is itself recorded as the last change. '.' repeats the
-	// last command, so after 'u' it repeats the undo, walking further back
-	// through the change history. redoNext is the toggle state for literal 'u';
-	// dotUndo records that the last command was an undo, so '.' continues undoing.
-	redoNext bool
-	dotUndo  bool
+	// undo state (nvi semantics). Undo/redo has a direction: a literal 'u'
+	// toggles the direction and takes one step, while '.' repeats the last
+	// command -- so after an undo/redo it takes another step in the SAME
+	// direction. Thus uuu... toggles undo/redo, and u then . . walks in one
+	// direction, until another 'u' flips it. lastStepRedo is the direction of
+	// the most recent step (true = redo/forward); dotUndo marks that the last
+	// command was an undo/redo so '.' continues stepping.
+	lastStepRedo bool
+	dotUndo      bool
 }
 
-func newVimode() *vimode { return &vimode{} }
+// newVimode initializes the machine. lastStepRedo starts true so the first 'u'
+// (which toggles the direction) performs an undo.
+func newVimode() *vimode { return &vimode{lastStepRedo: true} }
 
 func effCount(c int) int {
 	if c <= 0 {
@@ -102,9 +106,11 @@ func (m *vimode) finishCommand(e *Engine) {
 		if !m.replaying && len(m.rec) > 0 {
 			m.dot = append(m.dot[:0], m.rec...)
 		}
-		// A new change ends the undo toggle and makes '.' repeat this change.
+		// A new change ends the undo/redo sequence and makes '.' repeat this
+		// change; the next 'u' should undo (so reset direction to redo, which
+		// the 'u' toggle flips to undo).
 		m.dotUndo = false
-		m.redoNext = false
+		m.lastStepRedo = true
 	}
 	m.changed = false
 	m.count = 0
@@ -201,11 +207,15 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 }
 
 // doUndoCommand implements nvi's undo. A literal 'u' (fromDot == false) toggles
-// between undo and redo via redoNext; a dot-repeat (fromDot == true) always
-// undoes, so '.' after 'u' walks further back through the change history.
+// the undo/redo direction and steps; a dot-repeat (fromDot == true) steps again
+// in the current direction without toggling. So 'uuu' alternates undo/redo while
+// 'u..' continues in one direction until the next 'u' flips it.
 func (m *vimode) doUndoCommand(e *Engine, fromDot bool) {
 	s := e.scr
-	redo := !fromDot && m.redoNext
+	redo := m.lastStepRedo
+	if !fromDot {
+		redo = !m.lastStepRedo // literal 'u' toggles direction
+	}
 	var cur undo.Pos
 	var ok bool
 	if redo {
@@ -215,14 +225,13 @@ func (m *vimode) doUndoCommand(e *Engine, fromDot bool) {
 	}
 	if !ok {
 		e.fe.Bell()
-		m.redoNext = false
-		return
+		return // leave the direction unchanged at a history boundary
 	}
 	s.cursor = Pos{Line: cur.Line, Col: cur.Col}
 	s.clampCursor()
 	s.modified = true
-	m.redoNext = !redo // undid -> next 'u' redoes; redid -> next 'u' undoes
-	m.dotUndo = true   // the last command is now an undo; '.' continues undoing
+	m.lastStepRedo = redo
+	m.dotUndo = true
 }
 
 func (m *vimode) startOperator(op rune) {
@@ -361,9 +370,9 @@ func (m *vimode) editKey(e *Engine, r rune) {
 // repeatDot replays the last buffer-changing command. A count before '.'
 // overrides the count baked into the recorded command.
 func (m *vimode) repeatDot(e *Engine) {
-	// If the last command was an undo, '.' repeats the undo, walking back
-	// through history. The repeated command is 'u', which ignores any count, so
-	// a leading count on '.' does a single undo (matching nvi).
+	// If the last command was an undo/redo, '.' steps again in the current
+	// direction. The repeated command is 'u', which ignores any count, so a
+	// leading count on '.' does a single step (matching nvi).
 	if m.dotUndo {
 		m.count, m.haveCount = 0, false
 		m.doUndoCommand(e, true)

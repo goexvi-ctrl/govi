@@ -155,6 +155,42 @@ func TestViUndoDotWalksBack(t *testing.T) {
 	}
 }
 
+func TestViUndoRedoDirection(t *testing.T) {
+	// The full nvi model: with 3 changes, u u u . . u . . walks undo then redo.
+	// Make three single-char deletions producing distinct buffer states.
+	e, _, _ := newTestEngine(t, "abcd\n")
+	states := []string{"abcd"}
+	drive(e, "x") // bcd
+	states = append(states, bufText(e))
+	drive(e, "x") // cd
+	states = append(states, bufText(e))
+	drive(e, "x") // d
+	states = append(states, bufText(e))
+	// states: [abcd, bcd, cd, d]; current = d (3 changes applied)
+
+	want := func(label, w string) {
+		if got := bufText(e); got != w {
+			t.Fatalf("%s: got %q, want %q", label, got, w)
+		}
+	}
+	drive(e, "u")
+	want("u (undo 3)", states[2]) // cd
+	drive(e, "u")
+	want("u (redo 3)", states[3]) // d
+	drive(e, "u")
+	want("u (undo 3)", states[2]) // cd
+	drive(e, ".")
+	want("u.. (undo 2)", states[1]) // bcd
+	drive(e, ".")
+	want("u... (undo 1)", states[0]) // abcd
+	drive(e, "u")
+	want("u (redo 1)", states[1]) // bcd
+	drive(e, ".")
+	want(". (redo 2)", states[2]) // cd
+	drive(e, ".")
+	want(". (redo 3)", states[3]) // d
+}
+
 func TestViDotRepeat(t *testing.T) {
 	viCase(t, "x-dot", "hello\n", "x..", "lo")
 	viCase(t, "dw-dot", "a b c d\n", "dw.", "c d")

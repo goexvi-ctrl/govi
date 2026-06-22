@@ -42,6 +42,8 @@ var viConformanceCases = []struct {
 	{"undo-toggle-3", "hello\n", "xxuuu"},
 	{"undo-dot-walk", "hello\n", "xxxu.."},
 	{"undo-dot-count", "hello\n", "xxxxu2."},
+	{"undo-redo-direction", "abcd\n", "xxxuuu..u.."},
+	{"undo-redo-partial", "abcde\n", "xxxxu..u."},
 	{"insert-newline", "helloworld\n", "5lifoo\rbar\x1b"},
 }
 
