@@ -281,6 +281,7 @@ func (e *Engine) exWrite(c *exCmd) error {
 	}
 	if path == e.scr.name {
 		e.scr.modified = false
+		e.removeRecovery() // saved: no recovery needed
 	}
 	e.scr.msg = fmt.Sprintf("%q: %d lines, %d bytes", filepath.Base(path), n, b)
 	e.scr.msgKind = MsgInfo
@@ -310,6 +311,7 @@ func (e *Engine) exQuit(c *exCmd) error {
 	if e.scr.modified && !c.force {
 		return fmt.Errorf("No write since last change (use ! to override)")
 	}
+	e.removeRecovery() // clean exit (or explicit discard)
 	e.quit = true
 	return nil
 }

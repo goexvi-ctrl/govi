@@ -106,7 +106,7 @@ bug-for-bug parity; rows are validated against the nvi oracle where marked.
 | `:u[ndo]` | yes | ❌ | (vi `u` works) |
 | `:so[urce]` `:mk[exrc]` | yes | ❌ | |
 | `:cd`/`:chdir` | yes | ❌ | |
-| `:pre[serve]` `:rec[over]` | yes | ❌ | crash recovery |
+| `:pre[serve]` `:rec[over]` | yes | ✅ | crash recovery (govi format) |
 | `:ve[rsion]` `:vi[usage]` `:exu[sage]` | yes | ❌ | |
 | `:@`/`:*` (exec buffer) `:>>` etc. | yes | 🟡 | partial |
 
@@ -149,7 +149,7 @@ queryable, and shown by `:set all`. The ones that drive behavior:
 | Line wrapping | yes | 🟡 | wraps; no `@`-fill for partial bottom line |
 | Cursor column maintenance | yes | ✅✔ | display column, sticky `$` |
 | Embeddable engine boundary | function-pointer table | ✅ | Go `Frontend`/`View`; tcell + headless frontends |
-| Crash recovery (`-r`) | yes | ❌ | |
+| Crash recovery (`-r`) | yes | ✅ | recovery file in recdir; `:preserve`/`:recover`/`nvi -r`; govi's own format |
 | Split screens / windows | yes | ❌ | |
 | File encodings | iconv | 🟡 | UTF-8 only |
 | Perl / Tcl scripting | yes | — | out of scope |

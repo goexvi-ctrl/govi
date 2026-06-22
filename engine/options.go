@@ -73,6 +73,7 @@ var optDefs = []optDef{
 	{name: "print", typ: optStr},
 	{name: "prompt", typ: optBool, dB: true},
 	{name: "readonly", abbr: "ro", typ: optBool},
+	{name: "recdir", typ: optStr, dS: "/var/tmp/vi.recover"},
 	{name: "redraw", abbr: "re", typ: optBool},
 	{name: "remap", typ: optBool, dB: true},
 	{name: "report", typ: optNum, dN: 5},

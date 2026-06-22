@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"govi/engine/buffer"
 	"govi/engine/mark"
@@ -33,6 +34,10 @@ type Engine struct {
 
 	file *os.File // open handle backing a paged buffer, if any
 	quit bool
+
+	recoverPath  string    // this session's recovery file, "" if none yet
+	recoverSync  time.Time // last time the recovery file was written
+	recoverDirty bool      // changes exist that the recovery file lacks
 }
 
 // New returns an Engine that renders through fe. Call Open and Resize before
@@ -64,6 +69,7 @@ func (e *Engine) setBuffer(store buffer.LineStore, name string) {
 // replaceBuffer swaps the file being edited while preserving editor-global
 // state (options, maps, registers) and geometry, as vi does across :e / :n.
 func (e *Engine) replaceBuffer(store buffer.LineStore, name string) {
+	e.removeRecovery() // discard the previous file's recovery state
 	s := e.scr
 	s.store = store
 	s.log = undo.New(store)
@@ -102,6 +108,10 @@ func (e *Engine) Open(path string) error {
 	e.replaceBuffer(store, path)
 	e.scr.msg = fmt.Sprintf("%q: %d lines", filepath.Base(path), store.Lines())
 	e.scr.msgKind = MsgInfo
+	if e.hasRecovery(path) {
+		e.scr.msg = fmt.Sprintf("%q: recovery file exists; use :recover to restore it", filepath.Base(path))
+		e.scr.msgKind = MsgInfo
+	}
 	return nil
 }
 

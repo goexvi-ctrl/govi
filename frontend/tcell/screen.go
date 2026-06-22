@@ -57,6 +57,10 @@ func (f *Frontend) Close() {
 // map prefix (the 'timeout' behavior).
 const mapTimeout = 500 * time.Millisecond
 
+// recoverFlushDelay is how long after the user pauses to flush the recovery
+// file with any changes the throttled sync has not yet captured.
+const recoverFlushDelay = 2 * time.Second
+
 // Run feeds terminal events to the engine until a quit command is issued. When
 // an ambiguous map prefix is pending it arms a timer so the prefix resolves
 // instead of hanging.
@@ -71,11 +75,17 @@ func (f *Frontend) Run() {
 
 	for !f.eng.ShouldQuit() {
 		var timer <-chan time.Time
-		if f.eng.MatchPending() {
+		recoverFlush := false
+		switch {
+		case f.eng.MatchPending():
 			// showmatch flash: matchtime is in tenths of a second.
 			timer = time.After(time.Duration(f.eng.MatchTime()) * 100 * time.Millisecond)
-		} else if f.eng.MapPending() {
+		case f.eng.MapPending():
 			timer = time.After(mapTimeout)
+		case f.eng.NeedsRecoverySync():
+			// Flush the recovery file shortly after the user pauses.
+			timer = time.After(recoverFlushDelay)
+			recoverFlush = true
 		}
 		select {
 		case ev := <-events:
@@ -84,7 +94,11 @@ func (f *Frontend) Run() {
 			}
 			f.handleEvent(ev)
 		case <-timer:
-			f.eng.Input(engine.TimeoutEvent{})
+			if recoverFlush {
+				f.eng.SyncRecovery()
+			} else {
+				f.eng.Input(engine.TimeoutEvent{})
+			}
 		}
 	}
 }

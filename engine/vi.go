@@ -379,6 +379,7 @@ func (m *vimode) charArg(e *Engine, ev KeyEvent) {
 				e.scr.msg, e.scr.msgKind = err.Error(), MsgError
 			}
 		case 'Q': // ZQ: quit without writing
+			e.removeRecovery()
 			e.quit = true
 		default:
 			e.fe.Bell()
@@ -609,6 +610,7 @@ func (e *Engine) beginChange() {
 func (e *Engine) endChange() {
 	e.scr.log.End(undo.Pos{Line: e.scr.cursor.Line, Col: e.scr.cursor.Col})
 	e.scr.modified = true
+	e.noteRecovery()
 }
 
 // normalizeKey maps special keys to their command-mode rune equivalents so the
