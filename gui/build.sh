@@ -16,7 +16,8 @@ build="$here/build"
 mkdir -p "$build"
 
 echo "==> building libgovi.a (cgo c-archive)"
-( cd "$root" && go build -buildmode=c-archive -o "$build/libgovi.a" ./gui/bridge )
+version_ldflags=$("$root/scripts/version-ldflags.sh")
+( cd "$root" && go build -ldflags "$version_ldflags" -buildmode=c-archive -o "$build/libgovi.a" ./gui/bridge )
 
 echo "==> compiling and linking the Swift app"
 swiftc \
