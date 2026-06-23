@@ -56,10 +56,8 @@ func (e *Engine) ExFeedLine(line string) []string {
 		return nil
 	}
 	if trimmed == "" {
-		// A bare <enter> steps to the next line and prints it.
-		if err := e.exEnterAdvance(); err != nil {
-			e.exOut = append(e.exOut, err.Error())
-		}
+		text, _ := e.ExStep()
+		e.exOut = append(e.exOut, text)
 		return e.exOut
 	}
 	if err := e.exExecute(line); err != nil {
@@ -71,6 +69,20 @@ func (e *Engine) ExFeedLine(line string) []string {
 	return e.exOut
 }
 
+// ExStep advances to the next line for a bare <enter> at the ex prompt, the way
+// ex steps through a file. It returns the next line's text and ok=true, or the
+// end-of-file message with ok=false. On a successful step the line replaces the
+// ":" prompt the host already drew (the host should overwrite the prompt line);
+// on failure the prompt stays and the message is shown below it.
+func (e *Engine) ExStep() (text string, ok bool) {
+	next := e.scr.cursor.Line + 1
+	if next > e.scr.store.Lines() {
+		return "at end-of-file", false
+	}
+	e.scr.cursor = Pos{Line: next, Col: 0}
+	return string(e.scr.lineRunes(next)), true
+}
+
 // exPrintLines prints lines [l1, l2] to the ex output and sets the current line
 // to the last one printed -- the ex behavior for a bare line address.
 func (e *Engine) exPrintLines(l1, l2 int64) error {
@@ -79,16 +91,6 @@ func (e *Engine) exPrintLines(l1, l2 int64) error {
 	}
 	e.scr.cursor = Pos{Line: clampLine(e.scr, l2), Col: 0}
 	return nil
-}
-
-// exEnterAdvance implements a bare <enter> at the ex prompt: advance to the next
-// line and print it, stepping through the file one line at a time.
-func (e *Engine) exEnterAdvance() error {
-	next := e.scr.cursor.Line + 1
-	if next > e.scr.store.Lines() {
-		return fmt.Errorf("at end-of-file")
-	}
-	return e.exPrintLines(next, next)
 }
 
 // exitExMode returns to vi command mode.
@@ -268,19 +270,26 @@ func (e *Engine) exModeKey(ev KeyEvent) {
 	case ev.Key == KeyEnter || ev.Rune == '\r' || ev.Rune == '\n':
 		cmd := string(s.colon)
 		s.colon = nil
-		e.exEcho(":" + cmd)
 		trimmed := strings.TrimSpace(cmd)
 		switch trimmed {
 		case "vi", "visual", "vis":
+			e.exEcho(":" + cmd)
 			e.exitExMode()
 			return
 		}
 		if trimmed == "" {
-			if err := e.exEnterAdvance(); err != nil {
-				e.exEcho(err.Error())
+			// Bare <enter> steps to the next line. On success the line replaces
+			// the prompt (no ":" echoed); at EOF the prompt stays and the message
+			// is shown below it.
+			if text, ok := e.ExStep(); ok {
+				e.exEcho(text)
+			} else {
+				e.exEcho(":")
+				e.exEcho(text)
 			}
 			return
 		}
+		e.exEcho(":" + cmd)
 		if err := e.exExecute(cmd); err != nil {
 			e.exEcho(err.Error())
 		} else if s.msg != "" {

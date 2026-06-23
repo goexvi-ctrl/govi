@@ -146,7 +146,8 @@ func (f *Frontend) runExMode() {
 	fmt.Fprintln(out) // separate from the full-screen display we just left
 
 	for f.eng.ExActive() && !f.eng.ShouldQuit() {
-		fmt.Fprint(out, f.eng.ExPrompt())
+		prompt := f.eng.ExPrompt()
+		fmt.Fprint(out, prompt)
 		line, err := in.ReadString('\n')
 		if err != nil { // EOF (^D) or read error: return to visual mode
 			fmt.Fprintln(out)
@@ -154,6 +155,20 @@ func (f *Frontend) runExMode() {
 			return
 		}
 		line = strings.TrimRight(line, "\r\n")
+
+		// A bare <enter> at the ":" prompt steps to the next line. nvi replaces
+		// the prompt with that line, so the terminal (which already echoed the
+		// newline after ":") is moved back up to overwrite the prompt line; a
+		// failed step leaves the ":" and prints the message below it.
+		if prompt == ":" && strings.TrimSpace(line) == "" {
+			if text, ok := f.eng.ExStep(); ok {
+				fmt.Fprintf(out, "\x1b[A\r\x1b[K%s\r\n", text)
+			} else {
+				fmt.Fprintln(out, text)
+			}
+			continue
+		}
+
 		for _, o := range f.eng.ExFeedLine(line) {
 			fmt.Fprintln(out, o)
 		}

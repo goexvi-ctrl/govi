@@ -113,3 +113,26 @@ func TestExColonBareAddressMoves(t *testing.T) {
 		t.Fatalf("colon :3 moved to %d, want 3", e.scr.cursor.Line)
 	}
 }
+
+func TestExStepTranscriptNoColons(t *testing.T) {
+	// The GUI (event/transcript) path: stepping with <enter> must not insert ":"
+	// lines between the printed lines (nvi overwrites the prompt with the line).
+	e, _, _ := newTestEngine(t, "Line 1\nLine 2\nLine 3\n")
+	drive(e, "Q1\r\r\r")
+	tr := (view{e.scr}).ExTranscript()
+	want := []string{":1", "Line 1", "Line 2", "Line 3"}
+	if len(tr) != len(want) {
+		t.Fatalf("transcript = %v, want %v", tr, want)
+	}
+	for i := range want {
+		if tr[i] != want[i] {
+			t.Fatalf("transcript[%d] = %q, want %q (full %v)", i, tr[i], want[i], tr)
+		}
+	}
+	// One more <enter> is at EOF: the prompt stays, message below.
+	drive(e, "\r")
+	tr = (view{e.scr}).ExTranscript()
+	if tr[len(tr)-2] != ":" || tr[len(tr)-1] != "at end-of-file" {
+		t.Fatalf("EOF tail = %v", tr[len(tr)-2:])
+	}
+}
