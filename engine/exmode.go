@@ -49,10 +49,18 @@ func (e *Engine) ExFeedLine(line string) []string {
 		return e.exOut
 	}
 
-	switch strings.TrimSpace(line) {
+	trimmed := strings.TrimSpace(line)
+	switch trimmed {
 	case "vi", "visual", "vis":
 		e.exitExMode()
 		return nil
+	}
+	if trimmed == "" {
+		// A bare <enter> steps to the next line and prints it.
+		if err := e.exEnterAdvance(); err != nil {
+			e.exOut = append(e.exOut, err.Error())
+		}
+		return e.exOut
 	}
 	if err := e.exExecute(line); err != nil {
 		e.exOut = append(e.exOut, err.Error())
@@ -61,6 +69,26 @@ func (e *Engine) ExFeedLine(line string) []string {
 		e.scr.msg = ""
 	}
 	return e.exOut
+}
+
+// exPrintLines prints lines [l1, l2] to the ex output and sets the current line
+// to the last one printed -- the ex behavior for a bare line address.
+func (e *Engine) exPrintLines(l1, l2 int64) error {
+	for ln := l1; ln <= l2; ln++ {
+		e.printLine(string(e.scr.lineRunes(ln)))
+	}
+	e.scr.cursor = Pos{Line: clampLine(e.scr, l2), Col: 0}
+	return nil
+}
+
+// exEnterAdvance implements a bare <enter> at the ex prompt: advance to the next
+// line and print it, stepping through the file one line at a time.
+func (e *Engine) exEnterAdvance() error {
+	next := e.scr.cursor.Line + 1
+	if next > e.scr.store.Lines() {
+		return fmt.Errorf("at end-of-file")
+	}
+	return e.exPrintLines(next, next)
 }
 
 // exitExMode returns to vi command mode.
@@ -241,9 +269,16 @@ func (e *Engine) exModeKey(ev KeyEvent) {
 		cmd := string(s.colon)
 		s.colon = nil
 		e.exEcho(":" + cmd)
-		switch strings.TrimSpace(cmd) {
+		trimmed := strings.TrimSpace(cmd)
+		switch trimmed {
 		case "vi", "visual", "vis":
 			e.exitExMode()
+			return
+		}
+		if trimmed == "" {
+			if err := e.exEnterAdvance(); err != nil {
+				e.exEcho(err.Error())
+			}
 			return
 		}
 		if err := e.exExecute(cmd); err != nil {

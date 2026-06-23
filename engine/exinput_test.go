@@ -80,3 +80,36 @@ func TestExLineMode(t *testing.T) {
 		t.Fatal("visual should leave ex mode")
 	}
 }
+
+func TestExBareAddressPrints(t *testing.T) {
+	e, _, _ := newTestEngine(t, "one\ntwo\nthree\n")
+	drive(e, "Q")
+	// A bare address prints that line and makes it current.
+	out := e.ExFeedLine("1")
+	if len(out) != 1 || out[0] != "one" {
+		t.Fatalf("bare addr print = %v", out)
+	}
+	if e.scr.cursor.Line != 1 {
+		t.Fatalf("current line = %d, want 1", e.scr.cursor.Line)
+	}
+	// A bare <enter> steps to the next line and prints it.
+	if out := e.ExFeedLine(""); len(out) != 1 || out[0] != "two" {
+		t.Fatalf("enter step 1 = %v", out)
+	}
+	if out := e.ExFeedLine(""); len(out) != 1 || out[0] != "three" {
+		t.Fatalf("enter step 2 = %v", out)
+	}
+	// At end-of-file, another <enter> errors instead of advancing.
+	if out := e.ExFeedLine(""); len(out) != 1 || out[0] != "at end-of-file" {
+		t.Fatalf("enter at EOF = %v", out)
+	}
+}
+
+func TestExColonBareAddressMoves(t *testing.T) {
+	// From the vi colon line (not ex mode), a bare address still just moves.
+	e, _, _ := newTestEngine(t, "one\ntwo\nthree\n")
+	drive(e, ":3\r")
+	if e.scr.cursor.Line != 3 {
+		t.Fatalf("colon :3 moved to %d, want 3", e.scr.cursor.Line)
+	}
+}

@@ -95,8 +95,13 @@ func (e *Engine) exExecute(line string) error {
 		return nil
 	}
 	if c.def == nil {
-		// An address with no command moves the cursor to that line.
 		if c.addrCount > 0 {
+			// In ex (line) mode a bare address prints the line(s) and makes the
+			// last one current; in vi it just moves the cursor (the line is
+			// already visible on screen).
+			if e.scr.mode == ModeExText {
+				return e.exPrintLines(c.addr1, c.addr2)
+			}
 			e.gotoLine(c.addr2)
 			return nil
 		}
