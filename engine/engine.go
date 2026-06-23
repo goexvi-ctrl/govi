@@ -263,6 +263,7 @@ func (e *Engine) interrupt() {
 	if s.mode == ModeExColon {
 		s.mode = ModeCommand
 		s.colon = nil
+		s.filterL1, s.filterL2 = 0, 0
 	}
 	e.fe.Bell()
 }
@@ -293,6 +294,7 @@ func (e *Engine) enterCmdline(prefix rune) {
 	e.scr.mode = ModeExColon
 	e.scr.cmdPrefix = prefix
 	e.scr.colon = nil
+	e.scr.filterL1, e.scr.filterL2 = 0, 0
 }
 
 func (e *Engine) cmdlineKey(ev KeyEvent) {
@@ -307,6 +309,7 @@ func (e *Engine) cmdlineKey(ev KeyEvent) {
 	case ev.Key == KeyEscape:
 		s.mode = ModeCommand
 		s.colon = nil
+		s.filterL1, s.filterL2 = 0, 0
 	case ev.Key == KeyBackspace || ev.Rune == 0x7f || ev.Rune == '\b':
 		if len(s.colon) == 0 {
 			s.mode = ModeCommand // backspacing past the prompt leaves the line
@@ -329,6 +332,17 @@ func (e *Engine) runCmdline(prefix rune, line string) {
 		}
 	case '?':
 		if err := e.startSearch(line, searchBack); err != nil {
+			e.scr.msg, e.scr.msgKind = err.Error(), MsgError
+		}
+	case '!':
+		l1, l2 := e.scr.filterL1, e.scr.filterL2
+		e.scr.filterL1, e.scr.filterL2 = 0, 0
+		cmd := strings.TrimSpace(line)
+		if cmd == "" {
+			e.scr.msg, e.scr.msgKind = "Usage: [range]!command", MsgError
+			return
+		}
+		if err := e.filterLines(l1, l2, cmd); err != nil {
 			e.scr.msg, e.scr.msgKind = err.Error(), MsgError
 		}
 	default:

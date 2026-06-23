@@ -72,11 +72,15 @@ func TestAlternateFile(t *testing.T) {
 func TestShellFilter(t *testing.T) {
 	exCase(t, "sort", "banana\napple\ncherry\n", []string{"%!sort"}, "apple\nbanana\ncherry")
 	exCase(t, "filter-range", "3\n1\n2\nx\n", []string{"1,3!sort"}, "1\n2\n3\nx")
+	exCase(t, "filter-error-output", "package main\n\nnot go\n", []string{"%!sh -c 'printf \"%s\\n\" \"1:3: expected declaration, found not\" >&2; exit 2'"}, "1:3: expected declaration, found not")
 }
 
 func TestViFilterOperator(t *testing.T) {
 	e, _, _ := newTestEngine(t, "c\nb\na\n")
-	drive(e, "!G")     // filter to end of file: opens colon line ":1,3!"
+	drive(e, "!G") // filter to end of file: nvi prompts with "!"
+	if msg, _ := (view{e.scr}).Message(); msg != "!" {
+		t.Fatalf("filter prompt = %q, want !", msg)
+	}
 	drive(e, "sort\r") // type the command
 	if bufText(e) != "a\nb\nc" {
 		t.Fatalf("!G sort: got %q", bufText(e))

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -10,13 +11,15 @@ import (
 // a shell command, replacing them with its output; :!cmd runs a command without
 // filtering. This corresponds to nvi's ex/ex_bang.c and filter handling.
 
-// runShell runs cmd via /bin/sh, feeding input on stdin, and returns stdout.
+// runShell runs cmd via /bin/sh, feeding input on stdin. It returns combined
+// stdout and stderr, matching nvi's filter pipes (ex_filter.c dup2's both to
+// the utility output pipe).
 func runShell(cmd, input string) (string, error) {
 	c := exec.Command("/bin/sh", "-c", cmd)
 	if input != "" {
 		c.Stdin = strings.NewReader(input)
 	}
-	out, err := c.Output()
+	out, err := c.CombinedOutput()
 	return string(out), err
 }
 
@@ -55,7 +58,12 @@ func (e *Engine) filterLines(l1, l2 int64, cmd string) error {
 	}
 	out, err := runShell(cmd, in.String())
 	if err != nil {
-		return fmt.Errorf("%s: %v", cmd, err)
+		// nvi still replaces the filtered lines with stdout/stderr even when
+		// the utility exits non-zero (ex_filter.c reads the pipe before wait).
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			return fmt.Errorf("%s: %v", cmd, err)
+		}
 	}
 	outLines := splitOutputLines(out)
 
@@ -76,12 +84,13 @@ func (e *Engine) filterLines(l1, l2 int64, cmd string) error {
 	return nil
 }
 
-// startFilter implements the vi ! operator: open the colon line prefilled with
-// the line range so the user can type the filter command.
+// startFilter implements the vi ! operator: prompt with "!" on the status line
+// while the filter command is entered (nvi's v_filter / v_tcmd).
 func (e *Engine) startFilter(l1, l2 int64) {
 	e.scr.mode = ModeExColon
-	e.scr.cmdPrefix = ':'
-	e.scr.colon = []rune(fmt.Sprintf("%d,%d!", l1, l2))
+	e.scr.cmdPrefix = '!'
+	e.scr.colon = nil
+	e.scr.filterL1, e.scr.filterL2 = l1, l2
 }
 
 func firstLine(s string) string {

@@ -30,10 +30,14 @@ type screen struct {
 	msgKind MessageKind
 
 	// colon holds the in-progress command line while mode == ModeExColon;
-	// cmdPrefix is the prompt character (':', '/', or '?') that determines how
-	// the line is executed on Enter.
+	// cmdPrefix is the prompt character (':', '/', '?', or '!') that determines
+	// how the line is executed on Enter.
 	colon     []rune
 	cmdPrefix rune
+
+	// filterL1/filterL2 hold the line range for a vi ! filter (v_filter in
+	// vi/v_ex.c); the status line shows "!" while the command is typed.
+	filterL1, filterL2 int64
 
 	// exTranscript is the scrolling output shown while mode == ModeExText.
 	exTranscript []string
