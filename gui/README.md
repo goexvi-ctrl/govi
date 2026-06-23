@@ -62,9 +62,12 @@ This produces `gui/build/Govi.app`.
 Use the `govi` command-line launcher (`gui/govi`):
 
 ```sh
-gui/govi file1 file2 ...   # opens the files, creating any that don't exist
+gui/govi file1 file2 ...   # opens the files as tabs in one window
 gui/govi                   # just launch / focus Govi.app
 ```
+
+Multiple files passed together open as **tabs in a single window**. A file that
+is already open is focused rather than duplicated.
 
 It launches Govi.app if needed, or hands the files to an **already-running**
 instance via the macOS open-documents event (no custom IPC), and brings it to

@@ -44,16 +44,30 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         return w
     }
 
-    // openOrFocus brings an existing window for path to the front if one exists,
-    // otherwise opens it. Backs command-line "open these files" so a second
-    // request for an already-open file does not duplicate it.
-    static func openOrFocus(path: String) {
-        let p = (path as NSString).standardizingPath
-        if !p.isEmpty, let existing = windows.first(where: { $0.path == p }) {
-            existing.window.makeKeyAndOrderFront(nil)
-            return
+    // existing returns the window already editing path, if any.
+    private static func existing(path p: String) -> EditorWindow? {
+        p.isEmpty ? nil : windows.first(where: { $0.path == p })
+    }
+
+    // openGroup opens the given paths together: the first in a window, and the
+    // rest as tabs in that same window -- so `govi a b c` yields one window with
+    // three tabs. A file that is already open is focused in place rather than
+    // duplicated, and becomes the group's anchor if it is first.
+    static func openGroup(paths: [String]) {
+        var anchor: NSWindow?
+        for path in paths {
+            let p = (path as NSString).standardizingPath
+            if let w = existing(path: p) {
+                w.window.makeKeyAndOrderFront(nil)
+                if anchor == nil { anchor = w.window }
+                continue
+            }
+            if let a = anchor {
+                openTab(in: a, path: p)
+            } else if let w = open(path: p) {
+                anchor = w.window
+            }
         }
-        open(path: p)
     }
 
     // openTab presents path as a new tab in keyWindow's tab group, or as a
@@ -108,10 +122,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Files passed by direct exec (Govi.app/Contents/MacOS/Govi file ...).
         // Files passed via `open`/Finder arrive through application(_:open:).
         let cwd = FileManager.default.currentDirectoryPath
-        for arg in CommandLine.arguments.dropFirst() {
-            let p = (arg as NSString).isAbsolutePath ? arg : "\(cwd)/\(arg)"
-            EditorWindow.openOrFocus(path: p)
+        let paths = CommandLine.arguments.dropFirst().map { arg -> String in
+            (arg as NSString).isAbsolutePath ? arg : "\(cwd)/\(arg)"
         }
+        EditorWindow.openGroup(paths: Array(paths))
         // If nothing was opened (no args and no open event), show an empty
         // window. Deferred so any launch-time open event is handled first.
         DispatchQueue.main.async {
@@ -127,9 +141,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // delivering to the *running* instance when one exists, which is what makes
     // the command-line `govi` tool reuse a running app.
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.isFileURL {
-            EditorWindow.openOrFocus(path: url.path)
-        }
+        // Files passed together (`govi a b c`) open as tabs in one window.
+        EditorWindow.openGroup(paths: urls.filter { $0.isFileURL }.map { $0.path })
         NSApp.activate(ignoringOtherApps: true)
     }
 
