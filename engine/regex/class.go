@@ -8,6 +8,22 @@ import (
 // parseClass parses a [...] bracket expression. The opening '[' is at the
 // current position.
 func (p *parser) parseClass() (node, error) {
+	// Spencer's "Dept of Truly Sickening Special-Case Kludges": [[:<:]] and
+	// [[:>:]] are not character classes at all but word-boundary anchors,
+	// equivalent to \< and \>. nvi (the regex it uses) supports these, so we do
+	// too.
+	if p.peek() == '[' && p.peekAt(1) == '[' && p.peekAt(2) == ':' &&
+		p.peekAt(4) == ':' && p.peekAt(5) == ']' && p.peekAt(6) == ']' {
+		switch p.peekAt(3) {
+		case '<':
+			p.skip(7)
+			return wordStartNode{}, nil
+		case '>':
+			p.skip(7)
+			return wordEndNode{}, nil
+		}
+	}
+
 	p.next() // '['
 	neg := false
 	if p.peek() == '^' {

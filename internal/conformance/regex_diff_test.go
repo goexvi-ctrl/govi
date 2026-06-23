@@ -63,6 +63,10 @@ var regexCases = []struct {
 	{"word-start", "the theme\n", []string{`%s/\<the/X/g`}},
 	{"word-end", "the theme bathe\n", []string{`%s/the\>/X/g`}},
 	{"word-both", "a cat category\n", []string{`%s/\<cat\>/X/g`}},
+	// Spencer's [[:<:]] / [[:>:]] word-boundary kludge (not POSIX classes).
+	{"bracket-word-start", "cat scatter cat\n", []string{`%s/[[:<:]]cat/X/g`}},
+	{"bracket-word-end", "cat scatter cat\n", []string{`%s/cat[[:>:]]/X/g`}},
+	{"bracket-word-both", "cat category cat\n", []string{`%s/[[:<:]]cat[[:>:]]/X/g`}},
 
 	// empty matches and global behavior
 	{"empty-global", "abc\n", []string{`%s/x*/-/g`}},

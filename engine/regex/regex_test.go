@@ -82,3 +82,33 @@ func TestMatchLast(t *testing.T) {
 		t.Fatalf("MatchLast = %+v ok=%v, want start 4", m, ok)
 	}
 }
+
+// TestWordBoundaryBracketKludge covers Spencer's [[:<:]] / [[:>:]] forms, which
+// are word-boundary anchors (equivalent to \< / \>), not character classes.
+func TestWordBoundaryBracketKludge(t *testing.T) {
+	cases := []struct {
+		pat, in    string
+		start, end int
+	}{
+		{`[[:<:]]cat`, "scatter cat", 8, 11},        // skips "cat" inside "scatter"
+		{`cat[[:>:]]`, "category cat", 9, 12},       // skips "cat" starting "category"
+		{`[[:<:]]cat[[:>:]]`, "category cat", 9, 12}, // whole word only
+	}
+	for _, c := range cases {
+		re := mustCompile(t, c.pat, false)
+		in := []rune(c.in)
+		got := -1
+		for i := 0; i <= len(in); i++ {
+			if m, ok := re.MatchAt(in, i); ok {
+				got = m.Start
+				if m.Start != c.start || m.End != c.end {
+					t.Errorf("%q on %q: [%d,%d), want [%d,%d)", c.pat, c.in, m.Start, m.End, c.start, c.end)
+				}
+				break
+			}
+		}
+		if got == -1 {
+			t.Errorf("%q on %q: no match", c.pat, c.in)
+		}
+	}
+}

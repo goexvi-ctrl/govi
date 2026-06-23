@@ -156,7 +156,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | Undo / redo | yes | ✅✔ | multi-level; nvi directional `u`/`.` |
 | Marks | yes | 🟡 | line-granular fixups; intra-line column fixup partial |
 | Registers / cut buffers | yes | ✅✔ | named a-z (A-Z append), numbered 1-9 |
-| Regex engine | BRE + extensions | ✅✔ | backrefs, `\<`/`\>`, intervals, classes; `+?(){}\|` and `\+\?\w\W` literal as in nvi BRE. Pinned by a 50-case `:s`/`:g` battery vs the oracle. (nvi's build has broken POSIX `[[:class:]]`; govi implements them correctly — a deliberate divergence.) |
+| Regex engine | BRE + extensions | ✅✔ | backrefs, `\<`/`\>` (incl. Spencer's `[[:<:]]`/`[[:>:]]` word-boundary kludge), intervals, classes; `+?(){}\|` and `\+\?\w\W` literal as in nvi BRE. Pinned by a ~55-case `:s`/`:g` battery vs the oracle. (The Homebrew nvi binary's POSIX `[[:class:]]` is broken — Spencer's source is correct — so govi follows the source, a deliberate divergence from that binary.) |
 | Search | yes | ✅✔ | line-oriented, wrapscan |
 | Maps / abbreviations | yes | 🟡 | non-recursive (noremap) |
 | Multiple files (arg list) | yes | ✅✔ | |

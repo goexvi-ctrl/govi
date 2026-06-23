@@ -18,6 +18,7 @@ func (p *parser) peekAt(i int) rune {
 	return p.src[p.pos+i]
 }
 func (p *parser) next() rune { r := p.src[p.pos]; p.pos++; return r }
+func (p *parser) skip(n int)  { p.pos += n }
 
 // atGroupClose reports whether the parser is at a "\)" sequence.
 func (p *parser) atGroupClose() bool { return p.peek() == '\\' && p.peekAt(1) == ')' }
