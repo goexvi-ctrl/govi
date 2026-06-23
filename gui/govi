@@ -12,7 +12,11 @@
 # script, this script's own directory, then /Applications.
 set -eu
 
+
 self=$(cd "$(dirname "$0")" && pwd)
+
+# force it to look where we build it as govi might be copied elsewhere
+self=/Users/claude/src/nvi/govi/gui
 
 app="${GOVI_APP:-}"
 if [ -z "$app" ]; then
