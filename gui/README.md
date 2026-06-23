@@ -68,6 +68,14 @@ gui/build/Govi.app/Contents/MacOS/Govi /path/to/file
 Use it like vi: `i` to insert, `Esc`, `:w`, `:q`, `dd`, `/pattern`, etc. All
 editing is handled by the embedded engine.
 
+### Ex (Q) mode
+
+Pressing `Q` enters line-oriented ex mode. A terminal leaves the alternate
+screen for a scrolling line interface; the GUI equivalent is the window turning
+into a scrolling transcript that grows downward — the `:` prompt and the line
+you are typing sit just below the previous output (not pinned to the bottom),
+and older lines scroll off the top as it fills. `:visual` returns to the editor.
+
 ### Windows
 
 The app is multi-window and multi-tab — every window *and* every tab has its own

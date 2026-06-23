@@ -122,24 +122,27 @@ func (g *Grid) composeOverlay(lines []string) {
 	g.CursorVisible = false
 }
 
-// composeExMode draws the ex-mode scrolling transcript with the prompt on the
-// bottom line and the cursor at the end of the prompt.
+// composeExMode renders ex (Q) mode the way a GUI equivalent of nvi's line
+// terminal looks: the whole window is a scrolling transcript that grows
+// downward, with the current input line (the ":" prompt plus what is being
+// typed) immediately after the output -- not pinned to the bottom. When the
+// content overflows, the oldest lines scroll off the top, and the cursor sits on
+// the input line just after the prompt.
 func (g *Grid) composeExMode(v engine.View) {
 	prompt, _ := v.Message()
-	transcript := v.ExTranscript()
-	avail := g.Rows - 1
+	lines := append(append([]string{}, v.ExTranscript()...), prompt)
+
 	start := 0
-	if len(transcript) > avail {
-		start = len(transcript) - avail
+	if len(lines) > g.Rows {
+		start = len(lines) - g.Rows // overflow: show the tail (scroll up)
 	}
 	y := 0
-	for _, line := range transcript[start:] {
+	for _, line := range lines[start:] {
 		g.drawText(line, y)
 		y++
 	}
-	g.drawText(prompt, g.Rows-1)
 	g.CursorX = len([]rune(prompt))
-	g.CursorY = g.Rows - 1
+	g.CursorY = y - 1 // the input line is the last one drawn
 	g.CursorVisible = true
 }
 

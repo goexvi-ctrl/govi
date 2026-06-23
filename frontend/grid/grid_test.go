@@ -10,12 +10,13 @@ import (
 // fakeView is a minimal engine.View for exercising the composer without a full
 // engine.
 type fakeView struct {
-	lines  []string
-	cursor engine.Pos
-	mode   engine.Mode
-	top    int64
-	msg    string
-	number bool
+	lines      []string
+	cursor     engine.Pos
+	mode       engine.Mode
+	top        int64
+	msg        string
+	number     bool
+	transcript []string
 }
 
 func (f *fakeView) LineCount() int64 { return int64(len(f.lines)) }
@@ -36,7 +37,7 @@ func (f *fakeView) Message() (string, engine.MessageKind) {
 func (f *fakeView) Name() string            { return "" }
 func (f *fakeView) Modified() bool          { return false }
 func (f *fakeView) Number() bool            { return f.number }
-func (f *fakeView) ExTranscript() []string  { return nil }
+func (f *fakeView) ExTranscript() []string  { return f.transcript }
 func (f *fakeView) PendingOutput() []string { return nil }
 func (f *fakeView) MatchHighlight() (engine.Pos, bool) {
 	return engine.Pos{}, false
@@ -177,6 +178,43 @@ func TestComposeSelection(t *testing.T) {
 	}
 	if rev(2, 1) {
 		t.Error("line 2 col 2 should not be selected")
+	}
+}
+
+func TestComposeExMode(t *testing.T) {
+	// Ex mode grows downward: transcript then the current ":" input line,
+	// contiguous and top-anchored while it fits, cursor on the input line.
+	v := &fakeView{
+		mode:       engine.ModeExText,
+		transcript: []string{":1,2p", "one", "two"},
+		msg:        ":a",
+	}
+	g := Compose(v, 6, 20)
+	for i, want := range []string{":1,2p", "one", "two", ":a"} {
+		if got := gridRow(&g, i); got != want {
+			t.Errorf("ex row %d = %q, want %q", i, got, want)
+		}
+	}
+	if !g.CursorVisible || g.CursorY != 3 || g.CursorX != 2 {
+		t.Errorf("ex cursor = (%d,%d) vis=%v, want (2,3)", g.CursorX, g.CursorY, g.CursorVisible)
+	}
+}
+
+func TestComposeExModeScrolls(t *testing.T) {
+	// More lines than rows: the oldest scroll off, the input line stays at the
+	// bottom of the visible region.
+	v := &fakeView{
+		mode:       engine.ModeExText,
+		transcript: []string{"a", "b", "c", "d", "e"},
+		msg:        ":",
+	}
+	g := Compose(v, 3, 20) // only 3 rows visible
+	// lines = a b c d e : (6); tail of 3 = d e :
+	if gridRow(&g, 0) != "d" || gridRow(&g, 1) != "e" || gridRow(&g, 2) != ":" {
+		t.Errorf("scrolled ex rows = %q/%q/%q", gridRow(&g, 0), gridRow(&g, 1), gridRow(&g, 2))
+	}
+	if g.CursorY != 2 {
+		t.Errorf("cursor row = %d, want 2", g.CursorY)
 	}
 }
 

@@ -457,6 +457,15 @@ func GoviEndPos(h C.longlong, line *C.longlong, col *C.int) {
 	})
 }
 
+// GoviExActive reports whether the editor is in line-oriented ex (Q) mode, in
+// which the window shows a scrolling transcript rather than the buffer.
+//
+//export GoviExActive
+func GoviExActive(h C.longlong) C.int {
+	in := get(h)
+	return boolToC(in != nil && in.eng.ExActive())
+}
+
 // GoviTopLine returns the first visible buffer line (the viewport top).
 //
 //export GoviTopLine

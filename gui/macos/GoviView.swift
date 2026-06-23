@@ -480,6 +480,9 @@ final class GoviView: NSView, NSTextInputClient {
     private func updateSpelling() {
         misspellings.removeAll()
         guard spellEnabled else { return }
+        // In ex (Q) mode the window shows a transcript, not the buffer, so
+        // buffer-anchored squiggles would be misplaced.
+        if GoviExActive(handle) != 0 { return }
         let checker = NSSpellChecker.shared
         let count = GoviLineCount(handle)
         var line = GoviTopLine(handle)
