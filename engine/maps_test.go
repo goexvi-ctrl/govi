@@ -23,8 +23,8 @@ func TestMapMultiChar(t *testing.T) {
 func TestMapPrefixAmbiguity(t *testing.T) {
 	// "z" and "zz" both mapped; typing "z" then a non-z resolves the short map.
 	e, _, _ := newTestEngine(t, "a\nb\nc\n")
-	e.exExecute("map zz G")  // zz -> last line
-	e.exExecute("map z 2G")  // z -> line 2
+	e.exExecute("map zz G") // zz -> last line
+	e.exExecute("map z 2G") // z -> line 2
 	// Type z then j: 'z' is a prefix of 'zz', so it waits; 'j' is not 'z', so
 	// the short map 'z' fires (-> line 2), then 'j' moves down to line 3.
 	drive(e, "zj")
@@ -37,11 +37,11 @@ func TestMapTimeout(t *testing.T) {
 	e, _, _ := newTestEngine(t, "a\nb\nc\nd\n")
 	e.exExecute("map zz G")
 	e.exExecute("map z 2G")
-	drive(e, "z")                  // ambiguous: waits
+	drive(e, "z") // ambiguous: waits
 	if e.scr.cursor.Line != 1 {
 		t.Fatalf("should still be waiting, line %d", e.scr.cursor.Line)
 	}
-	e.Input(TimeoutEvent{})        // timeout resolves to short map z -> 2G
+	e.Input(TimeoutEvent{}) // timeout resolves to short map z -> 2G
 	if e.scr.cursor.Line != 2 {
 		t.Fatalf("after timeout: line %d, want 2", e.scr.cursor.Line)
 	}

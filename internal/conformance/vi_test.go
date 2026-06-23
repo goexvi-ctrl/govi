@@ -64,7 +64,7 @@ var viConformanceCases = []struct {
 	{"sentence-fwd", "One two. Three four.\n", "d)"},
 	{"underscore", "  one\n  two\n  three\n", "d_"},
 	{"section-fwd", "code\n{\nblock\n}\nmore\n", "d]]"},
-	{"ctrl-down", "a\nb\nc\nd\n", "\x0e\x0edd"},      // ^N ^N dd
+	{"ctrl-down", "a\nb\nc\nd\n", "\x0e\x0edd"}, // ^N ^N dd
 	{"amp-repeat-subst", "foo\nfoo foo\n", ":s/foo/X/\rj&"},
 	{"macro-at", "dd\nfoo\nbar\n", `"ayyj@a`}, // reg a = "dd"; @a deletes line 2
 	{"insert-ctrl-w", "\n", "ihello world\x17X\x1b"},

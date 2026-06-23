@@ -256,7 +256,7 @@ func buildReplacement(repl, in []rune, m regex.Match) []rune {
 
 // exGlobal implements :[range]g/pattern/cmd (default range whole file, default
 // cmd print). exVglobal is the inverse (:v).
-func (e *Engine) exGlobal(c *exCmd) error { return e.global(c, false) }
+func (e *Engine) exGlobal(c *exCmd) error  { return e.global(c, false) }
 func (e *Engine) exVglobal(c *exCmd) error { return e.global(c, true) }
 
 func (e *Engine) global(c *exCmd, invert bool) error {

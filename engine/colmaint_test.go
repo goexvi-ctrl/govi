@@ -21,7 +21,7 @@ func TestColumnMaintenanceWide(t *testing.T) {
 	// Line 1 has wide chars; the cursor's display column must map to the right
 	// rune on line 2.
 	e, _, _ := newTestEngine(t, "日本x\nabcdef\n") // x at display col 4, rune idx 2
-	drive(e, "0ll")                                 // onto 'x' (display col 4)
+	drive(e, "0ll")                              // onto 'x' (display col 4)
 	drive(e, "j")
 	if e.scr.cursor.Col != 4 { // 'e' at display col 4 on line 2
 		t.Fatalf("after j: col %d, want 4", e.scr.cursor.Col)
@@ -58,9 +58,9 @@ func TestColumnMaintenanceStickyEOL(t *testing.T) {
 func TestColumnMaintenanceResetByHorizontal(t *testing.T) {
 	// A horizontal motion resets the desired column.
 	e, _, _ := newTestEngine(t, "abcdefgh\nabcdefgh\n")
-	drive(e, "$")  // sticky EOL
-	drive(e, "0")  // reset to column 0
-	drive(e, "j")  // should be column 0, not EOL
+	drive(e, "$") // sticky EOL
+	drive(e, "0") // reset to column 0
+	drive(e, "j") // should be column 0, not EOL
 	if e.scr.cursor.Col != 0 {
 		t.Fatalf("0 then j after $: col %d, want 0", e.scr.cursor.Col)
 	}

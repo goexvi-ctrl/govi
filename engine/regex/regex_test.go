@@ -90,8 +90,8 @@ func TestWordBoundaryBracketKludge(t *testing.T) {
 		pat, in    string
 		start, end int
 	}{
-		{`[[:<:]]cat`, "scatter cat", 8, 11},        // skips "cat" inside "scatter"
-		{`cat[[:>:]]`, "category cat", 9, 12},       // skips "cat" starting "category"
+		{`[[:<:]]cat`, "scatter cat", 8, 11},         // skips "cat" inside "scatter"
+		{`cat[[:>:]]`, "category cat", 9, 12},        // skips "cat" starting "category"
 		{`[[:<:]]cat[[:>:]]`, "category cat", 9, 12}, // whole word only
 	}
 	for _, c := range cases {

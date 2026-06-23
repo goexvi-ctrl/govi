@@ -70,8 +70,8 @@ func TestAutoindentNewline(t *testing.T) {
 func TestWrapscanOff(t *testing.T) {
 	e, _, _ := newTestEngine(t, "foo\nbar\nfoo\n")
 	e.exExecute("set nows")
-	drive(e, "G")       // last line (a foo)
-	drive(e, "/foo\r")  // forward, no wrap -> no match below, stays
+	drive(e, "G")      // last line (a foo)
+	drive(e, "/foo\r") // forward, no wrap -> no match below, stays
 	if e.scr.cursor.Line != 3 {
 		t.Fatalf("nows search wrapped or moved: line %d, want 3", e.scr.cursor.Line)
 	}

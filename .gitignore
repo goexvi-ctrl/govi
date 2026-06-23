@@ -17,3 +17,4 @@
 
 # Stray compiled binary (was accidentally tracked)
 /cmd/nvi/nvi
+.aider*

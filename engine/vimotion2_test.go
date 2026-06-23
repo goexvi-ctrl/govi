@@ -46,7 +46,7 @@ func TestUnderscoreMotion(t *testing.T) {
 func TestZScreenPosition(t *testing.T) {
 	e, _, _ := newTestEngine(t, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n")
 	e.Resize(5, 40)
-	drive(e, "5G") // cursor to line 5
+	drive(e, "5G")  // cursor to line 5
 	drive(e, "z\r") // line 5 to top
 	if e.scr.top != 5 {
 		t.Fatalf("z<CR>: top = %d, want 5", e.scr.top)

@@ -143,9 +143,9 @@ func (e *Engine) printLine(s string) {
 // exInputState collects the text typed after an ex a/i/c command until a line
 // containing only "." terminates it; the collected lines are then inserted.
 type exInputState struct {
-	kind         rune    // 'a' append, 'i' insert, 'c' change
-	at           int64   // insert collected lines after this line (a/i)
-	delL1, delL2 int64   // lines to delete first (c)
+	kind         rune  // 'a' append, 'i' insert, 'c' change
+	at           int64 // insert collected lines after this line (a/i)
+	delL1, delL2 int64 // lines to delete first (c)
 	lines        [][]rune
 }
 

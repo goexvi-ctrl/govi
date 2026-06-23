@@ -30,7 +30,7 @@ func TestInsertHex(t *testing.T) {
 	e, _, _ := newTestEngine(t, "\n")
 	drive(e, "i")
 	e.Input(KeyEvent{Rune: 'x', Mods: ModCtrl}) // ^X
-	drive(e, "41 ")                              // hex 41 = 'A', space terminates
+	drive(e, "41 ")                             // hex 41 = 'A', space terminates
 	drive(e, "\x1b")
 	if bufText(e) != "A " {
 		t.Fatalf("^X hex insert: got %q", bufText(e))
@@ -39,8 +39,8 @@ func TestInsertHex(t *testing.T) {
 
 func TestNulReplay(t *testing.T) {
 	e, _, _ := newTestEngine(t, "\n")
-	drive(e, "ifoo\x1b") // insert "foo"
-	drive(e, "o")        // open a new line, insert mode
+	drive(e, "ifoo\x1b")                        // insert "foo"
+	drive(e, "o")                               // open a new line, insert mode
 	e.Input(KeyEvent{Rune: '@', Mods: ModCtrl}) // NUL: replay "foo"
 	drive(e, "\x1b")
 	if bufText(e) != "foo\nfoo" {
@@ -76,8 +76,8 @@ func TestShellFilter(t *testing.T) {
 
 func TestViFilterOperator(t *testing.T) {
 	e, _, _ := newTestEngine(t, "c\nb\na\n")
-	drive(e, "!G")           // filter to end of file: opens colon line ":1,3!"
-	drive(e, "sort\r")       // type the command
+	drive(e, "!G")     // filter to end of file: opens colon line ":1,3!"
+	drive(e, "sort\r") // type the command
 	if bufText(e) != "a\nb\nc" {
 		t.Fatalf("!G sort: got %q", bufText(e))
 	}

@@ -37,9 +37,9 @@ func TestMemBasic(t *testing.T) {
 	if m.Lines() != 0 {
 		t.Fatalf("empty store Lines = %d, want 0", m.Lines())
 	}
-	m.Append(0, rs("one"))     // -> [one]
-	m.Append(1, rs("three"))   // -> [one three]
-	m.Insert(2, rs("two"))     // -> [one two three]
+	m.Append(0, rs("one"))   // -> [one]
+	m.Append(1, rs("three")) // -> [one three]
+	m.Insert(2, rs("two"))   // -> [one two three]
 	eq(t, lines(t, m), "one", "two", "three")
 
 	m.Set(2, rs("TWO"))

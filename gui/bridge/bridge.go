@@ -41,8 +41,8 @@ type host struct {
 }
 
 func (h *host) Render(_ engine.View, _ engine.ChangeSet) {}
-func (h *host) Bell()                                     { h.bellPending = true }
-func (h *host) SetTitle(s string)                         { h.title = s }
+func (h *host) Bell()                                    { h.bellPending = true }
+func (h *host) SetTitle(s string)                        { h.title = s }
 
 // instance is one editor: an engine, its frontend, the last composed grid, and
 // the host-side selection state. Instances are keyed by an integer handle so no

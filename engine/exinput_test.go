@@ -4,10 +4,10 @@ import "testing"
 
 func TestExAppend(t *testing.T) {
 	e, _, _ := newTestEngine(t, "a\nc\n")
-	drive(e, "Q")        // ex mode
-	drive(e, "1a\r")     // append after line 1
-	drive(e, "X\rY\r")   // two input lines
-	drive(e, ".\r")      // terminator
+	drive(e, "Q")      // ex mode
+	drive(e, "1a\r")   // append after line 1
+	drive(e, "X\rY\r") // two input lines
+	drive(e, ".\r")    // terminator
 	if got := bufText(e); got != "a\nX\nY\nc" {
 		t.Fatalf("ex append: %q", got)
 	}

@@ -122,8 +122,8 @@ func TestZQQuitsNoWrite(t *testing.T) {
 	e := New(&captureFrontend{}, Options{})
 	e.OpenArgs([]string{a})
 	e.Resize(10, 40)
-	drive(e, "xx")  // modify
-	drive(e, "ZQ")  // quit without writing
+	drive(e, "xx") // modify
+	drive(e, "ZQ") // quit without writing
 	if !e.ShouldQuit() {
 		t.Fatal("ZQ should quit")
 	}

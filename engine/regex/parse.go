@@ -10,8 +10,13 @@ type parser struct {
 	closed  map[int]bool // groups whose \) has been parsed (valid backref targets)
 }
 
-func (p *parser) eof() bool  { return p.pos >= len(p.src) }
-func (p *parser) peek() rune { if p.eof() { return 0 }; return p.src[p.pos] }
+func (p *parser) eof() bool { return p.pos >= len(p.src) }
+func (p *parser) peek() rune {
+	if p.eof() {
+		return 0
+	}
+	return p.src[p.pos]
+}
 func (p *parser) peekAt(i int) rune {
 	if p.pos+i >= len(p.src) {
 		return 0
@@ -19,7 +24,7 @@ func (p *parser) peekAt(i int) rune {
 	return p.src[p.pos+i]
 }
 func (p *parser) next() rune { r := p.src[p.pos]; p.pos++; return r }
-func (p *parser) skip(n int)  { p.pos += n }
+func (p *parser) skip(n int) { p.pos += n }
 
 // atGroupClose reports whether the parser is at a "\)" sequence.
 func (p *parser) atGroupClose() bool { return p.peek() == '\\' && p.peekAt(1) == ')' }

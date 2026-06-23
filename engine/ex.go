@@ -282,10 +282,19 @@ func (p *exParser) parseNumber() (int64, bool) {
 	return n, p.pos > start
 }
 
-func (p *exParser) eof() bool      { return p.pos >= len(p.s) }
-func (p *exParser) peek() rune     { if p.eof() { return 0 }; return p.s[p.pos] }
-func (p *exParser) next() rune     { r := p.s[p.pos]; p.pos++; return r }
-func (p *exParser) skipBlanks()    { for !p.eof() && (p.peek() == ' ' || p.peek() == '\t') { p.pos++ } }
+func (p *exParser) eof() bool { return p.pos >= len(p.s) }
+func (p *exParser) peek() rune {
+	if p.eof() {
+		return 0
+	}
+	return p.s[p.pos]
+}
+func (p *exParser) next() rune { r := p.s[p.pos]; p.pos++; return r }
+func (p *exParser) skipBlanks() {
+	for !p.eof() && (p.peek() == ' ' || p.peek() == '\t') {
+		p.pos++
+	}
+}
 
 // gotoLine moves the cursor to the first non-blank of line lno.
 func (e *Engine) gotoLine(lno int64) {

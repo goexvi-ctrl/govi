@@ -3,8 +3,8 @@ package engine
 import "testing"
 
 func TestViShiftDoubled(t *testing.T) {
-	viCase(t, ">>", "x\n", ">>", "\tx")             // sw=ts=8 -> one tab
-	viCase(t, "<<", "\tx\n", "<<", "x")             // dedent removes the tab
+	viCase(t, ">>", "x\n", ">>", "\tx") // sw=ts=8 -> one tab
+	viCase(t, "<<", "\tx\n", "<<", "x") // dedent removes the tab
 	viCase(t, ">>-already-indented", "\tx\n", ">>", "\t\tx")
 	viCase(t, "2>>", "a\nb\nc\n", "2>>", "\ta\n\tb\nc")
 }

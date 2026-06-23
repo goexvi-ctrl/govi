@@ -11,7 +11,7 @@ func TestRuneWidthWide(t *testing.T) {
 		{'A', 1},
 		{'日', 2}, // CJK ideograph
 		{'本', 2},
-		{'Ａ', 2}, // fullwidth Latin A
+		{'Ａ', 2},  // fullwidth Latin A
 		{'é', 1},  // accented Latin, narrow
 		{'\t', 8}, // tab at column 0
 	}

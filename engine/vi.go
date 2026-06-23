@@ -14,14 +14,14 @@ import (
 // independent of this.
 type vimode struct {
 	// command-building state
-	count    int
+	count     int
 	haveCount bool
-	reg      rune // selected register (0 = none)
-	awaitReg bool // saw '"', next key is the register name
-	op       rune // pending operator (0 = none)
-	opCount  int
-	opReg    rune
-	pending  rune // command awaiting a single char (f F t T r m ` ')
+	reg       rune // selected register (0 = none)
+	awaitReg  bool // saw '"', next key is the register name
+	op        rune // pending operator (0 = none)
+	opCount   int
+	opReg     rune
+	pending   rune // command awaiting a single char (f F t T r m ` ')
 
 	// f/t repeat state for ; and ,
 	findCmd  rune
