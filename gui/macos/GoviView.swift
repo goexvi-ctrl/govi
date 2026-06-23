@@ -571,18 +571,53 @@ final class GoviView: NSView, NSTextInputClient {
         path.stroke()
     }
 
-    // MARK: - Spelling context menu
+    // MARK: - Context menu (right-click / control-click)
 
-    override func rightMouseDown(with event: NSEvent) {
-        let c = cellAt(event)
+    private struct LookUpContext { let text: String; let x: Int32; let y: Int32 }
+
+    // menu(for:) is called by AppKit for both right-click and control-click. It
+    // builds a standard text context menu: spelling suggestions (when the word
+    // is misspelled), a dictionary Look Up, and Cut/Copy/Paste. The word under
+    // the click is selected so those commands act on it.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        window?.makeFirstResponder(self)
+        let cell = cellAt(event)
         var line: Int64 = 0, col: Int32 = 0
-        GoviCellToPos(handle, c.x, c.y, &line, &col)
-        if let m = misspelling(at: line, col: Int(col)), let menu = spellingMenu(for: m) {
-            contextMisspelling = m
-            NSMenu.popUpContextMenu(menu, with: event, for: self)
-            return
+        GoviCellToPos(handle, cell.x, cell.y, &line, &col)
+
+        let word = wordAt(cell: cell)
+        if !word.text.isEmpty {
+            setSelection(word.start, word.end) // right-click selects the word
+            needsDisplay = true
         }
-        super.rightMouseDown(with: event)
+
+        let menu = NSMenu()
+        if let m = misspelling(at: line, col: Int(col)) {
+            contextMisspelling = m
+            addSuggestions(to: menu, for: m)
+        }
+        if !word.text.isEmpty {
+            let look = menu.addItem(withTitle: "Look Up “\(word.text)”",
+                                    action: #selector(lookUp(_:)), keyEquivalent: "")
+            look.target = self
+            look.representedObject = LookUpContext(text: word.text, x: cell.x, y: cell.y)
+            menu.addItem(.separator())
+        }
+        for (title, sel) in [("Cut", #selector(cut(_:))), ("Copy", #selector(copy(_:))),
+                             ("Paste", #selector(paste(_:)))] {
+            let item = menu.addItem(withTitle: title, action: sel, keyEquivalent: "")
+            item.target = self
+        }
+        return menu
+    }
+
+    // wordAt returns the word the engine's word boundary finds at a screen cell,
+    // as caret endpoints and text. Empty text means the click was not on a word.
+    private func wordAt(cell c: (x: Int32, y: Int32)) -> (start: Caret, end: Caret, text: String) {
+        var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
+        GoviWordRange(handle, c.x, c.y, &l1, &c1, &l2, &c2)
+        let text = bridgeString(GoviRangeText(handle, l1, c1, l2, c2))
+        return ((l1, Int(c1)), (l2, Int(c2)), text)
     }
 
     private func misspelling(at line: Int64, col: Int) -> Misspelling? {
@@ -597,10 +632,8 @@ final class GoviView: NSView, NSTextInputClient {
         return String(v)
     }
 
-    private func spellingMenu(for m: Misspelling) -> NSMenu? {
+    private func addSuggestions(to menu: NSMenu, for m: Misspelling) {
         let w = word(m)
-        if w.isEmpty { return nil }
-        let menu = NSMenu()
         let guesses = NSSpellChecker.shared.guesses(
             forWordRange: NSRange(location: 0, length: (w as NSString).length),
             in: w, language: nil, inSpellDocumentWithTag: spellTag) ?? []
@@ -618,7 +651,16 @@ final class GoviView: NSView, NSTextInputClient {
         ignore.target = self
         let learn = menu.addItem(withTitle: "Learn Spelling", action: #selector(learnSpelling(_:)), keyEquivalent: "")
         learn.target = self
-        return menu
+        menu.addItem(.separator())
+    }
+
+    // lookUp shows the system Dictionary popover for the word, anchored at the
+    // clicked cell.
+    @objc private func lookUp(_ sender: NSMenuItem) {
+        guard let ctx = sender.representedObject as? LookUpContext else { return }
+        let origin = cellPoint(Int(ctx.x), Int(ctx.y))
+        let baseline = NSPoint(x: origin.x, y: origin.y + font.ascender)
+        showDefinition(for: NSAttributedString(string: ctx.text), at: baseline)
     }
 
     @objc private func replaceSpelling(_ sender: NSMenuItem) {

@@ -92,8 +92,10 @@ Standard macOS spell checking (via `NSSpellChecker`):
 
 - Misspelled words on the visible lines get a **red squiggly underline**
   (continuous checking).
-- **Right-click** a misspelled word for suggestions, **Ignore Spelling**, or
-  **Learn Spelling**; choosing a suggestion replaces the word.
+- **Right-click / control-click** a word brings up a context menu: spelling
+  suggestions plus **Ignore/Learn Spelling** when the word is misspelled, a
+  dictionary **Look Up "word"** (the system Dictionary popover), and
+  **Cut/Copy/Paste**. The clicked word is selected so those commands act on it.
 - **Edit ▸ Spelling ▸ Check Spelling While Typing** toggles it (persisted).
 
 The engine supplies line text and a buffer-position→screen-cell mapping; the
