@@ -7,6 +7,7 @@ type parser struct {
 	pos     int
 	magic   bool
 	ngroups int
+	closed  map[int]bool // groups whose \) has been parsed (valid backref targets)
 }
 
 func (p *parser) eof() bool  { return p.pos >= len(p.src) }
@@ -192,13 +193,27 @@ func (p *parser) parseEscape() (node, error) {
 		}
 		p.next()
 		p.next()
+		if p.closed == nil {
+			p.closed = map[int]bool{}
+		}
+		p.closed[idx] = true // the group is now a valid backref target
 		return &groupNode{idx: idx, sub: sub}, nil
+	// \< \> (word boundaries) and \n \t (escapes) are vi search-layer constructs
+	// folded into this self-contained port; Spencer's core spells word
+	// boundaries only as [[:<:]] / [[:>:]] (also accepted, see parseClass).
 	case '<':
 		return wordStartNode{}, nil
 	case '>':
 		return wordEndNode{}, nil
 	case '1', '2', '3', '4', '5', '6', '7', '8', '9':
-		return &backrefNode{idx: int(e - '0')}, nil
+		// A backreference is valid only to a group that has already been closed
+		// (matching Spencer/nvi, which error on \1 before \(...\), self-reference
+		// inside a group, or a reference to a nonexistent group).
+		idx := int(e - '0')
+		if !p.closed[idx] {
+			return nil, fmt.Errorf(`regex: \%d: invalid back reference`, idx)
+		}
+		return &backrefNode{idx: idx}, nil
 	case 'n':
 		return &litNode{r: '\n'}, nil
 	case 't':

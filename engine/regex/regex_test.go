@@ -112,3 +112,20 @@ func TestWordBoundaryBracketKludge(t *testing.T) {
 		}
 	}
 }
+
+// TestBackrefValidation pins Spencer/nvi's rule that a backreference is valid
+// only to a group already closed before it; otherwise compilation errors.
+func TestBackrefValidation(t *testing.T) {
+	invalid := []string{`\1`, `\2`, `\9`, `\(a\)\2`, `\(a\1\)`}
+	for _, p := range invalid {
+		if _, err := Compile(p, Options{Magic: true}); err == nil {
+			t.Errorf("Compile(%q): want error (backref to unclosed/missing group), got nil", p)
+		}
+	}
+	valid := []string{`\(a\)\1`, `\(a\)\(b\)\2\1`, `\(a\(b\)\2\)`}
+	for _, p := range valid {
+		if _, err := Compile(p, Options{Magic: true}); err != nil {
+			t.Errorf("Compile(%q): unexpected error %v", p, err)
+		}
+	}
+}

@@ -8,14 +8,34 @@
 //
 // The engine works on a single line of runes at a time, matching vi's
 // line-oriented search and substitute semantics.
+//
+// Design notes (what "bug-for-bug with nvi" does and does not mean here):
+//
+//   - Backtracking, not RE2. Like Spencer's engine it is a recursive
+//     backtracker (continuation-passing), which is what backreferences require
+//     and can be exponential on pathological patterns -- the same trade nvi
+//     makes. For human-authored single-line search this is the right choice.
+//   - Some vi-/search-layer constructs are folded into this one package rather
+//     than living above Spencer's regcomp: \< \> word boundaries (Spencer's C
+//     only spells these [[:<:]] / [[:>:]], which are also accepted), \|
+//     alternation, and the \n \t escapes. These are vi-documented, not
+//     Spencer-core.
+//   - Runes, not bytes. Historic nvi is byte/locale oriented; operating on
+//     []rune is a deliberate modernization (correct UTF-8 handling) rather than
+//     an attempt at ASCII byte-for-byte reproduction.
+//   - An empty pattern is a valid compile here; "repeat the last RE" for an
+//     empty / or ? is handled in the search/substitute layer, as in nvi.
 package regex
 
 import "fmt"
 
 // Options controls compilation.
 type Options struct {
-	IgnoreCase bool // the 'ignorecase' option
-	Magic      bool // the 'magic' option (vi default true)
+	IgnoreCase bool // the 'ignorecase' option; folds case, including in [classes]
+	// Magic is the 'magic' option (vi default true). When false it is nvi
+	// nomagic -- '.', '*' and '[' are literal unless backslash-escaped (\. \* \[
+	// take on their special meaning) -- NOT Spencer's REG_NOSPEC ("all literal").
+	Magic bool
 }
 
 // Regex is a compiled pattern.

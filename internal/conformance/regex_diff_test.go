@@ -56,6 +56,8 @@ var regexCases = []struct {
 	// grouping, backreferences, repetition
 	{"group-backref-swap", "John Smith\n", []string{`%s/\([A-Za-z]*\) \([A-Za-z]*\)/\2 \1/`}},
 	{"backref-in-pattern", "hello hello world\n", []string{`%s/\([a-z]*\) \1/DUP/`}},
+	{"backref-valid", "abcabc x\n", []string{`%s/\(abc\)\1/Y/`}},
+	{"backref-nested", "abab\n", []string{`%s/\(\(ab\)\2\)/Z/`}},
 	{"interval-exact", "aaaaa\n", []string{`%s/a\{3\}/X/`}},
 	{"interval-min", "aaaaa\n", []string{`%s/a\{2,\}/X/`}},
 	{"interval-range", "aaaaa\n", []string{`%s/a\{2,3\}/X/`}},
