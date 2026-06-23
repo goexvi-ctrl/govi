@@ -108,6 +108,7 @@ parity row can be checked against the source description quickly.
 | `:ta[g]` | yes | ✅✔ | |
 | `:tagn[ext]` `:tagp[rev]` `:tagt[op]` | yes | ❌ | tag-stack walk (vi `^T`/`^]` work) |
 | `:vi[sual]` | yes | ✅ | returns from ex mode |
+| `Q` ex (line) mode | yes | ✅ | terminal leaves the full screen for a scrolling line REPL (no banner), like nvi |
 | `:[range]a[ppend]`/`i[nsert]`/`c[hange]` | yes | ✅ | ex input mode; input ends on a sole `.` (works in ex mode and from the colon line) |
 | `:k`/`:ma` (mark) | yes | ❌ | (vi `m` works) |
 | `:u[ndo]` | yes | ❌ | (vi `u` works) |

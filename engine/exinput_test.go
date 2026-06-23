@@ -46,3 +46,37 @@ func TestExAppendFromColon(t *testing.T) {
 		t.Fatalf("colon append: %q", got)
 	}
 }
+
+func TestExLineMode(t *testing.T) {
+	e, _, _ := newTestEngine(t, "one\ntwo\nthree\n")
+	drive(e, "Q")
+	if !e.ExActive() {
+		t.Fatal("Q should activate ex mode")
+	}
+	if e.ExPrompt() != ":" {
+		t.Fatalf("prompt = %q, want :", e.ExPrompt())
+	}
+	// Print lines 1,2: output returned, not stored in a screen transcript.
+	out := e.ExFeedLine("1,2p")
+	if len(out) != 2 || out[0] != "one" || out[1] != "two" {
+		t.Fatalf("print output = %v", out)
+	}
+	// a/i/c input: prompt disappears while collecting.
+	e.ExFeedLine("2a")
+	if e.ExPrompt() != "" {
+		t.Fatalf("prompt during input = %q, want empty", e.ExPrompt())
+	}
+	e.ExFeedLine("INS")
+	e.ExFeedLine(".")
+	if e.ExPrompt() != ":" {
+		t.Fatal("prompt should return after .")
+	}
+	if bufText(e) != "one\ntwo\nINS\nthree" {
+		t.Fatalf("after ex append: %q", bufText(e))
+	}
+	// visual leaves ex mode.
+	e.ExFeedLine("visual")
+	if e.ExActive() {
+		t.Fatal("visual should leave ex mode")
+	}
+}

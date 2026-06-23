@@ -10,12 +10,57 @@ import (
 // echoed, its output appended, and a new ":" prompt shown. This corresponds to
 // nvi's ex.c top-level loop.
 
-// enterExMode switches from vi command mode into ex mode.
+// enterExMode switches from vi command mode into ex mode. Unlike Vim, the 4.4BSD
+// ex prints no banner -- it simply drops to a ":" prompt.
 func (e *Engine) enterExMode() {
 	e.scr.mode = ModeExText
 	e.scr.colon = nil
 	e.scr.cmdPrefix = ':'
-	e.exEcho("Entering Ex mode.  Type \"visual\" to go to Normal mode.")
+}
+
+// ExActive reports whether the editor is in line-oriented ex mode (entered with
+// Q). A terminal host renders this as a scrolling line transcript -- leaving the
+// full-screen display -- rather than a cursor-addressed screen.
+func (e *Engine) ExActive() bool { return e.scr.mode == ModeExText }
+
+// ExPrompt returns the prompt a line host prints before reading the next line:
+// ":" normally, or "" while an a/i/c command is collecting input text.
+func (e *Engine) ExPrompt() string {
+	if e.scr.exInput != nil {
+		return ""
+	}
+	return ":"
+}
+
+// ExFeedLine processes one line entered at the ex prompt by a line-oriented host
+// (which has already echoed it) and returns the output lines to print. Entering
+// "visual"/"vi" leaves ex mode (ExActive then reports false).
+func (e *Engine) ExFeedLine(line string) []string {
+	e.exOut = nil
+	e.exLineMode = true
+	defer func() { e.exLineMode = false }()
+
+	if e.scr.exInput != nil {
+		if line == "." {
+			e.exInputFinish()
+		} else {
+			e.scr.exInput.lines = append(e.scr.exInput.lines, []rune(line))
+		}
+		return e.exOut
+	}
+
+	switch strings.TrimSpace(line) {
+	case "vi", "visual", "vis":
+		e.exitExMode()
+		return nil
+	}
+	if err := e.exExecute(line); err != nil {
+		e.exOut = append(e.exOut, err.Error())
+	} else if e.scr.msg != "" {
+		e.exOut = append(e.exOut, e.scr.msg)
+		e.scr.msg = ""
+	}
+	return e.exOut
 }
 
 // exitExMode returns to vi command mode.
@@ -33,8 +78,13 @@ func (e *Engine) exVisual(c *exCmd) error {
 	return nil
 }
 
-// exEcho appends a line to the ex transcript.
+// exEcho emits a line of ex output: to the line-host buffer when one is driving
+// (Q line mode), otherwise appended to the in-screen transcript.
 func (e *Engine) exEcho(s string) {
+	if e.exLineMode {
+		e.exOut = append(e.exOut, s)
+		return
+	}
 	e.scr.exTranscript = append(e.scr.exTranscript, s)
 }
 

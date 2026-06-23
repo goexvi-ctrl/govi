@@ -40,6 +40,11 @@ type Engine struct {
 	recoverPath  string    // this session's recovery file, "" if none yet
 	recoverSync  time.Time // last time the recovery file was written
 	recoverDirty bool      // changes exist that the recovery file lacks
+
+	// Line-oriented ex (Q) output: while exLineMode is set, command output is
+	// collected into exOut for a line-at-a-time host instead of the transcript.
+	exLineMode bool
+	exOut      []string
 }
 
 // New returns an Engine that renders through fe. Call Open and Resize before

@@ -6,7 +6,11 @@
 package tcell
 
 import (
+	"bufio"
+	"fmt"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	tc "github.com/gdamore/tcell/v2"
@@ -61,19 +65,43 @@ const mapTimeout = 500 * time.Millisecond
 // file with any changes the throttled sync has not yet captured.
 const recoverFlushDelay = 2 * time.Second
 
-// Run feeds terminal events to the engine until a quit command is issued. When
-// an ambiguous map prefix is pending it arms a timer so the prefix resolves
-// instead of hanging.
+// Run drives the editor until a quit command is issued. It alternates between
+// the full-screen visual loop and, when the user enters ex mode with Q, a
+// line-oriented ex REPL that leaves the alternate screen (matching nvi: ex is a
+// scrolling line interface usable on a paper terminal).
 func (f *Frontend) Run() {
 	w, h := f.scr.Size()
 	f.eng.Resize(textRows(h), w)
 
+	for !f.eng.ShouldQuit() {
+		if f.eng.ExActive() {
+			f.runExMode()
+			if !f.eng.ShouldQuit() {
+				// Returning to vi: repaint the full-screen display.
+				f.scr.Sync()
+				w, h := f.scr.Size()
+				f.eng.Resize(textRows(h), w)
+			}
+			continue
+		}
+		f.runVisual()
+	}
+}
+
+// runVisual is the full-screen event loop; it returns when a quit is issued or
+// the user switches to ex mode (Q).
+func (f *Frontend) runVisual() {
 	events := make(chan tc.Event)
 	quit := make(chan struct{})
 	go f.scr.ChannelEvents(events, quit)
-	defer close(quit)
+	defer func() {
+		close(quit)
+		// Unblock a PollEvent that may be waiting for a key so the goroutine sees
+		// the closed quit channel and exits before we suspend the screen.
+		f.scr.PostEvent(tc.NewEventInterrupt(nil))
+	}()
 
-	for !f.eng.ShouldQuit() {
+	for !f.eng.ShouldQuit() && !f.eng.ExActive() {
 		var timer <-chan time.Time
 		recoverFlush := false
 		switch {
@@ -99,6 +127,35 @@ func (f *Frontend) Run() {
 			} else {
 				f.eng.Input(engine.TimeoutEvent{})
 			}
+		}
+	}
+}
+
+// runExMode leaves the full-screen display and runs ex as a cooked-mode line
+// REPL: print the prompt, read a line (echoed and line-edited by the terminal),
+// feed it to the engine, and print the output, scrolling like a terminal. It
+// returns when the user types visual/vi or quits.
+func (f *Frontend) runExMode() {
+	if err := f.scr.Suspend(); err != nil {
+		return
+	}
+	defer f.scr.Resume()
+
+	in := bufio.NewReader(os.Stdin)
+	out := os.Stdout
+	fmt.Fprintln(out) // separate from the full-screen display we just left
+
+	for f.eng.ExActive() && !f.eng.ShouldQuit() {
+		fmt.Fprint(out, f.eng.ExPrompt())
+		line, err := in.ReadString('\n')
+		if err != nil { // EOF (^D) or read error: return to visual mode
+			fmt.Fprintln(out)
+			f.eng.RunEx("visual")
+			return
+		}
+		line = strings.TrimRight(line, "\r\n")
+		for _, o := range f.eng.ExFeedLine(line) {
+			fmt.Fprintln(out, o)
 		}
 	}
 }
