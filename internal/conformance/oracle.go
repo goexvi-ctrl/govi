@@ -78,6 +78,10 @@ func RunOracleEx(oracle string, s ExSession) (string, error) {
 	script.WriteString("wq\n")
 
 	cmd := exec.Command(oracle, "-e", "-s", file)
+	// The local oracle is patched to default recdir to a relative
+	// "vi.recover" so it can run under restricted sandboxes. Run it from
+	// this per-test temp directory to keep recovery files local and writable.
+	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(script.String())
 	cmd.Stdout = new(bytes.Buffer)
 	cmd.Stderr = new(bytes.Buffer)
