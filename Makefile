@@ -8,8 +8,9 @@ build: nvi
 nvi:
 	go build -ldflags "$(VERSION_LDFLAGS)" -o nvi ./cmd/nvi
 
-Govi.app:
-	./gui/build.sh
+include gui/govi.mk
+
+Govi.app: govi-app
 
 test:
 	go test ./...

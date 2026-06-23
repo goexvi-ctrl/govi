@@ -67,6 +67,7 @@ func init() {
 		{"tag", 2, (*Engine).exTag},
 		{"preserve", 3, (*Engine).exPreserve},
 		{"recover", 3, (*Engine).exRecover},
+		{"shell", 2, (*Engine).exShell},
 		{"version", 2, (*Engine).exVersion},
 		{"!", 1, (*Engine).exBang},
 		{"&", 1, (*Engine).exAmp},

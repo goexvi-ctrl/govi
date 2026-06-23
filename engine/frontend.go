@@ -131,6 +131,15 @@ type ChangeSet struct {
 	Scrolled       bool // Viewport.Top changed
 }
 
+// ShellRunner is implemented by frontends that can run an interactive shell for
+// :shell. The engine passes the shell program from the shell option; inExMode is
+// true when ex line mode already owns the terminal (no extra suspend needed).
+// GUI hosts may open an external terminal or report that the command is
+// unavailable.
+type ShellRunner interface {
+	RunShell(shell string, inExMode bool) error
+}
+
 // Frontend is implemented by the host. The engine calls these methods
 // synchronously from the goroutine that drives Engine.Input; a GUI host should
 // marshal the work onto its UI thread. A Frontend must never call back into the

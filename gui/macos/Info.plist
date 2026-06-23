@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>            <string>Govi</string>
+	<key>CFBundleDisplayName</key>     <string>Govi</string>
+	<key>CFBundleIdentifier</key>      <string>org.govi.editor</string>
+	<key>CFBundleExecutable</key>      <string>Govi</string>
+	<key>CFBundlePackageType</key>     <string>APPL</string>
+	<key>CFBundleVersion</key>         <string>0.1</string>
+	<key>CFBundleShortVersionString</key><string>0.1</string>
+	<key>NSHighResolutionCapable</key> <true/>
+	<key>NSPrincipalClass</key>        <string>NSApplication</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>    <string>All Files</string>
+			<key>CFBundleTypeRole</key>    <string>Editor</string>
+			<key>LSHandlerRank</key>       <string>Alternate</string>
+			<key>LSItemContentTypes</key>  <array><string>public.data</string></array>
+		</dict>
+	</array>
+</dict>
+</plist>

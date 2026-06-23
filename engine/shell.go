@@ -11,16 +11,37 @@ import (
 // a shell command, replacing them with its output; :!cmd runs a command without
 // filtering. This corresponds to nvi's ex/ex_bang.c and filter handling.
 
-// runShell runs cmd via /bin/sh, feeding input on stdin. It returns combined
-// stdout and stderr, matching nvi's filter pipes (ex_filter.c dup2's both to
-// the utility output pipe).
-func runShell(cmd, input string) (string, error) {
-	c := exec.Command("/bin/sh", "-c", cmd)
+func (e *Engine) shellProg() string {
+	if sh := e.scr.opts.Str("shell"); sh != "" {
+		return sh
+	}
+	return "/bin/sh"
+}
+
+// runShellCmd runs cmd via the shell option, feeding input on stdin. It returns
+// combined stdout and stderr, matching nvi's filter pipes (ex_filter.c dup2's
+// both to the utility output pipe).
+func (e *Engine) runShellCmd(cmd, input string) (string, error) {
+	shell := e.shellProg()
+	c := exec.Command(shell, "-c", cmd)
 	if input != "" {
 		c.Stdin = strings.NewReader(input)
 	}
 	out, err := c.CombinedOutput()
 	return string(out), err
+}
+
+// exShell implements :sh[ell]: run an interactive shell (ex/ex_shell.c).
+func (e *Engine) exShell(*exCmd) error {
+	if e.scr.opts.Bool("secure") {
+		return fmt.Errorf("The shell command is not supported when the secure edit option is set")
+	}
+	shell := e.shellProg()
+	runner, ok := e.fe.(ShellRunner)
+	if !ok {
+		return fmt.Errorf("Shell not available")
+	}
+	return runner.RunShell(shell, e.ExActive())
 }
 
 // exBang implements :[range]!cmd. With a range it filters those lines; without
@@ -31,7 +52,7 @@ func (e *Engine) exBang(c *exCmd) error {
 		return fmt.Errorf("Usage: [range]!command")
 	}
 	if c.addrCount == 0 {
-		out, err := runShell(cmd, "")
+		out, err := e.runShellCmd(cmd, "")
 		if err != nil {
 			return fmt.Errorf("%s: %v", cmd, err)
 		}
@@ -56,7 +77,7 @@ func (e *Engine) filterLines(l1, l2 int64, cmd string) error {
 		in.WriteString(string(s.lineRunes(i)))
 		in.WriteByte('\n')
 	}
-	out, err := runShell(cmd, in.String())
+	out, err := e.runShellCmd(cmd, in.String())
 	if err != nil {
 		// nvi still replaces the filtered lines with stdout/stderr even when
 		// the utility exits non-zero (ex_filter.c reads the pipe before wait).
