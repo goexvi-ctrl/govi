@@ -147,6 +147,10 @@ func (e *Engine) Close() error {
 // loop should stop feeding input and tear down once this is true.
 func (e *Engine) ShouldQuit() bool { return e.quit }
 
+// ClearQuit resets the quit flag after the host cancels a close (:q with unsaved
+// changes, or a dismissed save sheet).
+func (e *Engine) ClearQuit() { e.quit = false }
+
 // RunEx executes an ex command programmatically (e.g. from a GUI menu or host
 // configuration), as if typed on the colon line without the leading ':'.
 func (e *Engine) RunEx(cmd string) error { return e.exExecute(cmd) }

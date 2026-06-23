@@ -148,7 +148,8 @@ final class GoviView: NSView, NSTextInputClient {
     // the grid, repaints, and arms any pending timer (map/showmatch/recovery).
     func step() {
         if GoviShouldQuit(handle) != 0 {
-            window?.close() // :q closes this window; the app exits with the last
+            // windowShouldClose prompts when there are unsaved changes.
+            window?.close()
             return
         }
         if GoviTakeBell(handle) != 0 {
@@ -165,7 +166,7 @@ final class GoviView: NSView, NSTextInputClient {
         updateSpelling()
     }
 
-    private func updateTitle() {
+    func updateTitle() {
         guard let c = GoviTitle(handle) else { return }
         defer { GoviFree(c) }
         let t = String(cString: c)

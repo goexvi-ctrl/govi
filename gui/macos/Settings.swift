@@ -23,6 +23,44 @@ enum Settings {
     }
 
     private static let spellKey = "checkSpellingWhileTyping"
+    private static let openFilesInKey = "openFilesIn"
+
+    enum OpenFilesIn: String {
+        case newWindow
+        case tab
+    }
+
+    // openFilesIn chooses whether files opened from the launcher, Finder, or
+    // File > Open appear in a new window or as a tab in the frontmost window.
+    static var openFilesIn: OpenFilesIn {
+        get {
+            let d = UserDefaults.standard
+            guard let raw = d.string(forKey: openFilesInKey),
+                  let mode = OpenFilesIn(rawValue: raw) else {
+                return .newWindow
+            }
+            return mode
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: openFilesInKey)
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
+
+    private static let warnCloseKey = "warnOnUnsavedClose"
+
+    // warnOnUnsavedClose prompts before closing a window or tab with unsaved edits.
+    static var warnOnUnsavedClose: Bool {
+        get {
+            let d = UserDefaults.standard
+            guard d.object(forKey: warnCloseKey) != nil else { return true }
+            return d.bool(forKey: warnCloseKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: warnCloseKey)
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
 
     // spellChecking controls continuous spell checking (red squiggles).
     static var spellChecking: Bool {
@@ -45,11 +83,13 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
 
     private let field = NSTextField()
     private let stepper = NSStepper()
+    private let openFilesPopup = NSPopUpButton()
+    private let warnCloseCheckbox = NSButton(checkboxWithTitle: "Warn before closing unsaved files", target: nil, action: nil)
     private static let maxPadding: Double = 64
 
     private init() {
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 340, height: 110),
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 190),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         win.title = "Settings"
         super.init(window: win)
@@ -76,18 +116,42 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         stepper.target = self
         stepper.action = #selector(stepperChanged)
 
+        let openLabel = NSTextField(labelWithString: "Open files in:")
+        openLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        openFilesPopup.translatesAutoresizingMaskIntoConstraints = false
+        openFilesPopup.addItems(withTitles: ["New window", "Tab of front window"])
+        openFilesPopup.target = self
+        openFilesPopup.action = #selector(openFilesChanged)
+
+        warnCloseCheckbox.translatesAutoresizingMaskIntoConstraints = false
+        warnCloseCheckbox.target = self
+        warnCloseCheckbox.action = #selector(warnCloseChanged)
+
         content.addSubview(label)
         content.addSubview(field)
         content.addSubview(stepper)
+        content.addSubview(openLabel)
+        content.addSubview(openFilesPopup)
+        content.addSubview(warnCloseCheckbox)
 
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
-            label.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+            label.topAnchor.constraint(equalTo: content.topAnchor, constant: 24),
             field.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: 8),
-            field.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+            field.centerYAnchor.constraint(equalTo: label.centerYAnchor),
             field.widthAnchor.constraint(equalToConstant: 56),
             stepper.leadingAnchor.constraint(equalTo: field.trailingAnchor, constant: 4),
-            stepper.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+            stepper.centerYAnchor.constraint(equalTo: label.centerYAnchor),
+
+            openLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
+            openLabel.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 20),
+            openFilesPopup.leadingAnchor.constraint(equalTo: openLabel.trailingAnchor, constant: 8),
+            openFilesPopup.centerYAnchor.constraint(equalTo: openLabel.centerYAnchor),
+            openFilesPopup.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -20),
+
+            warnCloseCheckbox.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
+            warnCloseCheckbox.topAnchor.constraint(equalTo: openLabel.bottomAnchor, constant: 16),
         ])
 
         syncFromSettings()
@@ -97,6 +161,8 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         let v = Double(Settings.padding)
         field.doubleValue = v
         stepper.doubleValue = v
+        openFilesPopup.selectItem(at: Settings.openFilesIn == .tab ? 1 : 0)
+        warnCloseCheckbox.state = Settings.warnOnUnsavedClose ? .on : .off
     }
 
     private func commit(_ raw: Double) {
@@ -108,6 +174,14 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
 
     @objc private func stepperChanged() {
         commit(stepper.doubleValue)
+    }
+
+    @objc private func openFilesChanged() {
+        Settings.openFilesIn = openFilesPopup.indexOfSelectedItem == 1 ? .tab : .newWindow
+    }
+
+    @objc private func warnCloseChanged() {
+        Settings.warnOnUnsavedClose = warnCloseCheckbox.state == .on
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {

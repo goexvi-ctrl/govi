@@ -5,8 +5,8 @@ import Cocoa
 // it and renders its screen in a custom NSView. nvi is *embedded*, not exec'd.
 //
 // The app is multi-window: each EditorWindow owns its own engine instance
-// (a libgovi handle), so File > New and File > Open each spawn an independent
-// editor.
+// (a libgovi handle). Settings.openFilesIn controls whether opened files start
+// in a new window or as a tab in the frontmost window.
 
 // EditorWindow owns one window, its GoviView, and the embedded engine behind it.
 // Instances keep themselves alive in a static set until their window closes.
@@ -16,7 +16,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
 
     let window: NSWindow
     let view: GoviView
-    let path: String // the file this window is editing ("" = untitled)
+    var path: String // the file this window is editing ("" = untitled)
 
     // anyOpen reports whether any editor window exists.
     static var anyOpen: Bool { !windows.isEmpty }
@@ -49,17 +49,36 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         p.isEmpty ? nil : windows.first(where: { $0.path == p })
     }
 
-    // openGroup opens the given paths together: the first in a window, and the
-    // rest as tabs in that same window -- so `govi a b c` yields one window with
-    // three tabs. A file that is already open is focused in place rather than
-    // duplicated, and becomes the group's anchor if it is first.
-    static func openGroup(paths: [String]) {
-        var anchor: NSWindow?
-        for path in paths {
-            let p = (path as NSString).standardizingPath
+    // openPaths opens one or more files according to Settings.openFilesIn. In tab
+    // mode, files join the frontmost window's tab group (or start a new window
+    // when none exists). In new-window mode, each file gets its own window.
+    // Already-open files are focused in place rather than duplicated.
+    static func openPaths(_ paths: [String]) {
+        let normalized = paths.map { ($0 as NSString).standardizingPath }
+        guard !normalized.isEmpty else { return }
+
+        switch Settings.openFilesIn {
+        case .newWindow:
+            for p in normalized {
+                if let w = existing(path: p) {
+                    w.window.makeKeyAndOrderFront(nil)
+                } else {
+                    _ = open(path: p)
+                }
+            }
+        case .tab:
+            openAsTabs(normalized)
+        }
+    }
+
+    // openAsTabs opens paths in the frontmost window's tab group. The first file
+    // starts a new window when no anchor exists yet.
+    private static func openAsTabs(_ paths: [String]) {
+        var anchor = NSApp.keyWindow ?? windows.first?.window
+        for p in paths {
             if let w = existing(path: p) {
                 w.window.makeKeyAndOrderFront(nil)
-                if anchor == nil { anchor = w.window }
+                anchor = w.window
                 continue
             }
             if let a = anchor {
@@ -111,9 +130,71 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         view.updateGeometry()
     }
 
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        confirmClose()
+    }
+
     func windowWillClose(_ notification: Notification) {
         GoviClose(view.handle)
         EditorWindow.windows.remove(self)
+    }
+
+    // confirmClose returns true when the window/tab may close. When
+    // Settings.warnOnUnsavedClose is set and the buffer is modified, the user
+    // is prompted to save, discard, or cancel.
+    private func confirmClose() -> Bool {
+        if !Settings.warnOnUnsavedClose || GoviModified(view.handle) == 0 {
+            return true
+        }
+
+        let displayName = path.isEmpty ? "Untitled" : (path as NSString).lastPathComponent
+        let alert = NSAlert()
+        alert.messageText = "Do you want to save the changes made to “\(displayName)”?"
+        alert.informativeText = "Your changes will be lost if you don't save them."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Don't Save")
+        alert.addButton(withTitle: "Cancel")
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            return saveForClose()
+        case .alertSecondButtonReturn:
+            return true
+        default:
+            GoviClearQuit(view.handle)
+            return false
+        }
+    }
+
+    private func saveForClose() -> Bool {
+        var target = path
+        if target.isEmpty {
+            let panel = NSSavePanel()
+            panel.canCreateDirectories = true
+            panel.nameFieldStringValue = "Untitled"
+            guard panel.runModal() == .OK, let url = panel.url else {
+                GoviClearQuit(view.handle)
+                return false
+            }
+            target = url.path
+        }
+        let saved = target.withCString { ptr in
+            GoviSave(view.handle, UnsafeMutablePointer(mutating: ptr))
+        } == 0
+        if !saved {
+            let alert = NSAlert()
+            alert.messageText = "The document could not be saved."
+            alert.informativeText = "“\(target)” could not be written."
+            alert.alertStyle = .warning
+            alert.runModal()
+            GoviClearQuit(view.handle)
+            return false
+        }
+        path = (target as NSString).standardizingPath
+        window.title = (path as NSString).lastPathComponent
+        view.updateTitle()
+        return true
     }
 }
 
@@ -125,7 +206,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let paths = CommandLine.arguments.dropFirst().map { arg -> String in
             (arg as NSString).isAbsolutePath ? arg : "\(cwd)/\(arg)"
         }
-        EditorWindow.openGroup(paths: Array(paths))
+        EditorWindow.openPaths(Array(paths))
         // If nothing was opened (no args and no open event), show an empty
         // window. Deferred so any launch-time open event is handled first.
         DispatchQueue.main.async {
@@ -141,8 +222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // delivering to the *running* instance when one exists, which is what makes
     // the command-line `govi` tool reuse a running app.
     func application(_ application: NSApplication, open urls: [URL]) {
-        // Files passed together (`govi a b c`) open as tabs in one window.
-        EditorWindow.openGroup(paths: urls.filter { $0.isFileURL }.map { $0.path })
+        EditorWindow.openPaths(urls.filter { $0.isFileURL }.map { $0.path })
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -182,7 +262,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    // File > Open…: choose one or more files, each in its own window.
+    // File > Open…: choose one or more files (placement follows Settings).
     @objc func openWindow(_ sender: Any?) {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
@@ -190,9 +270,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.allowsMultipleSelection = true
         panel.begin { response in
             guard response == .OK else { return }
-            for url in panel.urls {
-                EditorWindow.open(path: url.path)
-            }
+            EditorWindow.openPaths(panel.urls.map { $0.path })
         }
     }
 }

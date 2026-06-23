@@ -170,6 +170,47 @@ func GoviShouldQuit(h C.longlong) C.int {
 	return boolToC(in != nil && in.eng.ShouldQuit())
 }
 
+// GoviClearQuit resets the quit flag after the host aborts closing a window.
+//
+//export GoviClearQuit
+func GoviClearQuit(h C.longlong) {
+	if in := get(h); in != nil {
+		in.eng.ClearQuit()
+	}
+}
+
+// GoviModified reports whether the buffer has unsaved changes.
+//
+//export GoviModified
+func GoviModified(h C.longlong) C.int {
+	in := get(h)
+	if in == nil {
+		return 0
+	}
+	mod := false
+	in.eng.WithView(func(v engine.View) { mod = v.Modified() })
+	return boolToC(mod)
+}
+
+// GoviSave writes the buffer to path (NULL or "" uses the current file).
+// Returns 0 on success, 1 on error.
+//
+//export GoviSave
+func GoviSave(h C.longlong, path *C.char) C.int {
+	in := get(h)
+	if in == nil {
+		return 1
+	}
+	p := ""
+	if path != nil {
+		p = C.GoString(path)
+	}
+	if err := in.eng.Save(p); err != nil {
+		return 1
+	}
+	return 0
+}
+
 // GoviMapPending reports whether input is buffered awaiting more keys.
 //
 //export GoviMapPending

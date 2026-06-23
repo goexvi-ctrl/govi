@@ -268,7 +268,12 @@ func (e *Engine) exLineNumber(c *exCmd) error {
 }
 
 func (e *Engine) exWrite(c *exCmd) error {
-	path := strings.TrimSpace(c.arg)
+	return e.Save(strings.TrimSpace(c.arg))
+}
+
+// Save writes the buffer to path (or the current file when path is empty).
+// An untitled buffer adopts path as its name on the first successful save.
+func (e *Engine) Save(path string) error {
 	if path == "" {
 		path = e.scr.name
 	}
@@ -279,13 +284,25 @@ func (e *Engine) exWrite(c *exCmd) error {
 	if err != nil {
 		return err
 	}
-	if path == e.scr.name {
+	if e.scr.name == "" {
+		e.scr.name = path
+	}
+	if sameFile(path, e.scr.name) {
 		e.scr.modified = false
 		e.removeRecovery() // saved: no recovery needed
 	}
 	e.scr.msg = fmt.Sprintf("%q: %d lines, %d bytes", filepath.Base(path), n, b)
 	e.scr.msgKind = MsgInfo
 	return nil
+}
+
+func sameFile(a, b string) bool {
+	if a == b {
+		return true
+	}
+	aa, errA := filepath.Abs(a)
+	bb, errB := filepath.Abs(b)
+	return errA == nil && errB == nil && aa == bb
 }
 
 func (e *Engine) exWriteQuit(c *exCmd) error {
