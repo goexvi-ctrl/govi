@@ -267,6 +267,12 @@ func (e *Engine) interrupt() {
 // command line (':' ex commands and '/' '?' searches) is handled here. Map
 // expansion happens upstream in handleKeyEvent.
 func (e *Engine) dispatchKey(ev KeyEvent) {
+	// While an ex a/i/c command is collecting input, every key feeds the
+	// collector regardless of the visual mode it was started from.
+	if e.scr.exInput != nil {
+		e.exInputKey(ev)
+		return
+	}
 	switch e.scr.mode {
 	case ModeExColon:
 		e.cmdlineKey(ev)

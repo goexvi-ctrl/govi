@@ -60,6 +60,129 @@ func (e *Engine) printLine(s string) {
 	}
 }
 
+// exInputState collects the text typed after an ex a/i/c command until a line
+// containing only "." terminates it; the collected lines are then inserted.
+type exInputState struct {
+	kind         rune    // 'a' append, 'i' insert, 'c' change
+	at           int64   // insert collected lines after this line (a/i)
+	delL1, delL2 int64   // lines to delete first (c)
+	lines        [][]rune
+}
+
+// exInputActive reports whether ex input (a/i/c) is collecting lines.
+func (e *Engine) exInputActive() bool { return e.scr.exInput != nil }
+
+// exStartInput begins collecting input for an a/i/c command.
+func (e *Engine) exStartInput(c *exCmd, kind rune) error {
+	s := e.scr
+	st := &exInputState{kind: kind}
+	switch kind {
+	case 'a':
+		at := s.cursor.Line
+		if c.addrCount > 0 {
+			at = c.addr2
+		}
+		st.at = at
+	case 'i':
+		at := s.cursor.Line
+		if c.addrCount > 0 {
+			at = c.addr2
+		}
+		st.at = at - 1 // insert before the line = append after the previous one
+	case 'c':
+		l1, l2, err := e.rangeOf(c)
+		if err != nil {
+			return err
+		}
+		st.delL1, st.delL2 = l1, l2
+	}
+	s.exInput = st
+	return nil
+}
+
+// exInputKey handles a keypress while collecting a/i/c input. Lines accumulate
+// until one consisting solely of "." ends the command.
+func (e *Engine) exInputKey(ev KeyEvent) {
+	s := e.scr
+	switch {
+	case ev.Key == KeyEnter || ev.Rune == '\r' || ev.Rune == '\n':
+		line := string(s.colon)
+		s.colon = nil
+		if line == "." {
+			if s.mode == ModeExText {
+				e.exEcho(".")
+			}
+			e.exInputFinish()
+			return
+		}
+		if s.mode == ModeExText {
+			e.exEcho(line)
+		}
+		s.exInput.lines = append(s.exInput.lines, []rune(line))
+	case ev.Key == KeyBackspace || ev.Rune == 0x7f || ev.Rune == '\b':
+		if len(s.colon) > 0 {
+			s.colon = s.colon[:len(s.colon)-1]
+		}
+	case ev.Key == KeyEscape:
+		// ESC ends input too (treats what is typed so far as a finished line set).
+		e.exInputFinish()
+	default:
+		if ev.Rune != 0 {
+			s.colon = append(s.colon, ev.Rune)
+		}
+	}
+}
+
+// exInputFinish inserts the collected lines into the buffer as one undo unit.
+func (e *Engine) exInputFinish() {
+	s := e.scr
+	st := s.exInput
+	s.exInput = nil
+	if st == nil {
+		return
+	}
+	e.beginChange()
+	if st.kind == 'c' {
+		for ln := st.delL2; ln >= st.delL1; ln-- {
+			s.deleteLine(ln)
+		}
+		st.at = st.delL1 - 1
+	}
+	last := e.insertLinesAfter(st.at, st.lines)
+	if s.store.Lines() == 0 {
+		s.log.Insert(1, []rune{})
+		last = 1
+	}
+	e.endChange()
+	if last < 1 {
+		last = 1
+	}
+	s.cursor = Pos{Line: clampLine(s, last), Col: 0}
+	s.clampCursor()
+}
+
+// insertLinesAfter inserts lines into the buffer after line `at` (at == 0 means
+// before the first line), returning the last inserted line number.
+func (e *Engine) insertLinesAfter(at int64, lines [][]rune) int64 {
+	s := e.scr
+	last := at
+	for i, ln := range lines {
+		if at == 0 && i == 0 {
+			s.insertLine(1, cloneR(ln))
+			last = 1
+		} else {
+			s.appendLine(last, cloneR(ln))
+			last++
+		}
+	}
+	return last
+}
+
+// ex a/i/c command entry points.
+func (e *Engine) exAppend(c *exCmd) error { return e.exStartInput(c, 'a') }
+func (e *Engine) exInsert(c *exCmd) error { return e.exStartInput(c, 'i') }
+func (e *Engine) exChange(c *exCmd) error { return e.exStartInput(c, 'c') }
+
 // exModeKey handles a keypress while in ex mode.
 func (e *Engine) exModeKey(ev KeyEvent) {
 	s := e.scr

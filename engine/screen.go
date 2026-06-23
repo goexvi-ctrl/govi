@@ -38,6 +38,10 @@ type screen struct {
 	// exTranscript is the scrolling output shown while mode == ModeExText.
 	exTranscript []string
 
+	// exInput, when non-nil, means the ex input commands (a/i/c) are collecting
+	// lines until a sole "." is entered.
+	exInput *exInputState
+
 	// pendingOutput is multi-line command output (e.g. :set all) shown over the
 	// buffer in vi mode until the next keypress.
 	pendingOutput []string

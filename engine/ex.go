@@ -73,6 +73,9 @@ func init() {
 		{"number", 2, (*Engine).exNumber},
 		{"list", 1, (*Engine).exList},
 		{"visual", 2, (*Engine).exVisual},
+		{"append", 1, (*Engine).exAppend},
+		{"insert", 1, (*Engine).exInsert},
+		{"change", 1, (*Engine).exChange},
 	}
 }
 
