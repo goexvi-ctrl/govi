@@ -59,9 +59,24 @@ This produces `gui/build/Govi.app`.
 
 ## Run
 
+Use the `govi` command-line launcher (`gui/govi`):
+
 ```sh
-open gui/build/Govi.app --args /path/to/file
-# or directly:
+gui/govi file1 file2 ...   # opens the files, creating any that don't exist
+gui/govi                   # just launch / focus Govi.app
+```
+
+It launches Govi.app if needed, or hands the files to an **already-running**
+instance via the macOS open-documents event (no custom IPC), and brings it to
+the front — so it works like a normal command-line editor launcher. Re-opening a
+file that's already open just focuses its window. Put it on your `PATH` with a
+symlink, e.g. `ln -s "$PWD/gui/govi" /usr/local/bin/govi`. It finds Govi.app via
+`$GOVI_APP`, then `gui/build/Govi.app`, then `/Applications/Govi.app`.
+
+Or run the app directly:
+
+```sh
+open gui/build/Govi.app --args /path/to/file   # only on a fresh launch
 gui/build/Govi.app/Contents/MacOS/Govi /path/to/file
 ```
 

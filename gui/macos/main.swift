@@ -16,6 +16,10 @@ final class EditorWindow: NSObject, NSWindowDelegate {
 
     let window: NSWindow
     let view: GoviView
+    let path: String // the file this window is editing ("" = untitled)
+
+    // anyOpen reports whether any editor window exists.
+    static var anyOpen: Bool { !windows.isEmpty }
 
     // make creates an editor for path (empty path = an empty buffer) without
     // presenting it. Returns nil if the file could not be opened.
@@ -40,6 +44,18 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         return w
     }
 
+    // openOrFocus brings an existing window for path to the front if one exists,
+    // otherwise opens it. Backs command-line "open these files" so a second
+    // request for an already-open file does not duplicate it.
+    static func openOrFocus(path: String) {
+        let p = (path as NSString).standardizingPath
+        if !p.isEmpty, let existing = windows.first(where: { $0.path == p }) {
+            existing.window.makeKeyAndOrderFront(nil)
+            return
+        }
+        open(path: p)
+    }
+
     // openTab presents path as a new tab in keyWindow's tab group, or as a
     // standalone window if there is no key window to tab into.
     static func openTab(in keyWindow: NSWindow?, path: String) {
@@ -55,6 +71,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     }
 
     private init(handle: Int64, path: String) {
+        self.path = (path as NSString).standardizingPath
         let frame = NSRect(x: 0, y: 0, width: 800, height: 600)
         window = NSWindow(
             contentRect: frame,
@@ -88,9 +105,31 @@ final class EditorWindow: NSObject, NSWindowDelegate {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let args = CommandLine.arguments
-        let path = args.count > 1 ? args[1] : ""
-        EditorWindow.open(path: path)
+        // Files passed by direct exec (Govi.app/Contents/MacOS/Govi file ...).
+        // Files passed via `open`/Finder arrive through application(_:open:).
+        let cwd = FileManager.default.currentDirectoryPath
+        for arg in CommandLine.arguments.dropFirst() {
+            let p = (arg as NSString).isAbsolutePath ? arg : "\(cwd)/\(arg)"
+            EditorWindow.openOrFocus(path: p)
+        }
+        // If nothing was opened (no args and no open event), show an empty
+        // window. Deferred so any launch-time open event is handled first.
+        DispatchQueue.main.async {
+            if !EditorWindow.anyOpen {
+                EditorWindow.open(path: "")
+            }
+        }
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // application(_:open:) is the open-documents Apple Event. macOS routes
+    // `open -a Govi.app file ...` (and Finder double-clicks / drags) here --
+    // delivering to the *running* instance when one exists, which is what makes
+    // the command-line `govi` tool reuse a running app.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.isFileURL {
+            EditorWindow.openOrFocus(path: url.path)
+        }
         NSApp.activate(ignoringOtherApps: true)
     }
 

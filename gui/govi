@@ -1,0 +1,61 @@
+#!/bin/sh
+# govi -- open files in Govi.app from the command line.
+#
+# Launches Govi.app if it is not running, or hands the files to the already
+# running instance (via the macOS open-documents event), so it behaves like a
+# normal command-line editor launcher.
+#
+#   govi                 # just launch / focus Govi.app
+#   govi file ...        # open one or more files (created if they don't exist)
+#
+# Govi.app is located via, in order: $GOVI_APP, the build/ dir next to this
+# script, this script's own directory, then /Applications.
+set -eu
+
+self=$(cd "$(dirname "$0")" && pwd)
+
+app="${GOVI_APP:-}"
+if [ -z "$app" ]; then
+	for cand in "$self/build/Govi.app" "$self/Govi.app" "/Applications/Govi.app"; do
+		if [ -d "$cand" ]; then
+			app="$cand"
+			break
+		fi
+	done
+fi
+if [ -z "$app" ] || [ ! -d "$app" ]; then
+	echo "govi: cannot find Govi.app; set GOVI_APP to its path" >&2
+	exit 1
+fi
+
+# No files: just launch or focus the app.
+if [ "$#" -eq 0 ]; then
+	exec open "$app"
+fi
+
+# Rebuild the argument list as absolute paths, creating any that don't exist
+# (so, like vi, you can open a new file). The shift/append loop is POSIX-safe.
+n=$#
+while [ "$n" -gt 0 ]; do
+	f=$1
+	shift
+	case "$f" in
+	/*) p="$f" ;;
+	*) p="$PWD/$f" ;;
+	esac
+	n=$((n - 1))
+	if [ ! -e "$p" ] && ! touch "$p" 2>/dev/null; then
+		echo "govi: cannot create $p" >&2
+		continue
+	fi
+	set -- "$@" "$p"
+done
+
+# Every file failed to resolve.
+if [ "$#" -eq 0 ]; then
+	exit 1
+fi
+
+# `open -a` launches the app or, if it is already running, delivers the files to
+# that instance and brings it to the front.
+exec open -a "$app" "$@"

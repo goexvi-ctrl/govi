@@ -50,10 +50,20 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 	<key>CFBundleShortVersionString</key><string>0.1</string>
 	<key>NSHighResolutionCapable</key> <true/>
 	<key>NSPrincipalClass</key>        <string>NSApplication</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>    <string>All Files</string>
+			<key>CFBundleTypeRole</key>    <string>Editor</string>
+			<key>LSHandlerRank</key>       <string>Alternate</string>
+			<key>LSItemContentTypes</key>  <array><string>public.data</string></array>
+		</dict>
+	</array>
 </dict>
 </plist>
 PLIST
 
 echo "==> done: $app"
-echo "Run a file with:  $app/Contents/MacOS/Govi <path>"
-echo "Or open the app:  open $app --args <path>"
+echo "Open files from the command line with the launcher:"
+echo "    $here/govi <file> ...        (reuses a running Govi.app)"
+echo "Put it on your PATH, e.g.:  ln -s $here/govi /usr/local/bin/govi"
