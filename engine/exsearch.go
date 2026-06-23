@@ -141,14 +141,27 @@ func substituteLine(re *regex.Regex, in, repl []rune, global bool) ([]rune, int,
 	var out []rune
 	pos := 0
 	count := 0
+	prevEnd := -1 // end of the previous match, to reject adjacent empty matches
 	for {
 		m, ok := re.MatchAt(in, pos)
 		if !ok {
 			break
 		}
+		if m.End == m.Start && m.Start == prevEnd {
+			// An empty match immediately following the previous match is not a
+			// valid replacement (matches nvi / POSIX): skip a character and retry
+			// so e.g. s/a*/X/g on "aaa" yields "X", not "XX".
+			if m.Start >= len(in) {
+				break
+			}
+			out = append(out, in[pos:m.Start+1]...)
+			pos = m.Start + 1
+			continue
+		}
 		out = append(out, in[pos:m.Start]...)
 		out = append(out, buildReplacement(repl, in, m)...)
 		count++
+		prevEnd = m.End
 		if m.End == m.Start {
 			// Empty match: emit one char and advance to avoid looping.
 			if m.End < len(in) {
