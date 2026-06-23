@@ -94,6 +94,23 @@ func (e *Engine) LineSelectRange(line int64) (Pos, Pos) {
 	return Pos{Line: line, Col: 0}, Pos{Line: line, Col: len(s.lineRunes(line))}
 }
 
+// ScrollLines scrolls the viewport by delta lines (positive = toward the end of
+// the file) without moving the cursor, for GUI wheel/trackpad scrolling. Unlike
+// a vi command it does not keep the cursor on screen -- the view scrolls freely
+// like any windowed app; the next edit or motion brings the cursor back into
+// view. top is clamped so the buffer always fills from a real line.
+func (e *Engine) ScrollLines(delta int) {
+	s := e.scr
+	top := s.top + int64(delta)
+	if top < 1 {
+		top = 1
+	}
+	if n := s.store.Lines(); top > n {
+		top = n
+	}
+	s.top = top
+}
+
 // MoveCursorTo positions the cursor at line/col, clamping into the buffer, and
 // scrolls it into view. Backs click-to-position.
 func (e *Engine) MoveCursorTo(line int64, col int) {

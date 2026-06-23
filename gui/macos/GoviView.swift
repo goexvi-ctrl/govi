@@ -271,6 +271,25 @@ final class GoviView: NSView, NSTextInputClient {
         dragging = false
     }
 
+    // Wheel / trackpad scrolling moves the viewport like any windowed app; the
+    // cursor stays put (it may scroll off-screen). Fractional trackpad deltas
+    // accumulate so scrolling is smooth.
+    private var scrollAccum: CGFloat = 0
+
+    override func scrollWheel(with event: NSEvent) {
+        if event.hasPreciseScrollingDeltas {
+            scrollAccum += event.scrollingDeltaY / cellH // points -> lines
+        } else {
+            scrollAccum += event.scrollingDeltaY // already in lines
+        }
+        let lines = Int(scrollAccum.rounded(.towardZero))
+        guard lines != 0 else { return }
+        scrollAccum -= CGFloat(lines)
+        // Positive scrollingDeltaY reveals earlier lines (top decreases).
+        GoviScroll(handle, Int32(-lines))
+        step()
+    }
+
     // The tab bar's "+" button is shown by AppKit when this is found in the key
     // window's responder chain; it adds a new tab to this window's group.
     @objc override func newWindowForTab(_ sender: Any?) {

@@ -141,6 +141,8 @@ is unaware of it.
 
 In addition to vi keys, the window supports the usual GUI text affordances:
 
+- **Wheel / two-finger scroll** moves the viewport like any windowed app; the
+  cursor stays put (and may scroll off-screen) until the next edit or motion.
 - **Click** to move the cursor.
 - **Click-drag** to highlight a selection.
 - **Double-click** selects the word under the cursor; **triple-click** selects

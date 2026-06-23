@@ -173,3 +173,33 @@ func TestMoveCursorClamps(t *testing.T) {
 		t.Errorf("clamped col = %d, want 1", e.scr.cursor.Col)
 	}
 }
+
+func TestScrollLines(t *testing.T) {
+	e, _, _ := newTestEngine(t, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n")
+	e.Resize(4, 20) // small viewport
+	if e.scr.top != 1 {
+		t.Fatalf("initial top = %d", e.scr.top)
+	}
+	e.ScrollLines(3) // scroll down 3 lines
+	if e.scr.top != 4 {
+		t.Errorf("after scroll +3, top = %d, want 4", e.scr.top)
+	}
+	// Cursor is not moved by scrolling.
+	if e.scr.cursor.Line != 1 {
+		t.Errorf("scroll moved cursor to %d, want 1", e.scr.cursor.Line)
+	}
+	e.ScrollLines(-2)
+	if e.scr.top != 2 {
+		t.Errorf("after scroll -2, top = %d, want 2", e.scr.top)
+	}
+	// Clamps at the top.
+	e.ScrollLines(-100)
+	if e.scr.top != 1 {
+		t.Errorf("clamp top = %d, want 1", e.scr.top)
+	}
+	// Clamps at the last line.
+	e.ScrollLines(1000)
+	if e.scr.top != 10 {
+		t.Errorf("clamp bottom = %d, want 10", e.scr.top)
+	}
+}

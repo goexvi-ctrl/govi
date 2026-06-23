@@ -383,6 +383,16 @@ func GoviSetSelection(h C.longlong, active C.int, l1 C.longlong, c1 C.int, l2 C.
 	in.selB = engine.Pos{Line: int64(l2), Col: int(c2)}
 }
 
+// GoviScroll scrolls the viewport by delta lines (positive = toward the end of
+// the file) for wheel/trackpad scrolling, without moving the cursor.
+//
+//export GoviScroll
+func GoviScroll(h C.longlong, delta C.int) {
+	if in := get(h); in != nil {
+		in.eng.ScrollLines(int(delta))
+	}
+}
+
 // GoviMoveCursor positions the cursor caret (click-to-position).
 //
 //export GoviMoveCursor
