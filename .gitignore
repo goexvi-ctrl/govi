@@ -1,6 +1,15 @@
 # Build output
-/govi
 /bin/
+
+# Compiled binaries (make, go build, accidental package builds)
+/nvi
+/bridge
+/gnvi
+/cmd/nvi/nvi
+/gui/bridge/bridge
+
+# Command-line launcher script lives at gui/govi (not repo-root /govi).
+/govi
 
 # macOS GUI app build products (libgovi archive, linked binary, .app bundle)
 /gui/build/
@@ -15,6 +24,4 @@
 # Test scratch (large-file generation, recovery temp dirs)
 /testdata/large/
 
-# Stray compiled binary (was accidentally tracked)
-/cmd/nvi/nvi
 .aider*
