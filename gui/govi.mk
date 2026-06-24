@@ -21,7 +21,7 @@ GOVI_EXE     := $(GOVI_APP)/Contents/MacOS/Govi
 GOVI_SWIFT_SRC := $(wildcard $(GOVI_GUI_DIR)/macos/*.swift)
 GOVI_BRIDGE_GO := $(wildcard $(GOVI_GUI_DIR)/bridge/*.go)
 GOVI_PLIST_SRC := $(GOVI_GUI_DIR)/macos/Info.plist
-GOVI_ICON_SRC  := $(GOVI_ROOT)/icon.jpg
+GOVI_ICON_SRC  := $(GOVI_ROOT)/icon.png
 GOVI_ICON_SH   := $(GOVI_GUI_DIR)/macos/make-icon.sh
 GOVI_ICNS      := $(GOVI_APP)/Contents/Resources/AppIcon.icns
 
