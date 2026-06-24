@@ -59,6 +59,11 @@ final class GoviView: NSView, NSTextInputClient {
     private var dragAnchor: Caret = (1, 0)
     private var dragging = false
 
+    // selGranularity records how the selection was started; shift-extend and
+    // drag-extend snap to word or line boundaries after double/triple-click.
+    private enum SelGranularity { case character, word, line }
+    private var selGranularity: SelGranularity = .character
+
     // Spell checking (continuous): red squiggles under misspelled words on the
     // visible lines. Results are cached by line text so unchanged lines are not
     // re-checked. Ranges are rune (Unicode scalar) indices, matching engine cols.
@@ -252,6 +257,14 @@ final class GoviView: NSView, NSTextInputClient {
         return (line, Int(col))
     }
 
+    // cursorCaret returns the buffer caret at the engine cursor.
+    private func cursorCaret() -> Caret {
+        var line: Int64 = 0
+        var col: Int32 = 0
+        GoviCellToPos(handle, GoviCursorX(handle), GoviCursorY(handle), &line, &col)
+        return (line, Int(col))
+    }
+
     private func setSelection(_ a: Caret, _ b: Caret) {
         if a == b {
             clearSelection()
@@ -269,6 +282,39 @@ final class GoviView: NSView, NSTextInputClient {
         GoviSetSelection(handle, 0, 0, 0, 0, 0)
     }
 
+    private func caretBefore(_ a: Caret, _ b: Caret) -> Bool {
+        a.line < b.line || (a.line == b.line && a.col < b.col)
+    }
+
+    // extendEndpoint returns the moving end of a selection extend at event,
+    // snapped to a word or line when selGranularity requires it.
+    private func extendEndpoint(at event: NSEvent) -> Caret {
+        let c = cellAt(event)
+        switch selGranularity {
+        case .character:
+            return caretAt(event)
+        case .word:
+            var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
+            GoviWordRange(handle, c.x, c.y, &l1, &c1, &l2, &c2)
+            let wStart: Caret = (l1, Int(c1))
+            let wEnd: Caret = (l2, Int(c2))
+            return caretBefore(wEnd, dragAnchor) ? wStart : wEnd
+        case .line:
+            var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
+            GoviLineRange(handle, c.x, c.y, &l1, &c1, &l2, &c2)
+            let lStart: Caret = (l1, Int(c1))
+            let lEnd: Caret = (l2, Int(c2))
+            return caretBefore(lEnd, dragAnchor) ? lStart : lEnd
+        }
+    }
+
+    private func extendSelection(to event: NSEvent) {
+        let end = extendEndpoint(at: event)
+        setSelection(dragAnchor, end)
+        GoviMoveCursor(handle, end.line, Int32(end.col))
+        step()
+    }
+
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
 
@@ -280,19 +326,37 @@ final class GoviView: NSView, NSTextInputClient {
             var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
             if event.clickCount == 2 {
                 GoviWordRange(handle, c.x, c.y, &l1, &c1, &l2, &c2)
+                dragAnchor = caretAt(event)
+                selGranularity = .word
             } else {
                 GoviLineRange(handle, c.x, c.y, &l1, &c1, &l2, &c2)
+                // Anchor at the line start so shift-extend keeps whole lines.
+                dragAnchor = (l1, Int(c1))
+                selGranularity = .line
             }
-            dragging = false
+            dragging = true
             setSelection((l1, Int(c1)), (l2, Int(c2)))
             GoviMoveCursor(handle, l2, c2)
             step()
             return
         }
 
+        // Shift-click extends the selection from the anchor (initial click, cursor,
+        // or double-click point) to the new click, like standard macOS text views.
+        if event.modifierFlags.contains(.shift), event.clickCount == 1 {
+            if !selActive {
+                dragAnchor = cursorCaret()
+                selGranularity = .character
+            }
+            dragging = true
+            extendSelection(to: event)
+            return
+        }
+
         let caret = caretAt(event)
         dragAnchor = caret
         dragging = true
+        selGranularity = .character
         clearSelection()
         GoviMoveCursor(handle, caret.line, Int32(caret.col))
         step()
@@ -300,10 +364,7 @@ final class GoviView: NSView, NSTextInputClient {
 
     override func mouseDragged(with event: NSEvent) {
         guard dragging else { return }
-        let caret = caretAt(event)
-        setSelection(dragAnchor, caret)
-        GoviMoveCursor(handle, caret.line, Int32(caret.col))
-        step()
+        extendSelection(to: event)
     }
 
     override func mouseUp(with event: NSEvent) {
