@@ -29,6 +29,7 @@ type screen struct {
 	cols   int   // columns available
 
 	mode    Mode
+	showModeLabel string // showmode text: Command, Insert, Append, Change, Replace
 	msg     string
 	msgKind MessageKind
 

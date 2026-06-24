@@ -26,6 +26,7 @@ func (m *vimode) startInsert(e *Engine, pos Pos, replace bool, cmd rune) {
 	if replace {
 		s.mode = ModeReplace
 	}
+	s.showModeLabel = insertShowMode(cmd, replace)
 	s.clampCursor()
 }
 
@@ -276,6 +277,7 @@ func (m *vimode) leaveInsertForSuspend(e *Engine) {
 	m.inserting = false
 	m.replaceMode = false
 	s.mode = ModeCommand
+	s.showModeLabel = "Command"
 	if s.cursor.Col > 0 {
 		s.cursor.Col--
 	}
@@ -314,6 +316,7 @@ func (m *vimode) finishInsert(e *Engine) {
 	m.inserting = false
 	m.replaceMode = false
 	s.mode = ModeCommand
+	s.showModeLabel = "Command"
 	if s.cursor.Col > 0 {
 		s.cursor.Col--
 	}

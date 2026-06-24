@@ -34,7 +34,10 @@ func (v view) Message() (string, MessageKind) {
 		}
 		return string(prefix) + string(v.s.colon), MsgNone
 	}
-	return v.s.msg, v.s.msgKind
+	if v.s.msg != "" {
+		return v.s.msg, v.s.msgKind
+	}
+	return v.statusLine(), MsgNone
 }
 
 func (v view) Name() string { return v.s.name }

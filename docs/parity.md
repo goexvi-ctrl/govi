@@ -156,8 +156,8 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | `lock` | yes | ❌ | file locking before write |
 | `recdir` | yes | ✅ | recovery directory for crash-recovery files |
 | `writeany` (wa) | yes | ❌ | override ownership checks on write |
-| `ruler` | yes | ❌ | row/column display on command line |
-| `showmode` (smd) | yes | ❌ | mode indicator on command line |
+| `ruler` | yes | ✅ | row/column on status line when no message |
+| `showmode` (smd) | yes | ✅ | mode indicator on status line; `*` when modified |
 | `secure` | yes | 🟡 | blocks `:shell` when set; `!` filters still run |
 | `matchtime` (mt) | yes | ✅ | showmatch flash duration (tenths of a second) |
 | `report` | yes | ⚙️ | change-report threshold (recognized, inert) |

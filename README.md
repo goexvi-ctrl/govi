@@ -345,6 +345,8 @@ every option. Boolean options: **`:set option`** / **`:set nooption`**. Query:
 | **list** | | off | Show tabs as **`^I`**, ends with **`$`**, controls visible |
 | **showmatch** | sm | off | Briefly flash matching bracket (see **matchtime**) |
 | **matchtime** | | 7 | Showmatch flash duration (tenths of a second) |
+| **ruler** | | off | Line,column ruler on the status line (when no message) |
+| **showmode** | smd | off | Mode indicator on the status line (**Command**, **Insert**, …); **\*** when modified |
 | **tags** | | tags | ctags file path |
 | **shell** | sh | /bin/sh | Shell for **`!`** and **`:shell`** |
 | **readonly** | ro | off | Treat buffer as read-only |

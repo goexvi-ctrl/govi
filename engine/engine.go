@@ -70,8 +70,9 @@ func (e *Engine) setBuffer(store buffer.LineStore, name string) {
 		name:   name,
 		cursor: Pos{Line: 1, Col: 0},
 		top:    1,
-		mode:   ModeCommand,
-		opts:   defaultOptions(),
+		mode:          ModeCommand,
+		showModeLabel: "Command",
+		opts:          defaultOptions(),
 		maps:   newMapTable(),
 	}
 	e.vi = newVimode()
@@ -90,6 +91,7 @@ func (e *Engine) replaceBuffer(store buffer.LineStore, name string) {
 	s.cursor = Pos{Line: 1, Col: 0}
 	s.top = 1
 	s.mode = ModeCommand
+	s.showModeLabel = "Command"
 	s.modified = false
 	s.colon = nil
 	e.vi = newVimode()

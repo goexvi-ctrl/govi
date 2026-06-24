@@ -274,7 +274,7 @@ func (e *Engine) setOne(tok string) error {
 // f_reformat for tabstop).
 func (e *Engine) afterOptSet(d *optDef) {
 	switch d.name {
-	case "tabstop", "list", "number", "shiftwidth", "foreground", "background":
+	case "tabstop", "list", "number", "shiftwidth", "foreground", "background", "ruler", "showmode":
 		e.fe.Render(view{e.scr}, ChangeSet{Full: true})
 	}
 }
