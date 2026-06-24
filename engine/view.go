@@ -23,16 +23,7 @@ func (v view) Message() (string, MessageKind) {
 	// While entering a command line, the message line shows the prompt prefix
 	// (':', '/', or '?') followed by what has been typed.
 	if v.s.mode == ModeExColon || v.s.mode == ModeExText {
-		// While an a/i/c command collects input there is no ':' prompt; the line
-		// being typed is shown as-is.
-		if v.s.exInput != nil {
-			return string(v.s.colon), MsgNone
-		}
-		prefix := v.s.cmdPrefix
-		if prefix == 0 {
-			prefix = ':'
-		}
-		return string(prefix) + string(v.s.colon), MsgNone
+		return v.colonDisplayMessage(), MsgNone
 	}
 	if v.s.msg != "" {
 		return v.s.msg, v.s.msgKind

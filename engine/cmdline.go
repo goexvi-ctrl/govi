@@ -60,8 +60,10 @@ func (e *Engine) colonEditKey(ev KeyEvent, opts colonEditOpts) {
 
 func colonLiteralRune(ev KeyEvent) rune {
 	switch {
-	case ev.Key == KeyEnter || ev.Rune == '\r' || ev.Rune == '\n':
-		return '\n'
+	case ev.Key == KeyEnter || ev.Rune == '\r':
+		return '\r' // ^M
+	case ev.Rune == '\n':
+		return '\n' // ^J
 	case ev.Key == KeyTab || ev.Rune == '\t':
 		return '\t'
 	case ev.Key == KeyEscape:
@@ -157,4 +159,21 @@ func (s *screen) resetColonEdit() {
 	s.cmdLiteralNext = false
 	s.cmdHexMode = false
 	s.cmdHexBuf = s.cmdHexBuf[:0]
+}
+
+// colonDisplayMessage formats the in-progress colon/ex command line for the
+// status line, expanding control characters to ^X form (nvi colon command line).
+func (v view) colonDisplayMessage() string {
+	text := FormatVisibleControls(v.s.colon)
+	if v.s.cmdLiteralNext {
+		text += "^"
+	}
+	if v.s.exInput != nil {
+		return text
+	}
+	prefix := v.s.cmdPrefix
+	if prefix == 0 {
+		prefix = ':'
+	}
+	return string(prefix) + text
 }

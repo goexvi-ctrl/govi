@@ -136,14 +136,11 @@ func DisplayCells(dl DisplayLine) []Cell {
 	return cells
 }
 
-// FormatListLine formats buffer runes for ex :list output (and :print/:number
-// when the list option is set): tabs and control characters in ^X form, plus a
-// trailing $.
-func FormatListLine(runes []rune) string {
-	if len(runes) == 0 {
-		return "$"
-	}
-	out := make([]rune, 0, len(runes)*2+1)
+// FormatVisibleControls renders runes for on-screen display of the colon
+// command line and similar single-line inputs: tabs and control characters
+// appear in ^X form (nvi colon-line / :set list style, without the trailing $).
+func FormatVisibleControls(runes []rune) string {
+	out := make([]rune, 0, len(runes)*2)
 	for _, r := range runes {
 		switch {
 		case r == '\t':
@@ -156,8 +153,17 @@ func FormatListLine(runes []rune) string {
 			out = append(out, r)
 		}
 	}
-	out = append(out, '$')
 	return string(out)
+}
+
+// FormatListLine formats buffer runes for ex :list output (and :print/:number
+// when the list option is set): tabs and control characters in ^X form, plus a
+// trailing $.
+func FormatListLine(runes []rune) string {
+	if len(runes) == 0 {
+		return "$"
+	}
+	return FormatVisibleControls(runes) + "$"
 }
 
 // DisplayColumn returns the display column (0-based) at which logical rune

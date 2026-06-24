@@ -27,7 +27,7 @@ func TestColonCtrlVLiteral(t *testing.T) {
 	}
 	e.Input(KeyEvent{Rune: 'v', Mods: ModCtrl})
 	e.Input(KeyEvent{Key: KeyEnter})
-	if got := string(e.scr.colon); got != "\t\n" {
+	if got := string(e.scr.colon); got != "\t\r" {
 		t.Fatalf("colon after ^V enter = %q", got)
 	}
 }
@@ -51,6 +51,27 @@ func TestColonCtrlWWordErase(t *testing.T) {
 	e.Input(KeyEvent{Rune: 'w', Mods: ModCtrl})
 	if got := string(e.scr.colon); got != "set " {
 		t.Fatalf("colon after ^W = %q, want %q", got, "set ")
+	}
+}
+
+func TestColonDisplayControlChar(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	drive(e, ":")
+	e.Input(KeyEvent{Rune: 'v', Mods: ModCtrl})
+	e.Input(KeyEvent{Key: KeyEnter})
+	msg, _ := (view{e.scr}).Message()
+	if msg != ":^M" {
+		t.Fatalf("msg = %q, want :^M", msg)
+	}
+}
+
+func TestColonDisplayLiteralNextCaret(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	drive(e, ":")
+	e.Input(KeyEvent{Rune: 'v', Mods: ModCtrl})
+	msg, _ := (view{e.scr}).Message()
+	if msg != ":^" {
+		t.Fatalf("msg = %q, want :^", msg)
 	}
 }
 

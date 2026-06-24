@@ -44,6 +44,14 @@ func TestListModeEmptyLine(t *testing.T) {
 	}
 }
 
+func TestFormatVisibleControls(t *testing.T) {
+	got := FormatVisibleControls([]rune("a\t\x0d"))
+	want := "a^I^M"
+	if got != want {
+		t.Fatalf("FormatVisibleControls = %q, want %q", got, want)
+	}
+}
+
 func TestFormatListLine(t *testing.T) {
 	got := FormatListLine([]rune("a\t\x01"))
 	want := "a^I^A$"
