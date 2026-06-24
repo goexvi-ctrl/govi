@@ -24,7 +24,17 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     // make creates an editor for path (empty path = an empty buffer) without
     // presenting it. Returns nil if the file could not be opened.
     private static func make(path: String) -> EditorWindow? {
-        let handle = path.withCString { GoviStart(UnsafeMutablePointer(mutating: $0)) }
+        let fg = Settings.defaultForegroundColorSpec
+        let bg = Settings.defaultBackgroundColorSpec
+        let handle = path.withCString { pathPtr in
+            fg.withCString { fgPtr in
+                bg.withCString { bgPtr in
+                    GoviStart(UnsafeMutablePointer(mutating: pathPtr),
+                              UnsafeMutablePointer(mutating: fgPtr),
+                              UnsafeMutablePointer(mutating: bgPtr))
+                }
+            }
+        }
         guard handle != 0 else {
             let alert = NSAlert()
             alert.messageText = "Could not open “\(path)”."

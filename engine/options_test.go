@@ -87,6 +87,25 @@ func TestAutoindentNewline(t *testing.T) {
 	}
 }
 
+func TestSetForegroundBackground(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	if err := e.exExecute("set foreground=#ff0000 background=wheat"); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.scr.opts.Str("foreground"); got != "#ff0000" {
+		t.Fatalf("foreground = %q, want #ff0000", got)
+	}
+	if got := e.scr.opts.Str("background"); got != "wheat" {
+		t.Fatalf("background = %q, want wheat", got)
+	}
+	if err := e.exExecute("set fg=blue"); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.scr.opts.Str("foreground"); got != "blue" {
+		t.Fatalf("fg = %q, want blue", got)
+	}
+}
+
 func TestWrapscanOff(t *testing.T) {
 	e, _, _ := newTestEngine(t, "foo\nbar\nfoo\n")
 	e.exExecute("set nows")

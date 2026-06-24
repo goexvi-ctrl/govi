@@ -70,12 +70,22 @@ func get(h C.longlong) *instance { return insts[int64(h)] }
 func main() {} // required for c-archive builds
 
 // GoviStart creates an editor and opens path (empty path starts a scratch
-// buffer). It returns a handle, or 0 on error.
+// buffer). foreground and background are host defaults for new tabs (#RGB,
+// #RRGGBB, or a color name; empty means system default). Startup files and
+// :set may override them per tab. Returns a handle, or 0 on error.
 //
 //export GoviStart
-func GoviStart(path *C.char) C.longlong {
+func GoviStart(path, foreground, background *C.char) C.longlong {
 	in := &instance{fe: &host{}}
 	in.eng = engine.New(in.fe, engine.Options{})
+	_ = in.eng.SetStrOption("foreground", cString(foreground))
+	_ = in.eng.SetStrOption("background", cString(background))
+	if err := in.eng.LoadStartup(); err != nil {
+		return 0
+	}
+	if in.eng.ShouldQuit() {
+		return 0
+	}
 	if p := C.GoString(path); p != "" {
 		if err := in.eng.Open(p); err != nil {
 			return 0
@@ -84,6 +94,28 @@ func GoviStart(path *C.char) C.longlong {
 	nextHandle++
 	insts[nextHandle] = in
 	return C.longlong(nextHandle)
+}
+
+// GoviForegroundSpec returns this tab's foreground color spec (malloc'd;
+// caller frees). Empty means system default.
+//
+//export GoviForegroundSpec
+func GoviForegroundSpec(h C.longlong) *C.char {
+	if in := get(h); in != nil {
+		return C.CString(in.eng.StrOption("foreground"))
+	}
+	return C.CString("")
+}
+
+// GoviBackgroundSpec returns this tab's background color spec (malloc'd;
+// caller frees). Empty means system default.
+//
+//export GoviBackgroundSpec
+func GoviBackgroundSpec(h C.longlong) *C.char {
+	if in := get(h); in != nil {
+		return C.CString(in.eng.StrOption("background"))
+	}
+	return C.CString("")
 }
 
 // GoviClose disposes of an editor and releases its file handle.
@@ -614,4 +646,11 @@ func boolToC(b bool) C.int {
 		return 1
 	}
 	return 0
+}
+
+func cString(p *C.char) string {
+	if p == nil {
+		return ""
+	}
+	return C.GoString(p)
 }

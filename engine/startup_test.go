@@ -90,6 +90,25 @@ func TestLoadStartupLocalExrcRequiresOption(t *testing.T) {
 	}
 }
 
+func TestLoadStartupExrcColors(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	exrc := filepath.Join(home, ".nexrc")
+	if err := os.WriteFile(exrc, []byte("set foreground=wheat background=#001122\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e := newBareEngine(t)
+	if err := e.LoadStartup(); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.scr.opts.Str("foreground"); got != "wheat" {
+		t.Fatalf("foreground = %q, want wheat", got)
+	}
+	if got := e.scr.opts.Str("background"); got != "#001122" {
+		t.Fatalf("background = %q, want #001122", got)
+	}
+}
+
 func TestLoadStartupIgnoresComments(t *testing.T) {
 	home := t.TempDir()
 	exrc := filepath.Join(home, ".nexrc")

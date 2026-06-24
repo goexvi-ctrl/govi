@@ -184,30 +184,24 @@ enum Settings {
         fontFamily.font(size: fontSize)
     }
 
-    // foregroundColorSpec and backgroundColorSpec hold the user's setting
-    // (#RGB, #RRGGBB, or a ColorNames key). Empty means system default.
-    static var foregroundColorSpec: String {
+    // defaultForegroundColorSpec and defaultBackgroundColorSpec are applied to
+    // new tabs at creation; :set and .exrc may override per tab.
+    static var defaultForegroundColorSpec: String {
         get { UserDefaults.standard.string(forKey: fgColorKey) ?? "" }
-        set {
-            UserDefaults.standard.set(newValue, forKey: fgColorKey)
-            NotificationCenter.default.post(name: changed, object: nil)
-        }
+        set { UserDefaults.standard.set(newValue, forKey: fgColorKey) }
     }
 
-    static var backgroundColorSpec: String {
+    static var defaultBackgroundColorSpec: String {
         get { UserDefaults.standard.string(forKey: bgColorKey) ?? "" }
-        set {
-            UserDefaults.standard.set(newValue, forKey: bgColorKey)
-            NotificationCenter.default.post(name: changed, object: nil)
-        }
+        set { UserDefaults.standard.set(newValue, forKey: bgColorKey) }
     }
 
-    static var foregroundColor: NSColor {
-        ColorParser.parse(foregroundColorSpec) ?? NSColor.textColor
+    static var defaultForegroundColor: NSColor {
+        ColorParser.parse(defaultForegroundColorSpec) ?? NSColor.textColor
     }
 
-    static var backgroundColor: NSColor {
-        ColorParser.parse(backgroundColorSpec) ?? NSColor.textBackgroundColor
+    static var defaultBackgroundColor: NSColor {
+        ColorParser.parse(defaultBackgroundColorSpec) ?? NSColor.textBackgroundColor
     }
 
     private static func clampWindow(_ value: CGFloat, min: CGFloat, max: CGFloat) -> CGFloat {
@@ -318,9 +312,9 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         showDimensionsCheckbox.target = self
         showDimensionsCheckbox.action = #selector(showDimensionsChanged)
 
-        let fgRow = makeColorRow(label: "Foreground:", field: fgColorField, swatch: fgColorSwatch,
+        let fgRow = makeColorRow(label: "Default foreground (new tabs):", field: fgColorField, swatch: fgColorSwatch,
                                  placeholder: "#RRGGBB or color name (empty = system)")
-        let bgRow = makeColorRow(label: "Background:", field: bgColorField, swatch: bgColorSwatch,
+        let bgRow = makeColorRow(label: "Default background (new tabs):", field: bgColorField, swatch: bgColorSwatch,
                                  placeholder: "#RRGGBB or color name (empty = system)")
 
         let stack = NSStackView(views: [
@@ -400,10 +394,12 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         openFilesPopup.selectItem(at: Settings.openFilesIn == .tab ? 1 : 0)
         warnCloseCheckbox.state = Settings.warnOnUnsavedClose ? .on : .off
         showDimensionsCheckbox.state = Settings.showDimensionsInTitle ? .on : .off
-        fgColorField.stringValue = Settings.foregroundColorSpec
-        bgColorField.stringValue = Settings.backgroundColorSpec
-        updateSwatch(fgColorSwatch, spec: Settings.foregroundColorSpec, fallback: Settings.foregroundColor)
-        updateSwatch(bgColorSwatch, spec: Settings.backgroundColorSpec, fallback: Settings.backgroundColor)
+        fgColorField.stringValue = Settings.defaultForegroundColorSpec
+        bgColorField.stringValue = Settings.defaultBackgroundColorSpec
+        updateSwatch(fgColorSwatch, spec: Settings.defaultForegroundColorSpec,
+                     fallback: Settings.defaultForegroundColor)
+        updateSwatch(bgColorSwatch, spec: Settings.defaultBackgroundColorSpec,
+                     fallback: Settings.defaultBackgroundColor)
     }
 
     private func updateSwatch(_ swatch: NSView, spec: String, fallback: NSColor) {
@@ -497,10 +493,10 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
                           raw: field.doubleValue, assign: { Settings.fontSize = $0 })
         case fgColorField:
             commitColor(fgColorField, fgColorSwatch, fallback: NSColor.textColor,
-                        assign: { Settings.foregroundColorSpec = $0 })
+                        assign: { Settings.defaultForegroundColorSpec = $0 })
         case bgColorField:
             commitColor(bgColorField, bgColorSwatch, fallback: NSColor.textBackgroundColor,
-                        assign: { Settings.backgroundColorSpec = $0 })
+                        assign: { Settings.defaultBackgroundColorSpec = $0 })
         default:
             break
         }

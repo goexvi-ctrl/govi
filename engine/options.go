@@ -52,6 +52,8 @@ var optDefs = []optDef{
 	{name: "extended", typ: optBool},
 	{name: "filec", typ: optStr},
 	{name: "flash", typ: optBool, dB: true},
+	{name: "foreground", abbr: "fg", typ: optStr},
+	{name: "background", abbr: "bg", typ: optStr},
 	{name: "hardtabs", abbr: "ht", typ: optNum},
 	{name: "iclower", typ: optBool},
 	{name: "ignorecase", abbr: "ic", typ: optBool},
@@ -272,10 +274,26 @@ func (e *Engine) setOne(tok string) error {
 // f_reformat for tabstop).
 func (e *Engine) afterOptSet(d *optDef) {
 	switch d.name {
-	case "tabstop", "list", "number", "shiftwidth":
+	case "tabstop", "list", "number", "shiftwidth", "foreground", "background":
 		e.fe.Render(view{e.scr}, ChangeSet{Full: true})
 	}
 }
+
+// SetStrOption sets a string option (host defaults before LoadStartup).
+func (e *Engine) SetStrOption(name, value string) error {
+	d, err := resolveOpt(name)
+	if err != nil {
+		return err
+	}
+	if d.typ != optStr {
+		return fmt.Errorf("set: %s is not a string option", d.name)
+	}
+	e.scr.opts.s[d.name] = value
+	return nil
+}
+
+// StrOption returns a string option's current value.
+func (e *Engine) StrOption(name string) string { return e.scr.opts.Str(name) }
 
 // optDisplay formats one option as nvi does: "name"/"noname" for booleans,
 // "name=value" for numerics and strings (strings quoted).

@@ -39,8 +39,12 @@ final class GoviView: NSView, NSTextInputClient {
     private var cellW: CGFloat = 8
     private var cellH: CGFloat = 16
 
-    private var bgColor = Settings.backgroundColor
-    private var fgColor = Settings.foregroundColor
+    // Per-tab color specs, synced from the engine (:set / .exrc). Empty = system default.
+    private var foregroundColorSpec = ""
+    private var backgroundColorSpec = ""
+
+    private var bgColor = NSColor.textBackgroundColor
+    private var fgColor = NSColor.textColor
     private let cursorColor = NSColor.systemBlue
 
     // Inset (pixels) between the window edge and the text grid, from Settings.
@@ -97,12 +101,38 @@ final class GoviView: NSView, NSTextInputClient {
             self, selector: #selector(settingsChanged), name: Settings.changed, object: nil)
     }
 
+    private func applyColors() {
+        fgColor = ColorParser.parse(foregroundColorSpec) ?? NSColor.textColor
+        bgColor = ColorParser.parse(backgroundColorSpec) ?? NSColor.textBackgroundColor
+    }
+
+    private func syncColorsFromEngine() {
+        var changed = false
+        if let c = GoviForegroundSpec(handle) {
+            let spec = String(cString: c)
+            GoviFree(c)
+            if spec != foregroundColorSpec {
+                foregroundColorSpec = spec
+                changed = true
+            }
+        }
+        if let c = GoviBackgroundSpec(handle) {
+            let spec = String(cString: c)
+            GoviFree(c)
+            if spec != backgroundColorSpec {
+                backgroundColorSpec = spec
+                changed = true
+            }
+        }
+        if changed {
+            applyColors()
+        }
+    }
+
     @objc private func settingsChanged() {
         padding = Settings.padding
         spellEnabled = Settings.spellChecking
         font = Settings.editorFont
-        bgColor = Settings.backgroundColor
-        fgColor = Settings.foregroundColor
         measureFont()
         updateGeometry() // padding and font metrics may change the cell rows/cols
         updateSpelling()
@@ -197,6 +227,7 @@ final class GoviView: NSView, NSTextInputClient {
 
     private func recompose() {
         GoviCompose(handle, Int32(rows), Int32(cols))
+        syncColorsFromEngine()
         updateSpelling()
     }
 
