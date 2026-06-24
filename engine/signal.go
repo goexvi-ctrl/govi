@@ -18,7 +18,7 @@ const (
 	SigActBackslash // SIGQUIT / ^\: vi -> ex, ex -> quit
 	SigActSuspend
 	SigActResize // host may already handle geometry; ignore here
-	SigActFatal    // preserve and exit; display the signal name
+	SigActFatal  // preserve and exit; display the signal name
 )
 
 // SignalInfo describes a trapped signal.

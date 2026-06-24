@@ -21,25 +21,25 @@ type screen struct {
 	modified    bool
 	nameChanged bool // :f renamed the buffer; cleared on write (nvi FR_NAMECHANGE)
 
-	cursor Pos   // 1-based line, 0-based rune column
-	top    int64 // first buffer line shown (1-based)
-	rows   int   // full text rows (nvi t_maxrows)
-	mapRows int  // active scroll-map height (nvi t_rows)
-	minMapRows int // minimum map height after z[count] (nvi t_minrows)
-	cols   int   // columns available
+	cursor     Pos   // 1-based line, 0-based rune column
+	top        int64 // first buffer line shown (1-based)
+	rows       int   // full text rows (nvi t_maxrows)
+	mapRows    int   // active scroll-map height (nvi t_rows)
+	minMapRows int   // minimum map height after z[count] (nvi t_minrows)
+	cols       int   // columns available
 
-	mode    Mode
+	mode          Mode
 	showModeLabel string // showmode text: Command, Insert, Append, Change, Replace
-	msg     string
-	msgKind MessageKind
+	msg           string
+	msgKind       MessageKind
 
 	// colon holds the in-progress command line while mode == ModeExColon;
 	// cmdPrefix is the prompt character (':', '/', '?', or '!') that determines
 	// how the line is executed on Enter.
-	colon     []rune
-	cmdPrefix rune
-	cmdLiteralNext bool   // ^V: insert next character literally
-	cmdHexMode     bool   // ^X: collecting a hexadecimal character code
+	colon          []rune
+	cmdPrefix      rune
+	cmdLiteralNext bool // ^V: insert next character literally
+	cmdHexMode     bool // ^X: collecting a hexadecimal character code
 	cmdHexBuf      []rune
 
 	// filterL1/filterL2 hold the line range for a vi ! filter (v_filter in

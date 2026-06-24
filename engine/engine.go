@@ -30,11 +30,11 @@ type Engine struct {
 	argv          []string // file argument list
 	argIdx        int      // index of the current file in argv
 	showFileCount bool     // next :f/^G shows "N files to edit" (nvi SC_STATUS_CNT)
-	altFile  string   // alternate file (^^ / #), the previously edited file
-	tagStack []tagLoc // tag jump stack for ^T
+	altFile       string   // alternate file (^^ / #), the previously edited file
+	tagStack      []tagLoc // tag jump stack for ^T
 
-	file *os.File // open handle backing a paged buffer, if any
-	quit bool
+	file    *os.File // open handle backing a paged buffer, if any
+	quit    bool
 	exitMsg string // set when a signal caused the exit; printed by the host
 
 	wordBoundary WordBoundaryFunc // double-click word selection (GUI hosts)
@@ -65,17 +65,17 @@ func New(fe Frontend, _ Options) *Engine {
 // at New.
 func (e *Engine) setBuffer(store buffer.LineStore, name string) {
 	e.scr = &screen{
-		store:  store,
-		log:    undo.New(store),
-		marks:  mark.New(),
-		regs:   register.New(),
-		name:   name,
-		cursor: Pos{Line: 1, Col: 0},
-		top:    1,
+		store:         store,
+		log:           undo.New(store),
+		marks:         mark.New(),
+		regs:          register.New(),
+		name:          name,
+		cursor:        Pos{Line: 1, Col: 0},
+		top:           1,
 		mode:          ModeCommand,
 		showModeLabel: "Command",
 		opts:          defaultOptions(),
-		maps:   newMapTable(),
+		maps:          newMapTable(),
 	}
 	e.vi = newVimode()
 }

@@ -38,4 +38,3 @@ func TestExVersionAbbrev(t *testing.T) {
 		t.Fatalf("ve: message = %q", msg)
 	}
 }
-

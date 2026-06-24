@@ -171,4 +171,3 @@ func expandPathTilde(word, cwd string) string {
 	}
 	return word
 }
-
