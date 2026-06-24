@@ -250,6 +250,10 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 			s.msg, s.msgKind = err.Error(), MsgError
 		}
 	case 'r': // redraw the screen (no-op here; the frontend repaints each input)
+	case 'z': // suspend editor (^Z)
+		if err := e.doSuspend(false); err != nil {
+			s.msg, s.msgKind = err.Error(), MsgError
+		}
 	}
 	// Control commands consume any preceding count.
 	m.count = 0

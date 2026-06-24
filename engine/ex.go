@@ -68,6 +68,8 @@ func init() {
 		{"preserve", 3, (*Engine).exPreserve},
 		{"recover", 3, (*Engine).exRecover},
 		{"shell", 2, (*Engine).exShell},
+		{"stop", 4, (*Engine).exStop},
+		{"suspend", 3, (*Engine).exStop},
 		{"version", 2, (*Engine).exVersion},
 		{"!", 1, (*Engine).exBang},
 		{"&", 1, (*Engine).exAmp},

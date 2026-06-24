@@ -140,6 +140,12 @@ type ShellRunner interface {
 	RunShell(shell string, inExMode bool) error
 }
 
+// Suspender is implemented by terminal frontends that can job-control suspend
+// (^Z, :suspend, :stop). GUI hosts do not implement this.
+type Suspender interface {
+	Suspend() error
+}
+
 // Frontend is implemented by the host. The engine calls these methods
 // synchronously from the goroutine that drives Engine.Input; a GUI host should
 // marshal the work onto its UI thread. A Frontend must never call back into the

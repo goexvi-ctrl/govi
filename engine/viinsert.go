@@ -77,6 +77,11 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 		case 'x': // begin a hexadecimal character entry
 			m.hexMode = true
 			m.hexBuf = m.hexBuf[:0]
+		case 'z': // ^Z: leave insert and suspend (historic nvi discards input)
+			m.leaveInsertForSuspend(e)
+			if err := e.doSuspend(false); err != nil {
+				e.scr.msg, e.scr.msgKind = err.Error(), MsgError
+			}
 		case '@': // NUL: replay the previous insertion
 			for _, r := range m.savedInsert {
 				m.insertRune(e, r)
@@ -258,6 +263,27 @@ func hexVal(r rune) int {
 		return int(r-'A') + 10
 	}
 	return 0
+}
+
+// leaveInsertForSuspend exits insert mode for ^Z without applying an insert
+// count repeat or updating the NUL-replay buffer.
+func (m *vimode) leaveInsertForSuspend(e *Engine) {
+	s := e.scr
+	m.hexMode = false
+	m.hexBuf = m.hexBuf[:0]
+	m.literalNext = false
+	changed := len(m.insertText) > 0 || m.insertCmd == 'o' || m.insertCmd == 'O' || m.insertCmd == 'c'
+	m.inserting = false
+	m.replaceMode = false
+	s.mode = ModeCommand
+	if s.cursor.Col > 0 {
+		s.cursor.Col--
+	}
+	e.endChange()
+	s.clampCursor()
+	if changed {
+		m.changed = true
+	}
 }
 
 func (m *vimode) finishInsert(e *Engine) {
