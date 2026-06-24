@@ -392,12 +392,73 @@ final class GoviView: NSView, NSTextInputClient {
     // so plain typing, Option-accents (Option-o -> o-slash), dead keys
     // (Option-u then u -> u-umlaut), and IMEs compose correctly; the composed
     // result arrives back through the NSTextInputClient methods below.
+    // Autorepeat (isARepeat) is handled directly: interpretKeyEvents does not
+    // deliver repeats to insertText/doCommand.
     override func keyDown(with event: NSEvent) {
         if event.modifierFlags.contains(.control) {
             handleControlKey(event)
             return
         }
+        if event.isARepeat {
+            handleRepeatedKey(event)
+            return
+        }
         interpretKeyEvents([event])
+    }
+
+    // handleRepeatedKey feeds held-key repeats straight to the engine.
+    private func handleRepeatedKey(_ event: NSEvent) {
+        guard markedText.isEmpty else { return }
+        if event.keyCode == 48 {
+            dispatchTab()
+            return
+        }
+        if let key = specialKey(for: event) {
+            dispatchSpecialKey(key)
+            return
+        }
+        guard let chars = event.characters, !chars.isEmpty else { return }
+        if replaceWithText(chars) { return }
+        for scalar in chars.unicodeScalars {
+            GoviKeyRune(handle, Int32(scalar.value), 0)
+        }
+        step()
+    }
+
+    // specialKey maps an NSEvent key code to an engine special key, if any.
+    private func specialKey(for event: NSEvent) -> Int32? {
+        switch event.keyCode {
+        case 36: return SK.enter
+        case 51: return SK.backspace
+        case 117: return SK.delete
+        case 53: return SK.escape
+        case 123: return SK.left
+        case 124: return SK.right
+        case 125: return SK.down
+        case 126: return SK.up
+        case 115: return SK.home
+        case 119: return SK.end
+        case 116: return SK.pageUp
+        case 121: return SK.pageDown
+        default: return nil
+        }
+    }
+
+    // dispatchSpecialKey handles a non-text key the same way doCommand would.
+    private func dispatchSpecialKey(_ key: Int32) {
+        switch key {
+        case SK.enter:
+            if replaceWithText("\n") { return }
+            sendSpecial(SK.enter)
+        case SK.backspace, SK.delete:
+            if selActive { deleteSelection(); return }
+            sendSpecial(key)
+        case SK.escape:
+            if selActive { clearSelection() }
+            sendSpecial(SK.escape)
+        default:
+            sendSpecial(key)
+        }
     }
 
     private func handleControlKey(_ event: NSEvent) {
@@ -447,32 +508,36 @@ final class GoviView: NSView, NSTextInputClient {
     override func doCommand(by selector: Selector) {
         switch NSStringFromSelector(selector) {
         case "insertNewline:", "insertLineBreak:", "insertParagraphSeparator:":
-            if replaceWithText("\n") { return }
-            sendSpecial(SK.enter)
+            dispatchSpecialKey(SK.enter)
         case "insertTab:":
-            if selActive { clearSelection() }
-            GoviKeyRune(handle, 9, 0)
-            step()
+            dispatchTab()
         case "deleteBackward:":
-            if selActive { deleteSelection(); return }
-            sendSpecial(SK.backspace)
+            dispatchSpecialKey(SK.backspace)
         case "deleteForward:":
-            if selActive { deleteSelection(); return }
-            sendSpecial(SK.delete)
+            dispatchSpecialKey(SK.delete)
         case "cancelOperation:":
-            if selActive { clearSelection() }
-            sendSpecial(SK.escape)
-        case "moveUp:": sendSpecial(SK.up)
-        case "moveDown:": sendSpecial(SK.down)
-        case "moveLeft:": sendSpecial(SK.left)
-        case "moveRight:": sendSpecial(SK.right)
-        case "moveToBeginningOfLine:", "moveToBeginningOfParagraph:": sendSpecial(SK.home)
-        case "moveToEndOfLine:", "moveToEndOfParagraph:": sendSpecial(SK.end)
-        case "scrollPageUp:", "pageUp:", "pageUpAndModifySelection:": sendSpecial(SK.pageUp)
-        case "scrollPageDown:", "pageDown:", "pageDownAndModifySelection:": sendSpecial(SK.pageDown)
+            dispatchSpecialKey(SK.escape)
+        case "moveUp:": dispatchSpecialKey(SK.up)
+        case "moveDown:": dispatchSpecialKey(SK.down)
+        case "moveLeft:": dispatchSpecialKey(SK.left)
+        case "moveRight:": dispatchSpecialKey(SK.right)
+        case "moveToBeginningOfLine:", "moveToBeginningOfParagraph:":
+            dispatchSpecialKey(SK.home)
+        case "moveToEndOfLine:", "moveToEndOfParagraph:":
+            dispatchSpecialKey(SK.end)
+        case "scrollPageUp:", "pageUp:", "pageUpAndModifySelection:":
+            dispatchSpecialKey(SK.pageUp)
+        case "scrollPageDown:", "pageDown:", "pageDownAndModifySelection:":
+            dispatchSpecialKey(SK.pageDown)
         default:
             break // ignore Emacs-style bindings we don't want
         }
+    }
+
+    private func dispatchTab() {
+        if selActive { clearSelection() }
+        GoviKeyRune(handle, 9, 0)
+        step()
     }
 
     private func sendSpecial(_ key: Int32) {
