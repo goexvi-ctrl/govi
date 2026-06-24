@@ -48,7 +48,8 @@ type Engine struct {
 	exLineMode bool
 	exOut      []string
 
-	startup bool // true while reading EXINIT / exrc startup information
+	startup   bool // true while reading EXINIT / exrc startup information
+	launchCtx LaunchContext
 }
 
 // New returns an Engine that renders through fe. Call Open and Resize before

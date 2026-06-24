@@ -41,19 +41,45 @@ func statID(info os.FileInfo) fileID {
 // Order: /etc/vi.exrc; NEXINIT or EXINIT; $HOME/.nexrc or .exrc; ./.nexrc or
 // .exrc when the exrc option is set. See nvi "Startup Information" (ex_init.c).
 func (e *Engine) LoadStartup() error {
+	ctx := e.launchCtx
+	if ctx.Silent {
+		return nil
+	}
+
 	var homeID fileID
 
-	if _, _, err := e.tryStartupFile(pathSysExrc, true, false); err != nil {
+	sysPath := pathSysExrc
+	if ctx.SysExrc != "" {
+		sysPath = ctx.SysExrc
+	}
+	if _, _, err := e.tryStartupFile(sysPath, true, false); err != nil {
 		return err
 	}
 
-	if nexinit := os.Getenv("NEXINIT"); nexinit != "" {
+	nexinit := os.Getenv("NEXINIT")
+	if ctx.Nexinit != "" {
+		nexinit = ctx.Nexinit
+	}
+	exinit := os.Getenv("EXINIT")
+	if ctx.Exinit != "" {
+		exinit = ctx.Exinit
+	}
+
+	if nexinit != "" {
 		if err := e.runStartupScript("NEXINIT", nexinit); err != nil {
 			return err
 		}
-	} else if exinit := os.Getenv("EXINIT"); exinit != "" {
+	} else if exinit != "" {
 		if err := e.runStartupScript("EXINIT", exinit); err != nil {
 			return err
+		}
+	} else if ctx.HomeExrc != "" {
+		v, info, err := e.tryStartupFile(ctx.HomeExrc, false, true)
+		if err != nil {
+			return err
+		}
+		if v == exrcOK {
+			homeID = statID(info)
 		}
 	} else if home, err := os.UserHomeDir(); err == nil && home != "" {
 		nex := filepath.Join(home, pathNexrc)
@@ -84,13 +110,21 @@ func (e *Engine) LoadStartup() error {
 		return nil
 	}
 
-	v, info, err := e.tryStartupFile(pathNexrc, false, false)
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = "."
+	}
+	if ctx.Cwd != "" {
+		cwd = ctx.Cwd
+	}
+
+	v, info, err := e.tryStartupFile(filepath.Join(cwd, pathNexrc), false, false)
 	if err != nil {
 		return err
 	}
 	switch v {
 	case exrcNoExist:
-		v, info, err = e.tryStartupFile(pathExrc, false, false)
+		v, info, err = e.tryStartupFile(filepath.Join(cwd, pathExrc), false, false)
 		if err != nil {
 			return err
 		}

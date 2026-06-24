@@ -80,6 +80,9 @@ func GoviStart(path, foreground, background *C.char) C.longlong {
 	in.eng = engine.New(in.fe, engine.Options{})
 	_ = in.eng.SetStrOption("foreground", cString(foreground))
 	_ = in.eng.SetStrOption("background", cString(background))
+	if ctx, err := engine.ReadLaunchContext(); err == nil {
+		in.eng.SetLaunchContext(ctx)
+	}
 	if err := in.eng.LoadStartup(); err != nil {
 		return 0
 	}

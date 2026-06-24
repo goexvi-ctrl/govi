@@ -7,16 +7,19 @@
 #
 #   govi                 # just launch / focus Govi.app
 #   govi file ...        # open one or more files (created if they don't exist)
+#   govi -s file ...     # silent startup (no exrc / EXINIT / NEXINIT)
+#
+# Before opening the app, this script resolves nvi startup information in the
+# same order as nvi and writes it to
+#   ~/Library/Application Support/Govi/launch-context
+# for Govi.app to read (GUI apps launched via open(1) do not inherit the shell
+# cwd or EXINIT/NEXINIT).
 #
 # Govi.app is located via, in order: $GOVI_APP, the build/ dir next to this
 # script, this script's own directory, then /Applications.
 set -eu
 
-
 self=$(cd "$(dirname "$0")" && pwd)
-
-# force it to look where we build it as govi might be copied elsewhere
-self=/Users/claude/src/nvi/govi/gui
 
 app="${GOVI_APP:-}"
 if [ -z "$app" ]; then
@@ -31,6 +34,90 @@ if [ -z "$app" ] || [ ! -d "$app" ]; then
 	echo "govi: cannot find Govi.app; set GOVI_APP to its path" >&2
 	exit 1
 fi
+
+# exrc_allowed PATH [ROOTOWN]
+# Return 0 when PATH may be sourced (nvi exrc_isok).
+exrc_allowed() {
+	_path=$1
+	_rootown=${2:-0}
+	[ -e "$_path" ] || return 1
+	_perms=$(stat -f '%Lp' "$_path" 2>/dev/null) || return 1
+	if [ $((_perms & 18)) -ne 0 ]; then
+		return 1
+	fi
+	_uid=$(stat -f '%u' "$_path")
+	_euid=$(id -u)
+	if [ "$_rootown" -eq 1 ]; then
+		[ "$_uid" -eq 0 ] || [ "$_euid" -eq 0 ] || [ "$_uid" -eq "$_euid" ]
+	else
+		[ "$_euid" -eq 0 ] || [ "$_uid" -eq "$_euid" ]
+	fi
+}
+
+# find_sys_exrc echoes /etc/vi.exrc when it exists and passes permission checks.
+find_sys_exrc() {
+	if exrc_allowed /etc/vi.exrc 1; then
+		echo /etc/vi.exrc
+	fi
+}
+
+# find_home_exrc echoes $HOME/.nexrc or $HOME/.exrc (nvi order) when allowed.
+find_home_exrc() {
+	_home="${HOME:-$(eval echo "~$(id -un)")}"
+	if exrc_allowed "$_home/.nexrc" 0; then
+		echo "$_home/.nexrc"
+	elif exrc_allowed "$_home/.exrc" 0; then
+		echo "$_home/.exrc"
+	fi
+}
+
+# write_launch_context SILENT
+# Record startup information for Govi.app (cwd, env init, resolved exrc paths).
+write_launch_context() {
+	_silent=$1
+	_dir="${HOME:-$(eval echo "~$(id -un)")}/Library/Application Support/Govi"
+	mkdir -p "$_dir"
+	: > "$_dir/nexinit"
+	: > "$_dir/exinit"
+
+	{
+		echo "cwd=$PWD"
+		echo "silent=$_silent"
+		_sys=$(find_sys_exrc)
+		if [ -n "$_sys" ]; then
+			echo "sys_exrc=$_sys"
+		fi
+	} > "$_dir/launch-context"
+
+	if [ "$_silent" -eq 1 ]; then
+		return
+	fi
+
+	if [ -n "${NEXINIT:-}" ]; then
+		printf '%s' "$NEXINIT" > "$_dir/nexinit"
+		echo "has_nexinit=1" >> "$_dir/launch-context"
+	elif [ -n "${EXINIT:-}" ]; then
+		printf '%s' "$EXINIT" > "$_dir/exinit"
+		echo "has_exinit=1" >> "$_dir/launch-context"
+	else
+		_home_exrc=$(find_home_exrc)
+		if [ -n "$_home_exrc" ]; then
+			echo "home_exrc=$_home_exrc" >> "$_dir/launch-context"
+		fi
+	fi
+}
+
+silent=0
+while [ $# -gt 0 ]; do
+	case $1 in
+	-s) silent=1; shift ;;
+	--) shift; break ;;
+	-*) echo "usage: govi [-s] [file ...]" >&2; exit 2 ;;
+	*) break ;;
+	esac
+done
+
+write_launch_context "$silent"
 
 # No files: just launch or focus the app.
 if [ "$#" -eq 0 ]; then
