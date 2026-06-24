@@ -10,7 +10,7 @@ nvi:
 
 include gui/govi.mk
 
-Govi.app: govi-app
+gui/build/Govi.app: govi-app
 
 test:
 	go test ./...
