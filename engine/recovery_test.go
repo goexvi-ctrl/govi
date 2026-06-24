@@ -121,6 +121,39 @@ func TestQuitRemovesRecovery(t *testing.T) {
 	}
 }
 
+func TestListRecoverable(t *testing.T) {
+	e, path, recdir := newRecEngine(t, "one\ntwo\n")
+	drive(e, "x")
+	e.SyncRecovery()
+
+	e2 := New(&captureFrontend{}, Options{})
+	e2.exExecute("set recdir=" + recdir)
+	entries, err := e2.ListRecoverable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(entries))
+	}
+	if entries[0].Orig != path {
+		t.Fatalf("orig = %q, want %q", entries[0].Orig, path)
+	}
+	if entries[0].Path == "" {
+		t.Fatal("expected recovery path")
+	}
+
+	// Empty recdir reports no entries.
+	e3 := New(&captureFrontend{}, Options{})
+	e3.exExecute("set recdir=" + t.TempDir())
+	entries, err = e3.ListRecoverable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("empty recdir entries = %v", entries)
+	}
+}
+
 func TestOpenWarnsAboutRecovery(t *testing.T) {
 	e, path, recdir := newRecEngine(t, "data\n")
 	drive(e, "x") // creates a recovery file

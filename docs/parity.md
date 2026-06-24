@@ -170,7 +170,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | File-name completion | yes | ❌ | no path completion on the `:` line |
 | Command-line editing (`cedit`) | yes | ❌ | no ex command-line edit window |
 | Embeddable engine boundary | function-pointer table | ✅ | Go `Frontend`/`View`; tcell + headless + native GUI frontends |
-| Crash recovery (`-r`) | yes | ✅ | recovery file in recdir; `:preserve`/`:recover`/`nvi -r`; govi's own format |
+| Crash recovery (`-r`) | yes | ✅ | `nvi -r` lists recoverable files; `nvi -r file` restores; `:preserve`/`:recover`; govi format |
 | Split screens / windows (`^W` `:bg`/`:fg`/`:resize`) | yes | ❌ | |
 | Job control (`^Z` `:suspend`/`:stop`) | yes | ❌ | |
 | Cscope integration | yes | — | out of scope |

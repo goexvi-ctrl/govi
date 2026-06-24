@@ -167,6 +167,36 @@ func parseRecovery(path string) (*recoveredFile, error) {
 	return rec, nil
 }
 
+// RecoveryEntry describes one recoverable file in the recovery directory.
+type RecoveryEntry struct {
+	Orig  string    // original file path
+	Mtime time.Time // recovery file modification time
+	Path  string    // recovery file path
+}
+
+// ListRecoverable scans recdir for recover.* files and returns those that parse
+// as govi recovery files. This corresponds to nvi's rcv_list (common/recover.c).
+func (e *Engine) ListRecoverable() ([]RecoveryEntry, error) {
+	dir := e.recdir()
+	matches, err := filepath.Glob(filepath.Join(dir, "recover.*"))
+	if err != nil {
+		return nil, err
+	}
+	var out []RecoveryEntry
+	for _, m := range matches {
+		rec, err := parseRecovery(m)
+		if err != nil {
+			continue
+		}
+		mt := time.Unix(rec.mtime, 0)
+		if info, err := os.Stat(m); err == nil {
+			mt = info.ModTime()
+		}
+		out = append(out, RecoveryEntry{Orig: rec.orig, Mtime: mt, Path: m})
+	}
+	return out, nil
+}
+
 // findRecovery returns the newest recovery file whose original path matches an
 // absolute form of name, or whose own path is name.
 func (e *Engine) findRecovery(name string) (*recoveredFile, error) {

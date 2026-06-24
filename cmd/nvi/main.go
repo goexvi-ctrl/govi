@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	"govi/engine"
 	tcellfe "govi/frontend/tcell"
@@ -31,8 +32,19 @@ func main() {
 	if *recover {
 		if len(args) == 0 {
 			fe.Close()
-			fmt.Fprintln(os.Stderr, "usage: nvi -r file")
-			os.Exit(1)
+			entries, err := eng.ListRecoverable()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "nvi: %v\n", err)
+				os.Exit(1)
+			}
+			if len(entries) == 0 {
+				fmt.Println("nvi: No files to recover")
+				os.Exit(0)
+			}
+			for _, ent := range entries {
+				fmt.Printf("%s: %s\n", ent.Mtime.Format(time.ANSIC), ent.Orig)
+			}
+			os.Exit(0)
 		}
 		if err := eng.Recover(args[0]); err != nil {
 			fe.Close()
