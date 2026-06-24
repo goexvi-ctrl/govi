@@ -1,0 +1,160 @@
+package engine
+
+// colonEditOpts configures shared colon/ex command-line editing (nvi v_tcmd).
+type colonEditOpts struct {
+	leaveOnEmptyBackspace bool // vi colon: backspace past start cancels the line
+	onEnter               func(line string)
+	onEscape              func()
+}
+
+// colonEditKey handles one key on a colon-style input line: control characters
+// (^V quote, ^U kill, ^W word erase, ^H erase, ^X hex) and plain text.
+func (e *Engine) colonEditKey(ev KeyEvent, opts colonEditOpts) {
+	s := e.scr
+
+	if s.cmdLiteralNext {
+		s.cmdLiteralNext = false
+		if r := colonLiteralRune(ev); r != 0 {
+			s.colon = append(s.colon, r)
+		}
+		return
+	}
+
+	if s.cmdHexMode {
+		if isHexDigit(ev.Rune) {
+			s.cmdHexBuf = append(s.cmdHexBuf, ev.Rune)
+			return
+		}
+		if r := s.cmdlineFinishHex(); r != 0 {
+			s.colon = append(s.colon, r)
+		}
+	}
+
+	if colonControlKey(ev, s) {
+		return
+	}
+
+	switch {
+	case ev.Key == KeyEnter || ev.Rune == '\r' || ev.Rune == '\n':
+		line := string(s.colon)
+		s.resetColonEdit()
+		opts.onEnter(line)
+	case ev.Key == KeyEscape:
+		s.resetColonEdit()
+		if opts.onEscape != nil {
+			opts.onEscape()
+		}
+	case ev.Key == KeyBackspace || ev.Rune == '\b' || ev.Rune == 0x7f:
+		if len(s.colon) == 0 && opts.leaveOnEmptyBackspace {
+			s.mode = ModeCommand
+			s.filterL1, s.filterL2 = 0, 0
+		} else {
+			s.colonBackspace()
+		}
+	default:
+		if ev.Rune != 0 && ev.Rune != 0x1b {
+			s.colon = append(s.colon, ev.Rune)
+		}
+	}
+}
+
+func colonLiteralRune(ev KeyEvent) rune {
+	switch {
+	case ev.Key == KeyEnter || ev.Rune == '\r' || ev.Rune == '\n':
+		return '\n'
+	case ev.Key == KeyTab || ev.Rune == '\t':
+		return '\t'
+	case ev.Key == KeyEscape:
+		return 0x1b
+	case ev.Key == KeyBackspace || ev.Rune == '\b' || ev.Rune == 0x7f:
+		return '\b'
+	case ev.Rune != 0:
+		return ev.Rune
+	default:
+		return 0
+	}
+}
+
+func colonControlKey(ev KeyEvent, s *screen) bool {
+	if ev.Mods&ModCtrl != 0 && ev.Key == KeyNone {
+		switch ev.Rune {
+		case 'v':
+			s.cmdLiteralNext = true
+			return true
+		case 'u':
+			s.colonKill()
+			return true
+		case 'w':
+			s.colonWordErase()
+			return true
+		case 'h':
+			s.colonBackspace()
+			return true
+		case 'x':
+			s.cmdHexMode = true
+			s.cmdHexBuf = s.cmdHexBuf[:0]
+			return true
+		}
+	}
+	switch ev.Rune {
+	case 0x15: // ^U VKILL
+		s.colonKill()
+		return true
+	case 0x16: // ^V VLNEXT
+		s.cmdLiteralNext = true
+		return true
+	case 0x17: // ^W VWERASE
+		s.colonWordErase()
+		return true
+	}
+	return false
+}
+
+func (s *screen) colonBackspace() {
+	if len(s.colon) > 0 {
+		s.colon = s.colon[:len(s.colon)-1]
+	}
+}
+
+func (s *screen) colonKill() {
+	s.colon = nil
+}
+
+func (s *screen) colonWordErase() {
+	col := len(s.colon)
+	i := col
+	for i > 0 && (s.colon[i-1] == ' ' || s.colon[i-1] == '\t') {
+		i--
+	}
+	if i > 0 {
+		if isWordRune(s.colon[i-1]) {
+			for i > 0 && isWordRune(s.colon[i-1]) {
+				i--
+			}
+		} else {
+			for i > 0 && !isWordRune(s.colon[i-1]) && s.colon[i-1] != ' ' && s.colon[i-1] != '\t' {
+				i--
+			}
+		}
+	}
+	s.colon = s.colon[:i]
+}
+
+func (s *screen) cmdlineFinishHex() rune {
+	s.cmdHexMode = false
+	if len(s.cmdHexBuf) == 0 {
+		return 0
+	}
+	var v int64
+	for _, r := range s.cmdHexBuf {
+		v = v*16 + int64(hexVal(r))
+	}
+	s.cmdHexBuf = s.cmdHexBuf[:0]
+	return rune(v)
+}
+
+func (s *screen) resetColonEdit() {
+	s.cmdLiteralNext = false
+	s.cmdHexMode = false
+	s.cmdHexBuf = s.cmdHexBuf[:0]
+}

@@ -38,6 +38,9 @@ type screen struct {
 	// how the line is executed on Enter.
 	colon     []rune
 	cmdPrefix rune
+	cmdLiteralNext bool   // ^V: insert next character literally
+	cmdHexMode     bool   // ^X: collecting a hexadecimal character code
+	cmdHexBuf      []rune
 
 	// filterL1/filterL2 hold the line range for a vi ! filter (v_filter in
 	// vi/v_ex.c); the status line shows "!" while the command is typed.

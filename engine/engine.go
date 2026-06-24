@@ -276,6 +276,7 @@ func (e *Engine) interrupt() {
 	if s.mode == ModeExColon {
 		s.mode = ModeCommand
 		s.colon = nil
+		s.resetColonEdit()
 		s.filterL1, s.filterL2 = 0, 0
 	}
 	e.fe.Bell()
@@ -307,33 +308,26 @@ func (e *Engine) enterCmdline(prefix rune) {
 	e.scr.mode = ModeExColon
 	e.scr.cmdPrefix = prefix
 	e.scr.colon = nil
+	e.scr.resetColonEdit()
 	e.scr.filterL1, e.scr.filterL2 = 0, 0
 }
 
 func (e *Engine) cmdlineKey(ev KeyEvent) {
 	s := e.scr
-	switch {
-	case ev.Key == KeyEnter || ev.Rune == '\r' || ev.Rune == '\n':
-		line := string(s.colon)
-		prefix := s.cmdPrefix
-		s.mode = ModeCommand
-		s.colon = nil
-		e.runCmdline(prefix, line)
-	case ev.Key == KeyEscape:
-		s.mode = ModeCommand
-		s.colon = nil
-		s.filterL1, s.filterL2 = 0, 0
-	case ev.Key == KeyBackspace || ev.Rune == 0x7f || ev.Rune == '\b':
-		if len(s.colon) == 0 {
-			s.mode = ModeCommand // backspacing past the prompt leaves the line
-		} else {
-			s.colon = s.colon[:len(s.colon)-1]
-		}
-	default:
-		if ev.Rune != 0 {
-			s.colon = append(s.colon, ev.Rune)
-		}
-	}
+	e.colonEditKey(ev, colonEditOpts{
+		leaveOnEmptyBackspace: true,
+		onEnter: func(line string) {
+			prefix := s.cmdPrefix
+			s.mode = ModeCommand
+			s.colon = nil
+			e.runCmdline(prefix, line)
+		},
+		onEscape: func() {
+			s.mode = ModeCommand
+			s.colon = nil
+			s.filterL1, s.filterL2 = 0, 0
+		},
+	})
 }
 
 // runCmdline dispatches a completed command line by its prompt prefix.

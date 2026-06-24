@@ -199,33 +199,25 @@ func (e *Engine) exStartInput(c *exCmd, kind rune) error {
 // until one consisting solely of "." ends the command.
 func (e *Engine) exInputKey(ev KeyEvent) {
 	s := e.scr
-	switch {
-	case ev.Key == KeyEnter || ev.Rune == '\r' || ev.Rune == '\n':
-		line := string(s.colon)
-		s.colon = nil
-		if line == "." {
-			if s.mode == ModeExText {
-				e.exEcho(".")
+	e.colonEditKey(ev, colonEditOpts{
+		onEnter: func(line string) {
+			s.colon = nil
+			if line == "." {
+				if s.mode == ModeExText {
+					e.exEcho(".")
+				}
+				e.exInputFinish()
+				return
 			}
+			if s.mode == ModeExText {
+				e.exEcho(line)
+			}
+			s.exInput.lines = append(s.exInput.lines, []rune(line))
+		},
+		onEscape: func() {
 			e.exInputFinish()
-			return
-		}
-		if s.mode == ModeExText {
-			e.exEcho(line)
-		}
-		s.exInput.lines = append(s.exInput.lines, []rune(line))
-	case ev.Key == KeyBackspace || ev.Rune == 0x7f || ev.Rune == '\b':
-		if len(s.colon) > 0 {
-			s.colon = s.colon[:len(s.colon)-1]
-		}
-	case ev.Key == KeyEscape:
-		// ESC ends input too (treats what is typed so far as a finished line set).
-		e.exInputFinish()
-	default:
-		if ev.Rune != 0 {
-			s.colon = append(s.colon, ev.Rune)
-		}
-	}
+		},
+	})
 }
 
 // exInputFinish inserts the collected lines into the buffer as one undo unit.
@@ -285,45 +277,34 @@ func (e *Engine) exModeKey(ev KeyEvent) {
 		e.quitFromBackslash()
 		return
 	}
-	switch {
-	case ev.Key == KeyEnter || ev.Rune == '\r' || ev.Rune == '\n':
-		cmd := string(s.colon)
-		s.colon = nil
-		trimmed := strings.TrimSpace(cmd)
-		switch trimmed {
-		case "vi", "visual", "vis":
-			e.exEcho(":" + cmd)
-			e.exitExMode()
-			return
-		}
-		if trimmed == "" {
-			// Bare <enter> steps to the next line. On success the line replaces
-			// the prompt (no ":" echoed); at EOF the prompt stays and the message
-			// is shown below it.
-			if text, ok := e.ExStep(); ok {
-				e.exEcho(text)
-			} else {
-				e.exEcho(":")
-				e.exEcho(text)
+	e.colonEditKey(ev, colonEditOpts{
+		onEnter: func(cmd string) {
+			s.colon = nil
+			trimmed := strings.TrimSpace(cmd)
+			switch trimmed {
+			case "vi", "visual", "vis":
+				e.exEcho(":" + cmd)
+				e.exitExMode()
+				return
 			}
-			return
-		}
-		e.exEcho(":" + cmd)
-		if err := e.exExecute(cmd); err != nil {
-			e.exEcho(err.Error())
-		} else if s.msg != "" {
-			e.exEcho(s.msg)
-			s.msg = ""
-		}
-	case ev.Key == KeyBackspace || ev.Rune == 0x7f || ev.Rune == '\b':
-		if len(s.colon) > 0 {
-			s.colon = s.colon[:len(s.colon)-1]
-		}
-	default:
-		if ev.Rune != 0 {
-			s.colon = append(s.colon, ev.Rune)
-		}
-	}
+			if trimmed == "" {
+				if text, ok := e.ExStep(); ok {
+					e.exEcho(text)
+				} else {
+					e.exEcho(":")
+					e.exEcho(text)
+				}
+				return
+			}
+			e.exEcho(":" + cmd)
+			if err := e.exExecute(cmd); err != nil {
+				e.exEcho(err.Error())
+			} else if s.msg != "" {
+				e.exEcho(s.msg)
+				s.msg = ""
+			}
+		},
+	})
 }
 
 // --- print commands (also usable from the vi colon line) ---
