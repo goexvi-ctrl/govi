@@ -94,6 +94,49 @@ func TestZScreenPositionWrap(t *testing.T) {
 	}
 }
 
+func TestZScreenPositionLineAndWindow(t *testing.T) {
+	e, _, _ := newTestEngine(t, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n")
+	e.Resize(10, 40)
+
+	// 12z.: line 12 clamps to 10, centered in the full window.
+	drive(e, "1G")
+	drive(e, "12z.")
+	if e.scr.cursor.Line != 10 {
+		t.Fatalf("12z.: cursor line = %d, want 10", e.scr.cursor.Line)
+	}
+	if row := e.scr.screenRowOf(10, e.scr.top); row < 4 || row > 5 {
+		t.Fatalf("12z.: line 10 at screen row %d, want near center", row)
+	}
+
+	// 8z<CR>: explicit line at top.
+	drive(e, "8z\r")
+	if e.scr.top != 8 || e.scr.cursor.Line != 8 {
+		t.Fatalf("8z<CR>: top=%d cursor=%d, want 8/8", e.scr.top, e.scr.cursor.Line)
+	}
+
+	// 8z3.: line 8 centered in a 3-row window (vs_crel).
+	drive(e, "8z3.")
+	if e.scr.rows != 3 {
+		t.Fatalf("8z3.: rows = %d, want 3", e.scr.rows)
+	}
+	if e.scr.cursor.Line != 8 {
+		t.Fatalf("8z3.: cursor line = %d, want 8", e.scr.cursor.Line)
+	}
+	if row := e.scr.screenRowOf(8, e.scr.top); row != 1 {
+		t.Fatalf("8z3.: line 8 at screen row %d, want 1 (middle of 3)", row)
+	}
+
+	// z3.: current line, 3-row window.
+	drive(e, "5G")
+	drive(e, "z3.")
+	if e.scr.rows != 3 {
+		t.Fatalf("z3.: rows = %d, want 3", e.scr.rows)
+	}
+	if e.scr.cursor.Line != 5 {
+		t.Fatalf("z3.: cursor line = %d, want 5", e.scr.cursor.Line)
+	}
+}
+
 func TestExecBuffer(t *testing.T) {
 	e, _, _ := newTestEngine(t, "dd\nfoo\nbar\n")
 	drive(e, `"ayy`) // register a = "dd"

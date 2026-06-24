@@ -23,6 +23,11 @@ type vimode struct {
 	opReg     rune
 	pending   rune // command awaiting a single char (f F t T r m ` ')
 
+	// z command: [line]z[window][type] (nvi v_z.c).
+	zLine      int64 // count1 line (0 = current line)
+	zCount2    int   // digits after z
+	zCount2Set bool  // saw at least one digit after z
+
 	// f/t repeat state for ; and ,
 	findCmd  rune
 	findChar rune
@@ -187,7 +192,17 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 	case 'd', 'c', 'y', '!', '>', '<':
 		m.startOperator(r)
 		return
-	case 'f', 'F', 't', 'T', 'r', 'm', '`', '\'', 'Z', '[', ']', '@', 'z', '#':
+	case 'z':
+		if m.haveCount {
+			m.zLine = int64(m.count)
+		} else {
+			m.zLine = 0
+		}
+		m.count, m.haveCount = 0, false
+		m.zCount2, m.zCount2Set = 0, false
+		m.pending = 'z'
+		return
+	case 'f', 'F', 't', 'T', 'r', 'm', '`', '\'', 'Z', '[', ']', '@', '#':
 		m.pending = r
 		return
 	}
@@ -357,6 +372,8 @@ func (m *vimode) charArg(e *Engine, ev KeyEvent) {
 		c = '\r'
 	}
 	if ev.Key == KeyEscape {
+		m.zLine = 0
+		m.zCount2, m.zCount2Set = 0, false
 		return // cancel
 	}
 	if c == 0 {
@@ -403,7 +420,15 @@ func (m *vimode) charArg(e *Engine, ev KeyEvent) {
 	case '@':
 		e.execBuffer(c)
 	case 'z':
-		e.screenPosition(c)
+		if c >= '0' && c <= '9' {
+			m.zCount2 = m.zCount2*10 + int(c-'0')
+			m.zCount2Set = true
+			m.pending = 'z'
+			return
+		}
+		e.screenPosition(c, m.zLine, m.zLine != 0, m.zCount2, m.zCount2Set)
+		m.zLine = 0
+		m.zCount2, m.zCount2Set = 0, false
 	case '#':
 		count := effCount(m.count)
 		m.count, m.haveCount = 0, false
@@ -443,19 +468,39 @@ func (e *Engine) execBuffer(name rune) {
 	}
 }
 
-// screenPosition implements z<type>: redraw with the current line at the top
-// (CR/+), center (.), or bottom (-) of the screen. Positioning is wrap-aware:
-// long lines occupy multiple screen rows (nvi vs_sm_fill).
-func (e *Engine) screenPosition(typ rune) {
+// screenPosition implements [line]z[window]<type> (nvi v_z.c / vs_sm_fill).
+// haveLine selects count1; haveWin with win>0 shrinks the viewport (vs_crel).
+func (e *Engine) screenPosition(typ rune, line int64, haveLine bool, win int, haveWin bool) {
 	s := e.scr
-	line := s.cursor.Line
+	target := s.cursor.Line
+	if haveLine {
+		if line < 1 {
+			line = 1
+		}
+		if line > s.lineCount() {
+			line = s.lineCount()
+		}
+		target = line
+		s.cursor.Line = target
+		s.clampCursor()
+	}
+	if haveWin && win > 0 {
+		max := s.rows
+		if w := s.opts.Int("window"); w > 0 && w < max {
+			max = w
+		}
+		if win > max {
+			win = max
+		}
+		s.rows = win
+	}
 	switch typ {
 	case '\r', '\n', '+':
-		s.top = line
+		s.top = target
 	case '.':
-		s.top = s.topForMiddle(line)
+		s.top = s.topForMiddle(target)
 	case '-':
-		s.top = s.topForBottom(line)
+		s.top = s.topForBottom(target)
 	default:
 		e.fe.Bell()
 		return
