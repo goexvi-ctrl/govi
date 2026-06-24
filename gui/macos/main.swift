@@ -1,4 +1,5 @@
 import Cocoa
+import Darwin
 
 // Govi: a native macOS application with the govi (Go nvi) editor engine embedded
 // in-process. The engine is linked in as a C archive (libgovi); this app drives
@@ -20,6 +21,12 @@ final class EditorWindow: NSObject, NSWindowDelegate {
 
     // anyOpen reports whether any editor window exists.
     static var anyOpen: Bool { !windows.isEmpty }
+
+    // anyEditing reports whether a window/tab is editing path.
+    static func anyEditing(path: String) -> Bool {
+        let p = LaunchPath.normalize(path)
+        return windows.contains { LaunchPath.normalize($0.path) == p }
+    }
 
     // make creates an editor for path (empty path = an empty buffer) without
     // presenting it. Returns nil if the file could not be opened.
@@ -66,6 +73,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     static func openPaths(_ paths: [String]) {
         let normalized = paths.map { LaunchPath.normalize($0) }
         guard !normalized.isEmpty else { return }
+        WaitCoordinator.shared.registerWait(paths: normalized)
 
         switch Settings.openFilesIn {
         case .newWindow:
@@ -79,6 +87,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         case .tab:
             openAsTabs(normalized)
         }
+        WaitCoordinator.shared.checkComplete()
     }
 
     // openAsTabs opens paths in the frontmost window's tab group. The first file
@@ -154,8 +163,10 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        let closedPath = path
         GoviClose(view.handle)
         EditorWindow.windows.remove(self)
+        WaitCoordinator.shared.editorClosed(path: closedPath)
     }
 
     // confirmClose returns true when the window/tab may close. When
@@ -235,6 +246,25 @@ enum LaunchPath {
         supportDir.appendingPathComponent("launch-context", isDirectory: false)
     }
 
+    static var launchWaitURL: URL {
+        supportDir.appendingPathComponent("launch-wait", isDirectory: false)
+    }
+
+    static func readLaunchWaitFifo() -> String? {
+        guard let text = try? String(contentsOf: launchWaitURL, encoding: .utf8) else { return nil }
+        for line in text.split(whereSeparator: \.isNewline) {
+            if line.hasPrefix("fifo=") {
+                let fifo = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                if !fifo.isEmpty { return fifo }
+            }
+        }
+        return nil
+    }
+
+    static func clearLaunchWait() {
+        try? FileManager.default.removeItem(at: launchWaitURL)
+    }
+
     static func readLaunchFiles() -> [String] {
         guard let text = try? String(contentsOf: launchFilesURL, encoding: .utf8) else { return [] }
         return text.split(whereSeparator: \.isNewline)
@@ -273,6 +303,65 @@ enum LaunchPath {
 
     static func pathFromOpenURL(_ url: URL) -> String {
         normalize(url.standardizedFileURL.path)
+    }
+}
+
+// WaitCoordinator unblocks a `govi -w` launcher once every waited-on path is no
+// longer open in any window/tab. The launcher creates a FIFO and records its path
+// in launch-wait; opening that FIFO for writing is the completion signal.
+final class WaitCoordinator {
+    static let shared = WaitCoordinator()
+
+    private var fifoPath: String?
+    private var waitPaths: Set<String> = []
+    private var signaled = false
+    private let lock = NSLock()
+
+    func registerWait(paths: [String]) {
+        lock.lock()
+        defer { lock.unlock() }
+        if fifoPath == nil, let fifo = LaunchPath.readLaunchWaitFifo() {
+            fifoPath = fifo
+            LaunchPath.clearLaunchWait()
+        }
+        guard fifoPath != nil else { return }
+        waitPaths.formUnion(paths)
+    }
+
+    func editorClosed(path: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        checkCompleteLocked()
+    }
+
+    func checkComplete() {
+        lock.lock()
+        defer { lock.unlock() }
+        checkCompleteLocked()
+    }
+
+    private func checkCompleteLocked() {
+        guard !signaled, fifoPath != nil else { return }
+        if waitPaths.contains(where: { EditorWindow.anyEditing(path: $0) }) {
+            return
+        }
+        signalLocked()
+    }
+
+    private func signalLocked() {
+        guard !signaled, let fifo = fifoPath else { return }
+        signaled = true
+        fifoPath = nil
+        waitPaths.removeAll()
+        DispatchQueue.global(qos: .utility).async {
+            let fd = open(fifo, O_WRONLY)
+            if fd >= 0 {
+                var byte: UInt8 = 0
+                _ = write(fd, &byte, 1)
+                close(fd)
+            }
+            unlink(fifo)
+        }
     }
 }
 

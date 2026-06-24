@@ -8,6 +8,7 @@
 #   govi                 # just launch / focus Govi.app
 #   govi file ...        # open one or more files (created if they don't exist)
 #   govi -s file ...     # silent startup (no exrc / EXINIT / NEXINIT)
+#   govi -w file ...     # block until every opened tab/window for those files closes
 #
 # Before opening the app, this script resolves nvi startup information in the
 # same order as nvi and writes it to
@@ -110,11 +111,13 @@ write_launch_context() {
 }
 
 silent=0
+wait=0
 while [ $# -gt 0 ]; do
 	case $1 in
 	-s) silent=1; shift ;;
+	-w) wait=1; shift ;;
 	--) shift; break ;;
-	-*) echo "usage: govi [-s] [file ...]" >&2; exit 2 ;;
+	-*) echo "usage: govi [-s] [-w] [file ...]" >&2; exit 2 ;;
 	*) break ;;
 	esac
 done
@@ -123,6 +126,10 @@ write_launch_context "$silent"
 
 # No files: just launch or focus the app.
 if [ "$#" -eq 0 ]; then
+	if [ "$wait" -eq 1 ]; then
+		echo "govi: -w requires at least one file" >&2
+		exit 2
+	fi
 	exec open "$app"
 fi
 
@@ -161,6 +168,19 @@ for _f in "$@"; do
 	echo "$_f" >> "$_launch_dir/launch-files"
 done
 
+_wait_fifo=""
+if [ "$wait" -eq 1 ]; then
+	_wait_fifo=$(mktemp -t govwait.XXXXXX)
+	rm -f "$_wait_fifo"
+	mkfifo "$_wait_fifo"
+	echo "fifo=$_wait_fifo" > "$_launch_dir/launch-wait"
+fi
+
 # `open -a` launches the app or, if it is already running, delivers the files to
 # that instance and brings it to the front.
-exec open -a "$app" "$@"
+open -a "$app" "$@"
+
+if [ "$wait" -eq 1 ]; then
+	read -r _ < "$_wait_fifo" || true
+	rm -f "$_wait_fifo" "$_launch_dir/launch-wait"
+fi
