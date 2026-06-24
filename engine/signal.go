@@ -28,12 +28,14 @@ type SignalInfo struct {
 }
 
 // CatchableSignals is the set of signals the terminal host should trap.
+// SIGTSTP is intentionally omitted: job-control suspend (^Z, :suspend) sends
+// SIGTSTP via kill(2); trapping it with signal.Notify would swallow the stop
+// and recurse through doSuspend instead of actually stopping the process.
 var CatchableSignals = []os.Signal{
 	syscall.SIGHUP,
 	syscall.SIGINT,
 	syscall.SIGQUIT,
 	syscall.SIGTERM,
-	syscall.SIGTSTP,
 	syscall.SIGWINCH,
 	syscall.SIGPIPE,
 	syscall.SIGALRM,

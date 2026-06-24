@@ -77,6 +77,14 @@ func TestOnSignalInterrupt(t *testing.T) {
 	}
 }
 
+func TestCatchableSignalsOmitsSIGTSTP(t *testing.T) {
+	for _, sig := range CatchableSignals {
+		if sig == syscall.SIGTSTP {
+			t.Fatal("SIGTSTP must not be trapped; suspend uses kill(2) job control")
+		}
+	}
+}
+
 func TestIsBackslashLine(t *testing.T) {
 	if !IsBackslashLine("\x1c") {
 		t.Fatal("FS line")
