@@ -1,9 +1,11 @@
 # Build govi binaries with git-derived version metadata.
 VERSION_LDFLAGS := $(shell ./scripts/version-ldflags.sh)
 
+all: build
+
 .PHONY: build nvi test
 
-build: nvi
+build: nvi gui/build/Govi.app
 
 nvi:
 	go build -ldflags "$(VERSION_LDFLAGS)" -o nvi ./cmd/nvi
@@ -26,3 +28,6 @@ $(IDIR)/Govi.app: gui/build/Govi.app
 
 $(IDIR)/govi: gui/govi
 	cp $< $@
+
+clean:
+	rm -rf gui/build/Govi.app nvi
