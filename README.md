@@ -528,3 +528,22 @@ feature. Notable gaps:
 
 For day-to-day editing, the vi/ex command set above is fully usable in both
 frontends.
+
+---
+
+## Acknowledgements
+
+**govi** is inspired by BSD **nvi** — the 4.4BSD **ex**/**vi** implementation and
+reference manual by **Keith Bostic** (University of California, Berkeley). The
+editor semantics, command set, and much of the documentation lineage trace to
+that work and to **The Regents of the University of California**.
+
+As in [`docs/nvi.md`](docs/nvi.md), credit also belongs to the people who built
+the historic **ex**/**vi** line and **nvi** itself, including **Bruce Englar**,
+**Peter Kessler**, **Bill Joy**, **Mark Horton**, **Steve Kirkendall**,
+**Henry Spencer**, **Ken Arnold**, **Elan Amir**, **George Neville-Neil**,
+**Sven Verdoolaege**, and **Rob Mayoff**.
+
+The **govi** program has been written mainly by
+[Claude Code](https://claude.com/product/claude-code) and
+[Grok Build](https://x.ai).
