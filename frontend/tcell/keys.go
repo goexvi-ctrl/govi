@@ -32,6 +32,8 @@ func translateKey(ev *tc.EventKey) engine.Event {
 		return engine.KeyEvent{Rune: ']', Mods: mods | engine.ModCtrl}
 	case tc.KeyCtrlSpace: // ^@ / NUL
 		return engine.KeyEvent{Rune: '@', Mods: mods | engine.ModCtrl}
+	case tc.KeyCtrlBackslash: // ^\ switch to ex / quit
+		return engine.KeyEvent{Rune: '\\', Mods: mods | engine.ModCtrl}
 	}
 
 	switch ev.Key() {

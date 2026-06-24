@@ -265,6 +265,8 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 			s.msg, s.msgKind = err.Error(), MsgError
 		}
 	case 'r': // redraw the screen (no-op here; the frontend repaints each input)
+	case '\\': // ^\ switch to ex mode (nvi v_cmd.c 034)
+		e.handleCtrlBackslash()
 	case 'z': // suspend editor (^Z)
 		if err := e.doSuspend(false); err != nil {
 			s.msg, s.msgKind = err.Error(), MsgError

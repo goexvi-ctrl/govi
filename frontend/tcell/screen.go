@@ -73,9 +73,12 @@ func (f *Frontend) Run() {
 	w, h := f.scr.Size()
 	f.eng.Resize(textRows(h), w)
 
+	sigCh := f.installSignals()
+	defer signalStop(sigCh)
+
 	for !f.eng.ShouldQuit() {
 		if f.eng.ExActive() {
-			f.runExMode()
+			f.runExMode(sigCh)
 			if !f.eng.ShouldQuit() {
 				// Returning to vi: repaint the full-screen display.
 				f.scr.Sync()
@@ -84,13 +87,15 @@ func (f *Frontend) Run() {
 			}
 			continue
 		}
-		f.runVisual()
+		if f.runVisual(sigCh) {
+			return
+		}
 	}
 }
 
-// runVisual is the full-screen event loop; it returns when a quit is issued or
-// the user switches to ex mode (Q).
-func (f *Frontend) runVisual() {
+// runVisual is the full-screen event loop. It returns true when the host should
+// exit immediately (fatal signal).
+func (f *Frontend) runVisual(sigCh <-chan os.Signal) bool {
 	events := make(chan tc.Event)
 	quit := make(chan struct{})
 	go f.scr.ChannelEvents(events, quit)
@@ -118,9 +123,13 @@ func (f *Frontend) runVisual() {
 		select {
 		case ev := <-events:
 			if ev == nil {
-				return
+				return false
 			}
 			f.handleEvent(ev)
+		case sig := <-sigCh:
+			if f.handleSignal(sig) {
+				return true
+			}
 		case <-timer:
 			if recoverFlush {
 				f.eng.SyncRecovery()
@@ -129,13 +138,14 @@ func (f *Frontend) runVisual() {
 			}
 		}
 	}
+	return false
 }
 
 // runExMode leaves the full-screen display and runs ex as a cooked-mode line
 // REPL: print the prompt, read a line (echoed and line-edited by the terminal),
 // feed it to the engine, and print the output, scrolling like a terminal. It
 // returns when the user types visual/vi or quits.
-func (f *Frontend) runExMode() {
+func (f *Frontend) runExMode(sigCh <-chan os.Signal) {
 	if err := f.scr.Suspend(); err != nil {
 		return
 	}
@@ -148,7 +158,28 @@ func (f *Frontend) runExMode() {
 	for f.eng.ExActive() && !f.eng.ShouldQuit() {
 		prompt := f.eng.ExPrompt()
 		fmt.Fprint(out, prompt)
-		line, err := in.ReadString('\n')
+		type readResult struct {
+			line string
+			err  error
+		}
+		readCh := make(chan readResult, 1)
+		go func() {
+			line, err := in.ReadString('\n')
+			readCh <- readResult{line, err}
+		}()
+		var line string
+		var err error
+		select {
+		case res := <-readCh:
+			line, err = res.line, res.err
+		case sig := <-sigCh:
+			if f.handleSignal(sig) {
+				return
+			}
+			// Non-fatal signal handled; wait for the read to finish or retry.
+			res := <-readCh
+			line, err = res.line, res.err
+		}
 		if err != nil { // EOF (^D) or read error: return to visual mode
 			fmt.Fprintln(out)
 			f.eng.RunEx("visual")
@@ -171,6 +202,10 @@ func (f *Frontend) runExMode() {
 
 		for _, o := range f.eng.ExFeedLine(line) {
 			fmt.Fprintln(out, o)
+		}
+		if f.eng.ShouldQuit() {
+			f.shutdown(f.eng.ExitMessage())
+			return
 		}
 	}
 }

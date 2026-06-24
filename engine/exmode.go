@@ -49,6 +49,11 @@ func (e *Engine) ExFeedLine(line string) []string {
 		return e.exOut
 	}
 
+	if IsBackslashLine(line) {
+		e.quitFromBackslash()
+		return []string{QuitCommandDisplay}
+	}
+
 	trimmed := strings.TrimSpace(line)
 	switch trimmed {
 	case "vi", "visual", "vis":
@@ -267,6 +272,10 @@ func (e *Engine) exChange(c *exCmd) error { return e.exStartInput(c, 'c') }
 // exModeKey handles a keypress while in ex mode.
 func (e *Engine) exModeKey(ev KeyEvent) {
 	s := e.scr
+	if ev.Rune == '\x1c' || (ev.Mods&ModCtrl != 0 && ev.Rune == '\\') {
+		e.quitFromBackslash()
+		return
+	}
 	switch {
 	case ev.Key == KeyEnter || ev.Rune == '\r' || ev.Rune == '\n':
 		cmd := string(s.colon)

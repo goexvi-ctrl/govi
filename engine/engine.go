@@ -35,6 +35,7 @@ type Engine struct {
 
 	file *os.File // open handle backing a paged buffer, if any
 	quit bool
+	exitMsg string // set when a signal caused the exit; printed by the host
 
 	wordBoundary WordBoundaryFunc // double-click word selection (GUI hosts)
 

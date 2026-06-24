@@ -187,6 +187,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | Command-line editing (`cedit`) | yes | ❌ | no ex command-line edit window |
 | Embeddable engine boundary | function-pointer table | ✅ | Go `Frontend`/`View`; tcell + headless + native GUI frontends |
 | Crash recovery (`-r`) | yes | ✅ | `nvi -r` lists recoverable files; `nvi -r file` restores; `:preserve`/`:recover`; govi format |
+| Signals (SIGHUP/SIGTERM/…) | yes | ✅ | trap, restore cooked tty, print signal name; `^\` vi→ex, ex→`:^\Quit` |
 | Split screens / windows (`^W` `:bg`/`:fg`/`:resize`) | yes | ❌ | |
 | Job control (`^Z` `:suspend`/`:stop`) | yes | ✅ | terminal frontend (`tcell`); not Govi.app |
 | Cscope integration | yes | — | out of scope |
