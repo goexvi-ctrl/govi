@@ -21,6 +21,9 @@ GOVI_EXE     := $(GOVI_APP)/Contents/MacOS/Govi
 GOVI_SWIFT_SRC := $(wildcard $(GOVI_GUI_DIR)/macos/*.swift)
 GOVI_BRIDGE_GO := $(wildcard $(GOVI_GUI_DIR)/bridge/*.go)
 GOVI_PLIST_SRC := $(GOVI_GUI_DIR)/macos/Info.plist
+GOVI_ICON_SRC  := $(GOVI_ROOT)/icon.jpg
+GOVI_ICON_SH   := $(GOVI_GUI_DIR)/macos/make-icon.sh
+GOVI_ICNS      := $(GOVI_APP)/Contents/Resources/AppIcon.icns
 
 # Every non-standard Go source file reachable from gui/bridge (engine, grid, …).
 GOVI_GO_SRC := $(shell cd $(GOVI_ROOT) && \
@@ -74,7 +77,13 @@ $(GOVI_PLIST): $(GOVI_PLIST_SRC) | $(GOVI_APP)/Contents
 $(GOVI_APP)/Contents:
 	@mkdir -p $@
 
-$(GOVI_APP): $(GOVI_EXE) $(GOVI_PLIST)
+$(GOVI_ICNS): $(GOVI_ICON_SRC) $(GOVI_ICON_SH) | $(GOVI_APP)/Contents/Resources
+	$(GOVI_ICON_SH) $(GOVI_ICON_SRC) $(GOVI_ICNS)
+
+$(GOVI_APP)/Contents/Resources:
+	@mkdir -p $@
+
+$(GOVI_APP): $(GOVI_EXE) $(GOVI_PLIST) $(GOVI_ICNS)
 
 govi-clean:
 	rm -rf $(GOVI_BUILD)
