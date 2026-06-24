@@ -50,7 +50,7 @@ var optDefs = []optDef{
 	{name: "escapetime", typ: optNum, dN: 1},
 	{name: "exrc", typ: optBool},
 	{name: "extended", typ: optBool},
-	{name: "filec", typ: optStr},
+	{name: "filec", typ: optStr, dS: "\t"},
 	{name: "flash", typ: optBool, dB: true},
 	{name: "foreground", abbr: "fg", typ: optStr},
 	{name: "background", abbr: "bg", typ: optStr},

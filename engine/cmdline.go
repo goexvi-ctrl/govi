@@ -34,6 +34,11 @@ func (e *Engine) colonEditKey(ev KeyEvent, opts colonEditOpts) {
 		return
 	}
 
+	if e.colonFilecKey(ev) {
+		e.colonDoFileComplete()
+		return
+	}
+
 	switch {
 	case ev.Key == KeyEnter || ev.Rune == '\r' || ev.Rune == '\n':
 		line := string(s.colon)
