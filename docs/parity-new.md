@@ -116,7 +116,9 @@ parity row can be checked against the source description quickly.
 | `:so[urce]` `:mk[exrc]` | yes | ❌ | exrc scripting |
 | `:cd`/`:chdir` | yes | ❌ | |
 | `:di[splay] b\|c\|s\|t` | yes | ❌ | buffers/screens/tags inspector |
-| `:he[lp]` | yes | ❌ | |
+| `:he[lp]` | yes | ✅ | points to :viusage / :exusage |
+| `:exu[sage] [cmd]` | yes | ✅ | lists implemented ex commands |
+| `:viu[sage] [key]` | yes | ✅ | lists implemented vi keys |
 | `:o[pen]` | yes | — | non-objective (also unimplemented in nvi); distinct from vi `o` |
 | `:bg` `:fg` `:res[ize]` | yes | ❌ | needs split screens |
 | `:su[spend]`/`:st[op]` | yes | ✅ | terminal only; `!` skips autowrite; blocked when `secure` |
