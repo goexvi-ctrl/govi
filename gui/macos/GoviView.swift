@@ -28,11 +28,14 @@ final class GoviView: NSView, NSTextInputClient {
     // The handle of this view's embedded engine (one per window).
     let handle: Int64
 
+    // documentTitle is the file name shown in the window title bar.
+    var documentTitle = "Untitled"
+
     // Pending marked (uncommitted) text from a dead key or IME, e.g. the "¨"
     // after Option-u, shown at the cursor until the next key composes it.
     private var markedText = ""
 
-    private let font = NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+    private var font = Settings.editorFont
     private var cellW: CGFloat = 8
     private var cellH: CGFloat = 16
 
@@ -92,9 +95,32 @@ final class GoviView: NSView, NSTextInputClient {
     @objc private func settingsChanged() {
         padding = Settings.padding
         spellEnabled = Settings.spellChecking
-        updateGeometry() // padding may change the cell rows/cols
+        font = Settings.editorFont
+        measureFont()
+        updateGeometry() // padding and font metrics may change the cell rows/cols
         updateSpelling()
+        updateTitle()
         needsDisplay = true
+    }
+
+    // textRows is the editable line count (the status line is excluded).
+    var textRows: Int { max(1, rows - 1) }
+
+    // contentSize returns the view size needed for textRows x cols of editor text
+    // plus one status line, using the given font metrics and padding.
+    static func contentSize(
+        textRows: Int, cols: Int,
+        font: NSFont = Settings.editorFont, padding: CGFloat = Settings.padding
+    ) -> NSSize {
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        let cellW = ("0" as NSString).size(withAttributes: attrs).width
+        let lm = NSLayoutManager()
+        let cellH = lm.defaultLineHeight(for: font)
+        let screenRows = textRows + 1
+        return NSSize(
+            width: padding * 2 + CGFloat(cols) * cellW,
+            height: padding * 2 + CGFloat(screenRows) * cellH
+        )
     }
 
     // cellPoint / cellRect convert a (col, row) cell to view pixels, applying the
@@ -139,6 +165,7 @@ final class GoviView: NSView, NSTextInputClient {
         rows = h
         GoviResize(handle, Int32(rows), Int32(cols))
         recompose()
+        updateTitle()
         needsDisplay = true
     }
 
@@ -167,11 +194,22 @@ final class GoviView: NSView, NSTextInputClient {
     }
 
     func updateTitle() {
-        guard let c = GoviTitle(handle) else { return }
-        defer { GoviFree(c) }
-        let t = String(cString: c)
-        if !t.isEmpty {
-            window?.title = t
+        var base = documentTitle
+        if let c = GoviTitle(handle) {
+            let t = String(cString: c)
+            GoviFree(c)
+            if !t.isEmpty {
+                base = t
+            }
+        }
+        guard let w = window else { return }
+        // Tab labels use the document name only; dimensions go in the window
+        // subtitle (title bar), shared across all tabs in the group.
+        w.title = base
+        if Settings.showDimensionsInTitle && (w.isKeyWindow || w.tabGroup == nil) {
+            w.subtitle = "\(textRows)x\(cols)"
+        } else {
+            w.subtitle = ""
         }
     }
 

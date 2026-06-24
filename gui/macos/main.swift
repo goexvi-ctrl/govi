@@ -98,6 +98,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             w.window.makeKeyAndOrderFront(nil)
             w.window.makeFirstResponder(w.view)
             w.view.updateGeometry()
+            w.view.updateTitle()
         } else {
             w.showStandalone()
         }
@@ -105,14 +106,16 @@ final class EditorWindow: NSObject, NSWindowDelegate {
 
     private init(handle: Int64, path: String) {
         self.path = (path as NSString).standardizingPath
-        let frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+        let size = GoviView.contentSize(
+            textRows: Settings.defaultTextRows, cols: Settings.defaultColumns)
+        let frame = NSRect(x: 0, y: 0, width: size.width, height: size.height)
         window = NSWindow(
             contentRect: frame,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         view = GoviView(frame: frame, handle: handle)
         super.init()
-        window.title = path.isEmpty ? "Untitled" : (path as NSString).lastPathComponent
+        view.documentTitle = path.isEmpty ? "Untitled" : (path as NSString).lastPathComponent
         window.contentView = view
         window.delegate = self
         window.isReleasedWhenClosed = false
@@ -128,6 +131,11 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(view)
         view.updateGeometry()
+        view.updateTitle()
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        view.updateTitle()
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -192,7 +200,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             return false
         }
         path = (target as NSString).standardizingPath
-        window.title = (path as NSString).lastPathComponent
+        view.documentTitle = (path as NSString).lastPathComponent
         view.updateTitle()
         return true
     }
