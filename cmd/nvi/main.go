@@ -15,6 +15,7 @@ import (
 
 func main() {
 	recover := flag.Bool("r", false, "recover the named file from a recovery file")
+	silent := flag.Bool("s", false, "do not read startup files or EXINIT/NEXINIT")
 	flag.Parse()
 
 	fe, err := tcellfe.New()
@@ -27,6 +28,17 @@ func main() {
 	eng := engine.New(fe, engine.Options{})
 	fe.Attach(eng)
 	defer eng.Close()
+
+	if !*silent {
+		if err := eng.LoadStartup(); err != nil {
+			fe.Close()
+			fmt.Fprintf(os.Stderr, "nvi: %v\n", err)
+			os.Exit(1)
+		}
+		if eng.ShouldQuit() {
+			os.Exit(0)
+		}
+	}
 
 	args := flag.Args()
 	if *recover {

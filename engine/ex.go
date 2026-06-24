@@ -56,6 +56,7 @@ func init() {
 		{full: "global", min: 1, fn: (*Engine).exGlobal},
 		{full: "vglobal", min: 1, fn: (*Engine).exVglobal},
 		{full: "set", min: 2, fn: (*Engine).exSet},
+		{full: "source", min: 2, fn: (*Engine).exSource},
 		{full: "map", min: 3, fn: (*Engine).exMap},
 		{full: "unmap", min: 3, fn: (*Engine).exUnmap},
 		{full: "abbreviate", min: 2, fn: (*Engine).exAbbreviate},

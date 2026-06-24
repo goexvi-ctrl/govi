@@ -47,6 +47,8 @@ type Engine struct {
 	// collected into exOut for a line-at-a-time host instead of the transcript.
 	exLineMode bool
 	exOut      []string
+
+	startup bool // true while reading EXINIT / exrc startup information
 }
 
 // New returns an Engine that renders through fe. Call Open and Resize before

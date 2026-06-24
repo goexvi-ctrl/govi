@@ -116,6 +116,9 @@ func (e *Engine) exVisual(c *exCmd) error {
 // exEcho emits a line of ex output: to the line-host buffer when one is driving
 // (Q line mode), otherwise appended to the in-screen transcript.
 func (e *Engine) exEcho(s string) {
+	if e.startup {
+		return
+	}
 	if e.exLineMode {
 		e.exOut = append(e.exOut, s)
 		return
@@ -126,6 +129,9 @@ func (e *Engine) exEcho(s string) {
 // showOutput presents multi-line command output: appended to the transcript in
 // ex mode, or shown as an overlay (dismissed by the next key) in vi mode.
 func (e *Engine) showOutput(lines []string) {
+	if e.startup {
+		return
+	}
 	if e.scr.mode == ModeExText {
 		for _, l := range lines {
 			e.exEcho(l)
@@ -139,6 +145,9 @@ func (e *Engine) showOutput(lines []string) {
 // printLine emits a line of command output: to the transcript in ex mode, or to
 // the message line in vi mode.
 func (e *Engine) printLine(s string) {
+	if e.startup {
+		return
+	}
 	if e.scr.mode == ModeExText {
 		e.exEcho(s)
 	} else {

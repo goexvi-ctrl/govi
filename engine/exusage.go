@@ -49,6 +49,7 @@ var exCmdMeta = map[string]exCmdUsage{
 	"rewind":       {"edit first file in the argument list", ":rew[ind][!]"},
 	"set":          {"show or set options", ":se[t] [option[=value]] ..."},
 	"shell":        {"run an interactive shell", ":sh[ell]"},
+	"source":       {"read and execute ex commands from a file", ":so[urce] file"},
 	"stop":         {"suspend the edit session", ":st[op][!]"},
 	"substitute":   {"substitute a pattern", ":[range] s/pattern/repl/[flags]"},
 	"suspend":      {"suspend the edit session", ":su[spend][!]"},
