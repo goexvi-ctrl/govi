@@ -35,7 +35,7 @@ parity row can be checked against the source description quickly.
 | `^M` `+` / `-` | next / prev line, first non-blank | yes | ✅ | |
 | `^T` `^]` | tag pop / tag push | yes | ✅✔ | ctags `tags` file |
 | `^W` | switch screens | yes | ❌ | no split screens |
-| `^Z` | suspend | yes | ❌ | |
+| `^Z` | suspend | yes | ✅ | terminal only (`gnvi`/`nvi`); blocked when `secure` |
 | `^^` | alternate file | yes | ✅✔ | |
 | `:` | ex command line | yes | ✅✔ | |
 | `/` `?` `n` `N` | search / repeat | yes | ✅✔ | wrapscan honored |
@@ -64,8 +64,9 @@ parity row can be checked against the source description quickly.
 | `U` | restore line | yes | ✅✔ | undoes the run of changes on the current line |
 | `u` | undo (toggle) | yes | ✅✔ | directional `u`/`.` model |
 | `x X` | delete char | yes | ✅✔ | |
-| `z` | screen positioning (`z↵` `z.` `z-`) | yes | 🟡 | no `z^`/`z+`/count2 |
+| `z` | screen positioning (`z↵` `z.` `z-` `[line]z` `z[count]`) | yes | 🟡 | wrap-aware center/bottom; `[line]z[count]` small map (blank below, grows on `j`); `z[count]` types equivalent; no `z^`/`z+` scroll |
 | `ZZ` `ZQ` | save-quit / quit | yes | ✅ | |
+| `<interrupt>` | interrupt current operation | yes | 🟡 | searches/interrupts; not all operations cancellable |
 
 ## Vi text-input-mode commands
 
@@ -96,7 +97,7 @@ parity row can be checked against the source description quickly.
 | `:[range]g[lobal]` / `:v` | yes | ✅✔ | |
 | `:[line]=` | yes | ✅ | |
 | `:[range]p[rint]`/`nu[mber]`/`l[ist]` | yes | ✅ | output via overlay/transcript |
-| `:w[rite]` `:wq` `:x[it]` `:q[uit]` | yes | ✅✔ | `!`, modified guard |
+| `:w[rite]` `:wq` `:x[it]` `:q[uit]` | yes | ✅✔ | `!`, dirty guard (incl. insert-mode pending edits) |
 | `:r[ead] file` | yes | ✅ | `:r !cmd` ❌ |
 | `:[range]!cmd` / `:!cmd` | yes | ✅✔ | |
 | `:set` / `:set all` / `:set opt` | yes | ✅✔ | full option registry, grid display |
@@ -104,7 +105,7 @@ parity row can be checked against the source description quickly.
 | `:ab[breviate]` `:una[bbreviate]` | yes | ✅✔ | |
 | `:[range]nu[mber]`/`:#` | yes | ✅ | number-prefixed print |
 | `:e[dit]` `:n[ext]` `:prev`/`:N` `:rew[ind]` `:ar[gs]` | yes | ✅✔ | argument list |
-| `:f[ile] [name]` | yes | ❌ | show/set current pathname |
+| `:f[ile] [name]` | yes | ✅ | status line; optional rename sets alternate file |
 | `:ta[g]` | yes | ✅✔ | |
 | `:tagn[ext]` `:tagp[rev]` `:tagt[op]` | yes | ❌ | tag-stack walk (vi `^T`/`^]` work) |
 | `:vi[sual]` | yes | ✅ | returns from ex mode |
@@ -115,14 +116,18 @@ parity row can be checked against the source description quickly.
 | `:so[urce]` `:mk[exrc]` | yes | ❌ | exrc scripting |
 | `:cd`/`:chdir` | yes | ❌ | |
 | `:di[splay] b\|c\|s\|t` | yes | ❌ | buffers/screens/tags inspector |
-| `:he[lp]` | yes | ❌ | |
+| `:he[lp]` | yes | ✅ | points to :viusage / :exusage |
+| `:exu[sage] [cmd]` | yes | ✅ | lists implemented ex commands |
+| `:viu[sage] [key]` | yes | ✅ | lists implemented vi keys |
 | `:o[pen]` | yes | — | non-objective (also unimplemented in nvi); distinct from vi `o` |
 | `:bg` `:fg` `:res[ize]` | yes | ❌ | needs split screens |
-| `:su[spend]`/`:st[op]` | yes | ❌ | job control |
+| `:su[spend]`/`:st[op]` | yes | ✅ | terminal only; `!` skips autowrite; blocked when `secure` |
 | `:cs[cope]` | yes | — | cscope integration; out of scope |
 | `:pre[serve]` `:rec[over]` | yes | ✅ | crash recovery (govi format) |
-| `:ve[rsion]` `:viu[sage]` `:exu[sage]` | yes | ❌ | |
+| `:ve[rsion]` | yes | ✅ | git-derived build metadata (`gnvi-0.1`, date, hash) |
+| `:viu[sage]` `:exu[sage]` | yes | ❌ | |
 | `:@`/`:*` (exec buffer) `:w>>` `:wn` etc. | yes | 🟡 | partial |
+| `:sh[ell]` | yes | 🟡 | interactive shell via frontend (`tcell` suspend; Govi.app opens Terminal); blocked when `secure` |
 
 ## Options
 
@@ -144,8 +149,19 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | `list` | yes | ✅ | tabs as ^I, controls as ^X, trailing $ |
 | `showmatch` (sm) | yes | ✅✔ | bracket flash on insert (matchtime) |
 | `columns`/`lines` | yes | ✅ | track terminal geometry |
-| `shell` | yes | ✅ | used by `!` filter |
+| `shell` | yes | ✅ | used by `!` filter and `:shell` |
 | `lisp`, `redraw`, `slowopen`/`slow`, `optimize`/`opt` | yes | — | non-objectives (see below); settable but never drive behavior |
+| `autowrite` (aw) | yes | ❌ | auto-write on file/tag/navigation commands |
+| `backup` | yes | ❌ | backup file path and versioning |
+| `lock` | yes | ❌ | file locking before write |
+| `recdir` | yes | ✅ | recovery directory for crash-recovery files |
+| `writeany` (wa) | yes | ❌ | override ownership checks on write |
+| `ruler` | yes | ❌ | row/column display on command line |
+| `showmode` (smd) | yes | ❌ | mode indicator on command line |
+| `secure` | yes | 🟡 | blocks `:shell` when set; `!` filters still run |
+| `matchtime` (mt) | yes | ✅ | showmatch flash duration (tenths of a second) |
+| `report` | yes | ⚙️ | change-report threshold (recognized, inert) |
+| `octal` | yes | ⚙️ | unknown char display format (recognized, inert) |
 | all other options | yes | ⚙️ | recognized/settable, inert |
 
 ## Subsystems
@@ -171,13 +187,17 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | Command-line editing (`cedit`) | yes | ❌ | no ex command-line edit window |
 | Embeddable engine boundary | function-pointer table | ✅ | Go `Frontend`/`View`; tcell + headless + native GUI frontends |
 | Crash recovery (`-r`) | yes | ✅ | `nvi -r` lists recoverable files; `nvi -r file` restores; `:preserve`/`:recover`; govi format |
+| Signals (SIGHUP/SIGTERM/…) | yes | ✅ | trap, restore cooked tty, print signal name; `^\` vi→ex, ex→`:^\Quit` |
 | Split screens / windows (`^W` `:bg`/`:fg`/`:resize`) | yes | ❌ | |
-| Job control (`^Z` `:suspend`/`:stop`) | yes | ❌ | |
+| Job control (`^Z` `:suspend`/`:stop`) | yes | ✅ | terminal frontend (`tcell`); not Govi.app |
 | Cscope integration | yes | — | out of scope |
 | Message catalogs (i18n) | yes | — | English only; out of scope |
 | File encodings | iconv | 🟡 | UTF-8 only |
 | Perl / Tcl scripting | yes | — | non-objective (see below) |
-| GUI backends (motif/gtk/ipc) | yes | 🟡 | native macOS AppKit app embeds the engine (`gui/`); nvi's own backends out of scope |
+| GUI backends (motif/gtk/ipc) | yes | 🟡 | native macOS AppKit app (`gui/`): multi-window/tabs, mouse selection, spell check; nvi's motif/gtk/ipc backends out of scope |
+| Ex addressing | yes | ✅✔ | `.`, `$`, `N`, `'mark`, `/pat/`, `?pat?`, offsets, `%` range |
+| Startup files (`/etc/vi.exrc`, `~/.exrc`, `EXINIT`) | yes | ❌ | not read on startup |
+
 
 ## Non-objectives (explicitly out of scope)
 
@@ -195,6 +215,18 @@ never drive behavior.
 | `slowopen` / `slow` option | slow-terminal drawing mode; irrelevant to govi's renderer |
 | `optimize` / `opt` option | terminal-output optimization; irrelevant to govi's renderer |
 | Ex `:open` command | unimplemented in nvi too; not the vi-mode `o` command |
+| `modelines` option | security hazard; will never be implemented |
+| `sourceany` option | security hazard; will never be implemented |
+| `mesg` option | terminal messaging control; irrelevant to govi's frontends |
+| `iclower` option | case-insensitive fallback; superseded by `ignorecase` |
+| `comment` option | skip comment on file open; not implemented |
+| `path` option | file search path; not used |
+| `window`, `w300`, `w1200`, `w9600` | baud-rate window sizing; irrelevant to modern displays |
+| `scroll` option | ex-mode scroll count; not used |
+| `searchincr` option | incremental search display; not implemented |
+| `terse`, `verbose` options | error verbosity; not applied |
+| `hardtabs` option | terminal tab expansion; nvi never sends tabs to terminal |
+| `prompt` option | ex prompt display; not yet driving behavior |
 
 ---
 
