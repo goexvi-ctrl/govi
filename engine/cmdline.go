@@ -1,5 +1,7 @@
 package engine
 
+import "golang.org/x/text/unicode/norm"
+
 // colonEditOpts configures shared colon/ex command-line editing (nvi v_tcmd).
 type colonEditOpts struct {
 	leaveOnEmptyBackspace bool // vi colon: backspace past start cancels the line
@@ -15,7 +17,7 @@ func (e *Engine) colonEditKey(ev KeyEvent, opts colonEditOpts) {
 	if s.cmdLiteralNext {
 		s.cmdLiteralNext = false
 		if r, ok := literalRune(ev); ok {
-			s.colon = append(s.colon, r)
+			s.colon = appendColonRune(s.colon, r)
 		}
 		return
 	}
@@ -28,6 +30,14 @@ func (e *Engine) colonEditKey(ev KeyEvent, opts colonEditOpts) {
 		if len(s.cmdHexBuf) > 0 {
 			s.colon = append(s.colon, s.cmdlineFinishHex())
 		}
+	}
+
+	if colonInterrupt(ev) {
+		s.resetColonEdit()
+		if opts.onEscape != nil {
+			opts.onEscape()
+		}
+		return
 	}
 
 	if colonControlKey(ev, s) {
@@ -58,9 +68,20 @@ func (e *Engine) colonEditKey(ev KeyEvent, opts colonEditOpts) {
 		}
 	default:
 		if ev.Rune != 0 && ev.Rune != 0x1b {
-			s.colon = append(s.colon, ev.Rune)
+			s.colon = appendColonRune(s.colon, ev.Rune)
 		}
 	}
+}
+
+func appendColonRune(colon []rune, r rune) []rune {
+	return []rune(norm.NFC.String(string(append(colon, r))))
+}
+
+func colonInterrupt(ev KeyEvent) bool {
+	if ev.Rune == 0x03 {
+		return true
+	}
+	return ev.Mods&ModCtrl != 0 && ev.Key == KeyNone && (ev.Rune == 'c' || ev.Rune == 'C')
 }
 
 func colonControlKey(ev KeyEvent, s *screen) bool {
@@ -82,6 +103,11 @@ func colonControlKey(ev KeyEvent, s *screen) bool {
 			s.cmdHexMode = true
 			s.cmdHexBuf = s.cmdHexBuf[:0]
 			return true
+		default:
+			if r, ok := ctrlRune(ev); ok {
+				s.colon = appendColonRune(s.colon, r)
+				return true
+			}
 		}
 	}
 	switch ev.Rune {

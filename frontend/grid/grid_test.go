@@ -220,6 +220,20 @@ func TestComposeExModeScrolls(t *testing.T) {
 	}
 }
 
+func TestComposeColonCursorUmlaut(t *testing.T) {
+	v := &fakeView{
+		lines:  []string{"x"},
+		cursor: engine.Pos{Line: 1, Col: 0},
+		top:    1,
+		mode:   engine.ModeExColon,
+		msg:    ":r \u00fc",
+	}
+	g := Compose(v, 4, 40)
+	if g.CursorX != 4 {
+		t.Fatalf("colon cursor x = %d, want 4", g.CursorX)
+	}
+}
+
 func TestComposeGutter(t *testing.T) {
 	v := &fakeView{
 		lines:  []string{"a", "b"},

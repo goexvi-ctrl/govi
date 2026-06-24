@@ -52,6 +52,17 @@ func runeWidth(r rune, col, tabstop int, list bool) int {
 	return 1
 }
 
+// DisplayStringColumns returns how many terminal columns string s occupies when
+// drawn left-to-right with the given tabstop (control characters as ^X, wide
+// runes as two columns).
+func DisplayStringColumns(s string, tabstop int) int {
+	col := 0
+	for _, r := range s {
+		col += runeWidth(r, col, tabstop, false)
+	}
+	return col
+}
+
 // makeDisplayLine builds a DisplayLine from logical buffer runes, computing the
 // per-rune display width using the given tabstop and list option. Text aliases
 // the caller's slice and must be treated as read-only by the frontend.

@@ -140,7 +140,7 @@ func (g *Grid) composeExMode(v engine.View) {
 		g.drawText(line, y)
 		y++
 	}
-	g.CursorX = len([]rune(prompt))
+	g.CursorX = engine.DisplayStringColumns(prompt, 8)
 	g.CursorY = y - 1 // the input line is the last one drawn
 	g.CursorVisible = true
 }
@@ -227,7 +227,7 @@ func (g *Grid) drawGutter(lno int64, row, gutter int) {
 func (g *Grid) placeCursor(v engine.View, mapRows, statusRow, gutter, textW int) {
 	if v.Mode() == engine.ModeExColon {
 		msg, _ := v.Message()
-		g.CursorX = len([]rune(msg))
+		g.CursorX = engine.DisplayStringColumns(msg, 8)
 		g.CursorY = statusRow
 		g.CursorVisible = true
 		return

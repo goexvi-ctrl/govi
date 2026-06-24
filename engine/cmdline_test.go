@@ -75,6 +75,50 @@ func TestColonDisplayLiteralNextCaret(t *testing.T) {
 	}
 }
 
+func TestColonCtrlCInterrupt(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	drive(e, ":")
+	e.Input(KeyEvent{Rune: 'w'})
+	e.Input(KeyEvent{Rune: 'c', Mods: ModCtrl})
+	if e.scr.mode != ModeCommand {
+		t.Fatalf("mode = %v, want command after ^C", e.scr.mode)
+	}
+	if len(e.scr.colon) != 0 {
+		t.Fatalf("colon = %q, want empty", string(e.scr.colon))
+	}
+}
+
+func TestColonCtrlAInsertsControl(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	drive(e, ":")
+	e.Input(KeyEvent{Rune: 'a', Mods: ModCtrl})
+	if len(e.scr.colon) != 1 || e.scr.colon[0] != 1 {
+		t.Fatalf("colon = %v, want [SOH]", e.scr.colon)
+	}
+	msg, _ := (view{e.scr}).Message()
+	if msg != ":^A" {
+		t.Fatalf("msg = %q, want :^A", msg)
+	}
+}
+
+func TestColonUmlautNFC(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	drive(e, ":")
+	for _, r := range "r " {
+		e.Input(KeyEvent{Rune: r})
+	}
+	// macOS dead-key composition can arrive decomposed before NFC.
+	e.Input(KeyEvent{Rune: 'u'})
+	e.Input(KeyEvent{Rune: '\u0308'})
+	if len(e.scr.colon) != 3 || e.scr.colon[2] != '\u00fc' {
+		t.Fatalf("colon = %v, want NFC ü", e.scr.colon)
+	}
+	msg, _ := (view{e.scr}).Message()
+	if got := DisplayStringColumns(msg, 8); got != 4 {
+		t.Fatalf("display cols = %d, want 4 (msg %q)", got, msg)
+	}
+}
+
 func TestColonCtrlHBackspace(t *testing.T) {
 	e, _, _ := newTestEngine(t, "x\n")
 	drive(e, ":")

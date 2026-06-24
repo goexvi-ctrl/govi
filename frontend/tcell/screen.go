@@ -402,7 +402,7 @@ func (f *Frontend) drawStatus(v engine.View, w, row int) {
 func (f *Frontend) placeCursor(v engine.View, mapRows, statusRow, gutter, textW int) {
 	if v.Mode() == engine.ModeExColon {
 		msg, _ := v.Message()
-		f.scr.ShowCursor(len([]rune(msg)), statusRow) // end of the colon line
+		f.scr.ShowCursor(engine.DisplayStringColumns(msg, 8), statusRow) // end of the colon line
 		return
 	}
 	cur := v.Cursor()

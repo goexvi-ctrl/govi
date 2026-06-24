@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // colonWordStart returns the rune index where the blank-delimited word before
@@ -84,7 +86,8 @@ func (e *Engine) colonDoFileComplete() {
 }
 
 func (e *Engine) replaceColonWord(start int, repl string) {
-	e.scr.colon = append(append([]rune(nil), e.scr.colon[:start]...), []rune(repl)...)
+	merged := append(append([]rune(nil), e.scr.colon[:start]...), []rune(repl)...)
+	e.scr.colon = []rune(norm.NFC.String(string(merged)))
 }
 
 // globFileNames returns file names relative to cwd matching word as a prefix
