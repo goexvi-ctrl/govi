@@ -3,6 +3,7 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,6 +77,52 @@ func TestEditPreservesOptions(t *testing.T) {
 	}
 	if _, ok := e.scr.maps.command["X"]; !ok {
 		t.Fatal("maps not preserved across :edit")
+	}
+}
+
+func TestExFileStatus(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTemp(t, dir, "foo.txt", "a\nb\nc\n")
+	e, _, _ := newTestEngine(t, "")
+	if err := e.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	drive(e, "2G")
+	if err := e.exExecute("f"); err != nil {
+		t.Fatal(err)
+	}
+	msg, kind := (view{e.scr}).Message()
+	if kind != MsgInfo {
+		t.Fatalf("kind = %v", kind)
+	}
+	if !strings.Contains(msg, path) || !strings.Contains(msg, "unmodified") || !strings.Contains(msg, "line 2 of 3") {
+		t.Fatalf(":f status = %q", msg)
+	}
+}
+
+func TestExFileRename(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTemp(t, dir, "old.txt", "hi\n")
+	e, fe, _ := newTestEngine(t, "")
+	if err := e.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	newPath := filepath.Join(dir, "new.txt")
+	if err := e.exExecute("f " + newPath); err != nil {
+		t.Fatal(err)
+	}
+	if e.scr.name != newPath {
+		t.Fatalf("name = %q, want %q", e.scr.name, newPath)
+	}
+	if e.altFile != path {
+		t.Fatalf("altFile = %q, want %q", e.altFile, path)
+	}
+	msg, _ := (view{e.scr}).Message()
+	if !strings.Contains(msg, "name changed") {
+		t.Fatalf(":f rename status = %q", msg)
+	}
+	if fe.title != "new.txt" {
+		t.Fatalf("title = %q", fe.title)
 	}
 }
 

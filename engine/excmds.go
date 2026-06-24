@@ -289,6 +289,7 @@ func (e *Engine) Save(path string) error {
 	}
 	if sameFile(path, e.scr.name) {
 		e.scr.modified = false
+		e.scr.nameChanged = false
 		e.removeRecovery() // saved: no recovery needed
 	}
 	e.scr.msg = fmt.Sprintf("%q: %d lines, %d bytes", filepath.Base(path), n, b)

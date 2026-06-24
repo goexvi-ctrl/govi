@@ -17,8 +17,9 @@ type screen struct {
 	marks *mark.Set
 	regs  *register.Set
 
-	name     string // file path, or "" for an unnamed buffer
-	modified bool
+	name        string // file path, or "" for an unnamed buffer
+	modified    bool
+	nameChanged bool // :f renamed the buffer; cleared on write (nvi FR_NAMECHANGE)
 
 	cursor Pos   // 1-based line, 0-based rune column
 	top    int64 // first buffer line shown (1-based)

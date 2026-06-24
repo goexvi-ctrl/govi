@@ -27,8 +27,9 @@ type Engine struct {
 
 	mapPending []rune // runes accumulating toward a possible map LHS
 
-	argv     []string // file argument list
-	argIdx   int      // index of the current file in argv
+	argv          []string // file argument list
+	argIdx        int      // index of the current file in argv
+	showFileCount bool     // next :f/^G shows "N files to edit" (nvi SC_STATUS_CNT)
 	altFile  string   // alternate file (^^ / #), the previously edited file
 	tagStack []tagLoc // tag jump stack for ^T
 
@@ -82,6 +83,7 @@ func (e *Engine) replaceBuffer(store buffer.LineStore, name string) {
 	s.log = undo.New(store)
 	s.marks = mark.New()
 	s.name = name
+	s.nameChanged = false
 	s.cursor = Pos{Line: 1, Col: 0}
 	s.top = 1
 	s.mode = ModeCommand
@@ -102,6 +104,9 @@ func (e *Engine) Open(path string) error {
 	if err != nil {
 		if os.IsNotExist(err) {
 			e.replaceBuffer(buffer.NewMem(), path)
+			if len(e.argv) > 1 {
+				e.showFileCount = true
+			}
 			e.scr.msg = fmt.Sprintf("%q: new file", filepath.Base(path))
 			e.scr.msgKind = MsgInfo
 			return nil
@@ -113,6 +118,9 @@ func (e *Engine) Open(path string) error {
 	}
 	e.file = fh
 	e.replaceBuffer(store, path)
+	if len(e.argv) > 1 {
+		e.showFileCount = true
+	}
 	e.scr.msg = fmt.Sprintf("%q: %d lines", filepath.Base(path), store.Lines())
 	e.scr.msgKind = MsgInfo
 	if e.hasRecovery(path) {

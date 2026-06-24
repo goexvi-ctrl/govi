@@ -109,24 +109,10 @@ func (e *Engine) startSearch(pattern string, dir searchDir) error {
 	return nil
 }
 
-// fileInfo implements ^G: show the file name, modified flag, and position.
+// fileInfo implements ^G: show the file status (same text as :f).
 func (e *Engine) fileInfo() {
-	s := e.scr
-	name := s.name
-	if name == "" {
-		name = "[No file]"
-	}
-	mod := ""
-	if s.modified {
-		mod = " [Modified]"
-	}
-	n := s.lineCount()
-	pct := int64(0)
-	if n > 0 {
-		pct = (s.cursor.Line * 100) / n
-	}
-	s.msg = fmt.Sprintf("%q%s: line %d of %d [%d%%]", name, mod, s.cursor.Line, n, pct)
-	s.msgKind = MsgInfo
+	e.scr.msg = e.fileStatus()
+	e.scr.msgKind = MsgInfo
 }
 
 // wordAt returns the word (sequence of word runes) covering or following column

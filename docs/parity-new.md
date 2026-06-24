@@ -105,7 +105,7 @@ parity row can be checked against the source description quickly.
 | `:ab[breviate]` `:una[bbreviate]` | yes | ✅✔ | |
 | `:[range]nu[mber]`/`:#` | yes | ✅ | number-prefixed print |
 | `:e[dit]` `:n[ext]` `:prev`/`:N` `:rew[ind]` `:ar[gs]` | yes | ✅✔ | argument list |
-| `:f[ile] [name]` | yes | ❌ | show/set current pathname |
+| `:f[ile] [name]` | yes | ✅ | status line; optional rename sets alternate file |
 | `:ta[g]` | yes | ✅✔ | |
 | `:tagn[ext]` `:tagp[rev]` `:tagt[op]` | yes | ❌ | tag-stack walk (vi `^T`/`^]` work) |
 | `:vi[sual]` | yes | ✅ | returns from ex mode |

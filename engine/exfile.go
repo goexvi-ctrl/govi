@@ -6,6 +6,83 @@ import (
 	"strings"
 )
 
+// fileStatus builds the :f / ^G status line (nvi msgq_status).
+func (e *Engine) fileStatus() string {
+	s := e.scr
+	name := s.name
+	if name == "" {
+		name = "[No file]"
+	}
+	var b strings.Builder
+	b.WriteString(name)
+	b.WriteString(": ")
+	if e.showFileCount && len(e.argv) > 1 {
+		fmt.Fprintf(&b, "%d files to edit: ", len(e.argv))
+		e.showFileCount = false
+	}
+	needSep := false
+	if s.name == "" && s.dirty() {
+		b.WriteString("new file")
+		needSep = true
+	} else {
+		if s.nameChanged {
+			b.WriteString("name changed")
+			needSep = true
+		}
+		if s.dirty() {
+			if needSep {
+				b.WriteString(", ")
+			}
+			b.WriteString("modified")
+			needSep = true
+		} else {
+			if needSep {
+				b.WriteString(", ")
+			}
+			b.WriteString("unmodified")
+			needSep = true
+		}
+	}
+	if s.opts.Bool("readonly") {
+		if needSep {
+			b.WriteString(", ")
+		}
+		b.WriteString("readonly")
+		needSep = true
+	}
+	if needSep {
+		b.WriteString(": ")
+	}
+	n := s.lineCount()
+	if n <= 1 && s.lineLen(1) == 0 {
+		b.WriteString("empty file")
+		return b.String()
+	}
+	pct := int64(0)
+	if n > 0 {
+		pct = (s.cursor.Line * 100) / n
+	}
+	fmt.Fprintf(&b, "line %d of %d [%d%%]", s.cursor.Line, n, pct)
+	return b.String()
+}
+
+// exFile implements :f[ile] [name] — show status and optionally rename the buffer.
+func (e *Engine) exFile(c *exCmd) error {
+	name := strings.TrimSpace(c.arg)
+	if name != "" {
+		old := e.scr.name
+		if old != "" && old != name {
+			e.altFile = old
+			e.scr.nameChanged = true
+		}
+		e.scr.name = name
+		e.fe.SetTitle(filepath.Base(name))
+	}
+	e.scr.msg = e.fileStatus()
+	e.scr.msgKind = MsgInfo
+	return nil
+}
+
 // File-list ex commands: :edit, :next, :previous/:rewind, :args. These move
 // among the files named on the command line (the argument list), mirroring
 // nvi's behavior.

@@ -64,6 +64,7 @@ func init() {
 		{"Next", 1, (*Engine).exPrev},
 		{"rewind", 3, (*Engine).exRewind},
 		{"args", 2, (*Engine).exArgs},
+		{"file", 1, (*Engine).exFile},
 		{"tag", 2, (*Engine).exTag},
 		{"preserve", 3, (*Engine).exPreserve},
 		{"recover", 3, (*Engine).exRecover},
