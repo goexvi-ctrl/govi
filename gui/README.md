@@ -59,22 +59,23 @@ This produces `gui/build/Govi.app`.
 
 ## Run
 
-Use the `govi` command-line launcher (`gui/govi`):
+Use the `govi` binary's GUI mode (`govi -g`):
 
 ```sh
-gui/govi file1 file2 ...   # opens the files as tabs in one window
-gui/govi                   # just launch / focus Govi.app
+govi -g file1 file2 ...   # opens the files as tabs in one window
+govi -g                   # just launch / focus Govi.app
+govi -g -w file           # block until the opened tabs/windows close
 ```
 
 Multiple files passed together open as **tabs in a single window**. A file that
 is already open is focused rather than duplicated.
 
-It launches Govi.app if needed, or hands the files to an **already-running**
+`govi -g` launches Govi.app if needed, or hands the files to an **already-running**
 instance via the macOS open-documents event (no custom IPC), and brings it to
 the front — so it works like a normal command-line editor launcher. Re-opening a
-file that's already open just focuses its window. Put it on your `PATH` with a
-symlink, e.g. `ln -s "$PWD/gui/govi" /usr/local/bin/govi`. It finds Govi.app via
-`$GOVI_APP`, then `gui/build/Govi.app`, then `/Applications/Govi.app`.
+file that's already open just focuses its window. It finds Govi.app via
+`$GOVI_APP`, then next to the `govi` binary, then `gui/build/Govi.app` in a
+checkout, then `/Applications/Govi.app`.
 
 Or run the app directly:
 

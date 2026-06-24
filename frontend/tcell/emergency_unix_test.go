@@ -60,15 +60,15 @@ func TestEmergencyFatalSignalRestoresTTY(t *testing.T) {
 
 func emergencyTestBinary(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "nvi")
+	bin := filepath.Join(t.TempDir(), "govi")
 	modRoot, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
-	build := exec.Command("go", "build", "-o", bin, "./cmd/nvi")
+	build := exec.Command("go", "build", "-o", bin, "./cmd/govi")
 	build.Dir = modRoot
 	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build nvi: %v\n%s", err, out)
+		t.Fatalf("build govi: %v\n%s", err, out)
 	}
 	return bin
 }

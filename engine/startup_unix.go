@@ -184,7 +184,7 @@ func exrcAllowed(path string, rootOwn, rootID bool) (exrcVerdict, os.FileInfo, e
 		return exrcNoPerm, info, nil
 	}
 	if info.Mode().Perm()&0022 != 0 {
-		fmt.Fprintf(os.Stderr, "nvi: %s: not sourced: writeable by a user other than the owner\n", path)
+		fmt.Fprintf(os.Stderr, "govi: %s: not sourced: writeable by a user other than the owner\n", path)
 		return exrcNoPerm, info, nil
 	}
 	return exrcOK, info, nil
@@ -200,8 +200,8 @@ func fileUID(info os.FileInfo) uint32 {
 
 func exrcDeny(path string, rootOwn bool) {
 	if rootOwn {
-		fmt.Fprintf(os.Stderr, "nvi: %s: not sourced: not owned by you or root\n", path)
+		fmt.Fprintf(os.Stderr, "govi: %s: not sourced: not owned by you or root\n", path)
 	} else {
-		fmt.Fprintf(os.Stderr, "nvi: %s: not sourced: not owned by you\n", path)
+		fmt.Fprintf(os.Stderr, "govi: %s: not sourced: not owned by you\n", path)
 	}
 }

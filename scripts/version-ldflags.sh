@@ -12,4 +12,4 @@ if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
 	state=modified
 fi
 
-printf '%s' "-X govi/engine.versionName=gnvi-0.1 -X govi/engine.commitDate=${date} -X govi/engine.commitHash=${hash} -X govi/engine.treeState=${state}"
+printf '%s' "-X govi/engine.versionName=govi-0.1 -X govi/engine.commitDate=${date} -X govi/engine.commitHash=${hash} -X govi/engine.treeState=${state}"

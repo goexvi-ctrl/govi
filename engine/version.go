@@ -5,7 +5,7 @@ import "strings"
 // Build metadata. Release builds inject commitDate, commitHash, and treeState
 // via -ldflags (see scripts/version-ldflags.sh).
 var (
-	versionName = "gnvi-0.1"
+	versionName = "govi-0.1"
 	commitDate  = "unknown"
 	commitHash  = ""
 	treeState   = "" // "" when clean; "modified" when the tree has local changes

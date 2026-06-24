@@ -35,7 +35,7 @@ parity row can be checked against the source description quickly.
 | `^M` `+` / `-` | next / prev line, first non-blank | yes | ✅ | |
 | `^T` `^]` | tag pop / tag push | yes | ✅✔ | ctags `tags` file |
 | `^W` | switch screens | yes | ❌ | no split screens |
-| `^Z` | suspend | yes | ✅ | terminal only (`gnvi`/`nvi`); blocked when `secure` |
+| `^Z` | suspend | yes | ✅ | terminal only (`govi`); blocked when `secure` |
 | `^^` | alternate file | yes | ✅✔ | |
 | `:` | ex command line | yes | ✅✔ | |
 | `/` `?` `n` `N` | search / repeat | yes | ✅✔ | wrapscan honored |
@@ -124,7 +124,7 @@ parity row can be checked against the source description quickly.
 | `:su[spend]`/`:st[op]` | yes | ✅ | terminal only; `!` skips autowrite; blocked when `secure` |
 | `:cs[cope]` | yes | — | cscope integration; out of scope |
 | `:pre[serve]` `:rec[over]` | yes | ✅ | crash recovery (govi format) |
-| `:ve[rsion]` | yes | ✅ | git-derived build metadata (`gnvi-0.1`, date, hash) |
+| `:ve[rsion]` | yes | ✅ | git-derived build metadata (`govi-0.1`, date, hash) |
 | `:viu[sage]` `:exu[sage]` | yes | ❌ | |
 | `:@`/`:*` (exec buffer) `:w>>` `:wn` etc. | yes | 🟡 | partial |
 | `:sh[ell]` | yes | 🟡 | interactive shell via frontend (`tcell` suspend; Govi.app opens Terminal); blocked when `secure` |

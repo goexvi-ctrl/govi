@@ -20,7 +20,7 @@ func (e *Engine) runStartupScript(name, text string) error {
 			continue
 		}
 		if err := e.exExecute(line); err != nil {
-			fmt.Fprintf(os.Stderr, "nvi: %s:%d: %v\n", name, i+1, err)
+			fmt.Fprintf(os.Stderr, "govi: %s:%d: %v\n", name, i+1, err)
 		}
 		if e.quit {
 			return nil

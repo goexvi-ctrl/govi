@@ -2,14 +2,10 @@
 /bin/
 
 # Compiled binaries (make, go build, accidental package builds)
-/nvi
-/bridge
-/gnvi
-/cmd/nvi/nvi
-/gui/bridge/bridge
-
-# Command-line launcher script lives at gui/govi (not repo-root /govi).
 /govi
+/bridge
+/cmd/govi/govi
+/gui/bridge/bridge
 
 # macOS GUI app build products (libgovi archive, linked binary, .app bundle)
 /gui/build/

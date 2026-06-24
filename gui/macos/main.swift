@@ -390,7 +390,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func finishColdLaunch() {
-        // launch-files (from gui/govi) wins over Apple Events: cold launches from
+        // launch-files (from govi -g) wins over Apple Events: cold launches from
         // background helpers often deliver basename-only paths and would otherwise
         // erase launch-files before we read it.
         let fromLauncher = LaunchPath.readLaunchFiles()

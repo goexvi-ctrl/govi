@@ -3,12 +3,12 @@ VERSION_LDFLAGS := $(shell ./scripts/version-ldflags.sh)
 
 all: build
 
-.PHONY: build nvi test
+.PHONY: build govi test
 
-build: nvi gui/build/Govi.app
+build: govi gui/build/Govi.app
 
-nvi:
-	go build -ldflags "$(VERSION_LDFLAGS)" -o nvi ./cmd/nvi
+govi:
+	go build -ldflags "$(VERSION_LDFLAGS)" -o govi ./cmd/govi
 
 include gui/govi.mk
 
@@ -18,9 +18,9 @@ test:
 	go test ./...
 
 IDIR=$(HOME)/bin
-install: $(IDIR)/gnvi $(IDIR)/Govi.app $(IDIR)/govi
+install: $(IDIR)/govi $(IDIR)/Govi.app
 
-$(IDIR)/gnvi: nvi
+$(IDIR)/govi: govi
 	cp $< $@
 
 # ditto after rm -rf: cp -r into an existing .app nest a second bundle
@@ -29,8 +29,5 @@ $(IDIR)/Govi.app: gui/build/Govi.app $(GOVI_ICNS)
 	rm -rf $@
 	ditto gui/build/Govi.app $@
 
-$(IDIR)/govi: gui/govi
-	cp $< $@
-
 clean:
-	rm -rf gui/build/Govi.app nvi
+	rm -rf gui/build/Govi.app govi

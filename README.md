@@ -7,8 +7,8 @@ It ships in two forms:
 
 | Program | What it is |
 |---------|------------|
-| **`nvi`** | Terminal editor (full-screen, like classic vi) |
-| **`Govi.app`** + **`govi`** | Native macOS graphical editor; the `govi` script launches it from the shell |
+| **`govi`** | Terminal editor (full-screen, like classic vi) |
+| **`Govi.app`** | Native macOS graphical editor; **`govi -g`** opens files in it from the shell |
 
 Both use the same editor engine. If you know vi, you already know govi.
 
@@ -30,8 +30,8 @@ Build from a checkout of the govi repository.
 ### Terminal
 
 ```sh
-make nvi          # build ./nvi
-./nvi file.txt    # edit a file
+make govi          # build ./govi
+./govi file.txt    # edit a file
 ```
 
 Inside the editor: **`i`** to insert, **Esc** to return to command mode, **`:w`** to
@@ -40,8 +40,8 @@ save, **`:q`** to quit. **`:help`** points you at the built-in command lists.
 ### macOS GUI
 
 ```sh
-make              # builds nvi and gui/build/Govi.app
-./gui/govi file   # open in Govi.app (creates the file if missing)
+make              # builds govi and gui/build/Govi.app
+./govi -g file    # open in Govi.app (creates the file if missing)
 ```
 
 Or double-click **Govi.app**. Use it like vi: **`i`**, **Esc**, **`:w`**, **`:q`**, **`dd`**,
@@ -50,26 +50,29 @@ Or double-click **Govi.app**. Use it like vi: **`i`**, **Esc**, **`:w`**, **`:q`
 Install to `~/bin`:
 
 ```sh
-make install      # installs ~/bin/gnvi, ~/bin/govi, ~/bin/Govi.app
+make install      # installs ~/bin/govi and ~/bin/Govi.app
 ```
 
 ---
 
-## Command-line options (`nvi`)
+## Command-line options (`govi`)
 
 ```
-nvi [-r [file]] [-s] [file ...]
+govi [-g [-w]] [-r [file]] [-s] [file ...]
 ```
 
 | Flag | Meaning |
 |------|---------|
-| **`-r`** | List recoverable files (`nvi -r`) or recover a named file (`nvi -r file`) |
+| **`-g`** | Open the files in **Govi.app** (macOS) instead of the terminal |
+| **`-w`** | With **`-g`**, block until every opened tab/window closes (useful as an `EDITOR`); requires at least one file |
+| **`-r`** | List recoverable files (`govi -r`) or recover a named file (`govi -r file`) |
 | **`-s`** | Silent startup: do not read startup files or `EXINIT`/`NEXINIT` |
 | **`file ...`** | Files to edit. With multiple files, **`:n`** / **`:prev`** move through the argument list |
 
-The **`govi`** launcher has no flags of its own; it passes file paths to Govi.app.
-Set **`GOVI_APP`** if the app bundle is not in the default search path
-(`gui/build/Govi.app`, next to the script, or `/Applications/Govi.app`).
+With **`-g`**, `govi` hands the files to a running **Govi.app** (or launches it),
+forwarding the working directory and startup environment. Set **`GOVI_APP`** if the
+app bundle is not in the default search path (next to the `govi` binary,
+`gui/build/Govi.app` in a checkout, or `/Applications/Govi.app`).
 
 ---
 
@@ -382,7 +385,7 @@ every option. Boolean options: **`:set option`** / **`:set nooption`**. Query:
 ### Govi.app display options
 
 These options are stored per tab in the engine. In **Govi.app** they change the
-text and background colors. In the terminal **`nvi`** they are settable but do
+text and background colors. In the terminal **`govi`** they are settable but do
 not change the display.
 
 | Option | Abbr | Values |
@@ -400,7 +403,7 @@ are inert in govi — they exist for compatibility but do not change behavior. S
 
 ## Startup files
 
-Unless you pass **`-s`** to **`nvi`**, startup ex commands are read **before** the
+Unless you pass **`-s`** to **`govi`**, startup ex commands are read **before** the
 file to edit is opened, in this order:
 
 1. **`/etc/vi.exrc`** (must be owned by root or you)
@@ -448,8 +451,8 @@ named by the **`recdir`** option (default **`/var/tmp/vi.recover`**).
 
 | Action | Command |
 |--------|---------|
-| List recoverable sessions | **`nvi -r`** |
-| Recover a file | **`nvi -r filename`** |
+| List recoverable sessions | **`govi -r`** |
+| Recover a file | **`govi -r filename`** |
 | Force recovery sync | **`:preserve`** |
 | Recover from inside the editor | **`:recover [file]`** |
 
@@ -525,7 +528,7 @@ transcript; **`:visual`** returns to the normal editor view.
 ## Building and testing
 
 ```sh
-make              # nvi + Govi.app
+make              # govi + Govi.app
 make test         # go test ./...
 make clean        # remove build artifacts
 ```
