@@ -23,8 +23,11 @@ install: $(IDIR)/gnvi $(IDIR)/Govi.app $(IDIR)/govi
 $(IDIR)/gnvi: nvi
 	cp $< $@
 
-$(IDIR)/Govi.app: gui/build/Govi.app
-	cp -r $< $@
+# ditto after rm -rf: cp -r into an existing .app nest a second bundle
+# (~/bin/Govi.app/Govi.app) and leave the outer app without Resources/.
+$(IDIR)/Govi.app: gui/build/Govi.app $(GOVI_ICNS)
+	rm -rf $@
+	ditto gui/build/Govi.app $@
 
 $(IDIR)/govi: gui/govi
 	cp $< $@
