@@ -14,6 +14,17 @@ Both use the same editor engine. If you know vi, you already know govi.
 
 ---
 
+## Requirements
+
+- **Go 1.26 or newer** to build either frontend.
+- A **Unix-like system** (Linux, macOS, *BSD) for the terminal editor.
+- For the macOS GUI (**Govi.app**): **macOS** with the **Swift toolchain**
+  (`swiftc`) from Xcode or the Command Line Tools.
+
+Build from a checkout of the govi repository.
+
+---
+
 ## Quick start
 
 ### Terminal
@@ -94,6 +105,12 @@ These are the authoritative references; the summaries below match them.
 ---
 
 ## Vi command-mode keys
+
+> **New to govi?** The reference tables in this and the next two sections mirror
+> the built-in **`:viusage`** and **`:exusage`** help. To just start editing,
+> follow [Quick start](#quick-start) above, then skip ahead to
+> [Options](#options-set), [Startup files](#startup-files), and
+> [Govi.app](#goviapp-macos-gui) — and come back to these tables as a reference.
 
 ### Movement
 
@@ -199,7 +216,7 @@ These are the authoritative references; the summaries below match them.
 | **Esc** | End insert |
 | **`^H`** erase | Delete previous character |
 | **`^W`** | Delete previous word |
-| **`^U`** | (nvi: erase line — partial in govi) |
+| **`^U`** | Erase input line (nvi); not implemented in govi insert mode |
 | **`^V`** | Quote next character |
 | **`^D` `^T`** | Shift left / right (with autoindent) |
 | **`^X`** *hex* | Insert hexadecimal character |
@@ -226,6 +243,11 @@ Ex commands are entered on the **`:`** line or in **ex (Q)** mode. Many accept a
 | **`10`** | Line 10 |
 | **`10,20`** | Lines 10 through 20 |
 | **`.,$`** | Current line through end |
+
+On the colon line, press **Tab** (the **`filec`** character) to complete the file
+name before the cursor — for commands like **`:edit`**, **`:write`**, and
+**`:read`**. A unique match fills in (a directory gains a trailing **`/`**); an
+ambiguous prefix rings the bell so you can type more.
 
 ### Buffer and file
 
@@ -348,7 +370,8 @@ every option. Boolean options: **`:set option`** / **`:set nooption`**. Query:
 | **ruler** | | off | Line,column ruler on the status line (when no message) |
 | **showmode** | smd | off | Mode indicator on the status line (**Command**, **Insert**, …); **\*** when modified |
 | **tags** | | tags | ctags file path |
-| **shell** | sh | /bin/sh | Shell for **`!`** and **`:shell`** |
+| **shell** | sh | `$SHELL` | Shell for **`!`** and **`:shell`** (from `$SHELL`; **`/bin/sh`** if unset) |
+| **filec** | | tab | File-name completion trigger on the colon line; empty disables |
 | **readonly** | ro | off | Treat buffer as read-only |
 | **exrc** | | off | Read **`.exrc`** in the current directory at startup |
 | **recdir** | | /var/tmp/vi.recover | Recovery file directory |
@@ -520,7 +543,6 @@ feature. Notable gaps:
 
 - **No split screens** — no **`^W`**, **`:bg`**, **`:fg`**, **`:resize`**
 - **UTF-8** text only
-- **No file-name completion** on the colon line
 - **No cscope** integration
 - **Suspend** (**`^Z`**, **`:suspend`**) — Unix terminal only; not in Govi.app
 - Many legacy options are **settable but inert** (see parity doc)
