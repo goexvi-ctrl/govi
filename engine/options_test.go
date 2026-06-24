@@ -36,6 +36,26 @@ func TestSetNumeric(t *testing.T) {
 	}
 }
 
+func TestSetTabsPrefix(t *testing.T) {
+	e, _, _ := newTestEngine(t, "a\tb\n")
+	if err := e.exExecute("set tabs=4"); err != nil {
+		t.Fatal(err)
+	}
+	if e.scr.opts.Int("tabstop") != 4 {
+		t.Fatalf("tabstop = %d, want 4", e.scr.opts.Int("tabstop"))
+	}
+	if got := e.scr.displayWidth(1); got != 5 { // 'a' + 3 to next tab @ 4
+		t.Fatalf("display width with ts=4 = %d, want 5", got)
+	}
+}
+
+func TestSetAmbiguousPrefix(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	if err := e.exExecute("set ta=4"); err == nil {
+		t.Fatal("ta should be ambiguous (tabstop, taglength, tags, ...)")
+	}
+}
+
 func TestSetIgnorecaseAffectsSearch(t *testing.T) {
 	e, _, _ := newTestEngine(t, "hello WORLD\n")
 	e.exExecute("set ic")

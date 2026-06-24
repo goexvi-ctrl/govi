@@ -22,12 +22,13 @@ const (
 )
 
 type optDef struct {
-	name string
-	abbr string // short form, or ""
-	typ  optType
-	dB   bool
-	dN   int
-	dS   string
+	name   string
+	abbr   string // short form, or ""
+	typ    optType
+	dB     bool
+	dN     int
+	dS     string
+	noZero bool // numeric option may not be set to 0 (nvi OPT_NOZERO)
 }
 
 // optDefs is the option table. Defaults follow nvi's. A boolean shown without
@@ -85,13 +86,13 @@ var optDefs = []optDef{
 	{name: "sections", abbr: "sect", typ: optStr, dS: "NHSHH HUnhsh"},
 	{name: "shell", abbr: "sh", typ: optStr, dS: "/bin/sh"},
 	{name: "shellmeta", typ: optStr, dS: "~{[*?$`'\"\\"},
-	{name: "shiftwidth", abbr: "sw", typ: optNum, dN: 8},
+	{name: "shiftwidth", abbr: "sw", typ: optNum, dN: 8, noZero: true},
 	{name: "showmatch", abbr: "sm", typ: optBool},
 	{name: "showmode", abbr: "smd", typ: optBool},
 	{name: "sidescroll", typ: optNum, dN: 16},
 	{name: "slowopen", abbr: "slow", typ: optBool},
 	{name: "sourceany", typ: optBool},
-	{name: "tabstop", abbr: "ts", typ: optNum, dN: 8},
+	{name: "tabstop", abbr: "ts", typ: optNum, dN: 8, noZero: true},
 	{name: "taglength", abbr: "tl", typ: optNum},
 	{name: "tags", typ: optStr, dS: "tags"},
 	{name: "term", typ: optStr},
@@ -176,15 +177,37 @@ func (e *Engine) exSet(c *exCmd) error {
 	return nil
 }
 
+// resolveOpt finds an option by abbreviation, full name, or unique prefix
+// (nvi opts_search): e.g. "tabs" resolves to tabstop.
+func resolveOpt(name string) (*optDef, error) {
+	if d, ok := optByName[name]; ok {
+		return d, nil
+	}
+	var found *optDef
+	for i := range optDefs {
+		d := &optDefs[i]
+		if strings.HasPrefix(d.name, name) {
+			if found != nil {
+				return nil, fmt.Errorf("set: %s: ambiguous", name)
+			}
+			found = d
+		}
+	}
+	if found == nil {
+		return nil, fmt.Errorf("set: no %s option", name)
+	}
+	return found, nil
+}
+
 func (e *Engine) setOne(tok string) error {
 	o := &e.scr.opts
 
 	// name=value
 	if i := strings.IndexByte(tok, '='); i >= 0 {
 		name, val := tok[:i], tok[i+1:]
-		d, ok := optByName[name]
-		if !ok {
-			return fmt.Errorf("set: no %s option", name)
+		d, err := resolveOpt(name)
+		if err != nil {
+			return err
 		}
 		switch d.typ {
 		case optStr:
@@ -194,18 +217,22 @@ func (e *Engine) setOne(tok string) error {
 			if err != nil {
 				return fmt.Errorf("set: %s: illegal value %q", d.name, val)
 			}
+			if d.noZero && n == 0 {
+				return fmt.Errorf("set: %s: may not be zero", d.name)
+			}
 			o.i[d.name] = n
 		default:
 			return fmt.Errorf("set: %s is not a settable-value option", d.name)
 		}
+		e.afterOptSet(d)
 		return nil
 	}
 
 	// name? (query)
 	if strings.HasSuffix(tok, "?") {
-		d, ok := optByName[tok[:len(tok)-1]]
-		if !ok {
-			return fmt.Errorf("set: no %s option", tok[:len(tok)-1])
+		d, err := resolveOpt(tok[:len(tok)-1])
+		if err != nil {
+			return err
 		}
 		e.scr.msg, e.scr.msgKind = e.optDisplay(d), MsgInfo
 		return nil
@@ -221,13 +248,13 @@ func (e *Engine) setOne(tok string) error {
 	// noname  (clear a boolean)
 	val := true
 	name := tok
-	if _, known := optByName[tok]; !known && strings.HasPrefix(tok, "no") {
+	if _, err := resolveOpt(tok); err != nil && strings.HasPrefix(tok, "no") {
 		val = false
 		name = tok[2:]
 	}
-	d, ok := optByName[name]
-	if !ok {
-		return fmt.Errorf("set: no %s option", name)
+	d, err := resolveOpt(name)
+	if err != nil {
+		return err
 	}
 	if d.typ != optBool {
 		return fmt.Errorf("set: %s is not a boolean option", d.name)
@@ -237,7 +264,17 @@ func (e *Engine) setOne(tok string) error {
 	} else {
 		o.b[d.name] = val
 	}
+	e.afterOptSet(d)
 	return nil
+}
+
+// afterOptSet repaints when an option change affects display layout (nvi
+// f_reformat for tabstop).
+func (e *Engine) afterOptSet(d *optDef) {
+	switch d.name {
+	case "tabstop", "list", "number", "shiftwidth":
+		e.fe.Render(view{e.scr}, ChangeSet{Full: true})
+	}
 }
 
 // optDisplay formats one option as nvi does: "name"/"noname" for booleans,
