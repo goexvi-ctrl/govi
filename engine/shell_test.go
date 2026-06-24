@@ -74,14 +74,13 @@ func TestExShellNoRunner(t *testing.T) {
 
 type bangStubFrontend struct {
 	captureFrontend
-	out        string
-	onTerminal bool
-	called     bool
+	out    string
+	called bool
 }
 
-func (f *bangStubFrontend) RunBang(shell, cmd, cwd string, cols, rows int) (string, bool, error) {
+func (f *bangStubFrontend) RunBang(shell, cmd, cwd string, cols, rows int) (string, error) {
 	f.called = true
-	return f.out, f.onTerminal, nil
+	return f.out, nil
 }
 
 func TestExBangShowsAllLines(t *testing.T) {

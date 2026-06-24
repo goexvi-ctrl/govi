@@ -25,9 +25,12 @@ func (e *Engine) bangRows() int {
 	return 24
 }
 
-// presentBangOutput shows utility output from a :! command with no line range.
+// presentBangOutput shows utility output from a :! command with no line range
+// in the paged overlay (same mechanism as :viusage).
 func (e *Engine) presentBangOutput(out string) {
-	out = strings.TrimRight(out, "\r\n")
+	out = strings.ReplaceAll(out, "\r\n", "\n")
+	out = strings.ReplaceAll(out, "\r", "\n")
+	out = strings.TrimRight(out, "\n")
 	if out == "" {
 		e.scr.msg, e.scr.msgKind = "(command completed)", MsgInfo
 		return
@@ -36,27 +39,25 @@ func (e *Engine) presentBangOutput(out string) {
 	e.fe.Render(view{e.scr}, ChangeSet{Full: true})
 }
 
-// runBangNoRange executes :!cmd without a line range (nvi ex_exec_proc).
+// runBangNoRange executes :!cmd without a line range. Output is captured in a
+// pty and shown in the editor overlay; nvi runs on the terminal, but govi
+// keeps the transcript visible like :viusage.
 func (e *Engine) runBangNoRange(cmd string) error {
 	if e.scr.opts.Bool("secure") {
 		return fmt.Errorf("The ! command is not supported when the secure edit option is set")
 	}
 	cols, rows := e.bangCols(), e.bangRows()
 	e.ensureCwd()
+	var out string
+	var err error
 	if runner, ok := e.fe.(BangRunner); ok {
-		out, onTerminal, err := runner.RunBang(e.shellProg(), cmd, e.cwd, cols, rows)
-		if err != nil {
-			return fmt.Errorf("%s: %v", cmd, err)
-		}
-		if !onTerminal {
-			e.presentBangOutput(out)
-		}
-		return nil
+		out, err = runner.RunBang(e.shellProg(), cmd, e.cwd, cols, rows)
+	} else {
+		out, err = runBangPTY(e.shellProg(), cmd, e.cwd, cols, rows)
 	}
-	out, err := e.runShellCmd(cmd, "", cols, rows)
+	e.presentBangOutput(out)
 	if err != nil {
 		return fmt.Errorf("%s: %v", cmd, err)
 	}
-	e.presentBangOutput(out)
 	return nil
 }

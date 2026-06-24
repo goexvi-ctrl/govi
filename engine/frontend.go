@@ -146,12 +146,10 @@ type ShellRunner interface {
 	RunShell(shell string, inExMode bool) error
 }
 
-// BangRunner runs :!cmd when no line range is given (nvi ex_exec_proc). When
-// onTerminal is true the host displayed output on the user's terminal and the
-// engine should not overlay. Otherwise the returned output is shown in the
-// editor (ex transcript or vi overlay).
+// BangRunner runs :!cmd when no line range is given. Tests may stub this; hosts
+// normally let the engine capture output in a pty (bangpty_unix.go).
 type BangRunner interface {
-	RunBang(shell, cmd, cwd string, cols, rows int) (output string, onTerminal bool, err error)
+	RunBang(shell, cmd, cwd string, cols, rows int) (output string, err error)
 }
 
 // Suspender is implemented by terminal frontends that can job-control suspend
