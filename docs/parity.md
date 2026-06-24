@@ -141,7 +141,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | `tildeop` (to) | yes | ✅✔ | |
 | `tags` | yes | ✅✔ | |
 | `number` (nu) | yes | ✅ | gutter rendered |
-| `list` | yes | 🟡 | settable; display not yet |
+| `list` | yes | ✅ | tabs as ^I, controls as ^X, trailing $ |
 | `showmatch` (sm) | yes | ✅✔ | bracket flash on insert (matchtime) |
 | `columns`/`lines` | yes | ✅ | track terminal geometry |
 | `shell` | yes | ✅ | used by `!` filter |

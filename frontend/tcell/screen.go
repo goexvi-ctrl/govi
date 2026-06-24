@@ -391,10 +391,7 @@ func (f *Frontend) placeCursor(v engine.View, mapRows, statusRow, gutter, textW 
 // wrapRowsOf returns how many screen rows a display line occupies at the given
 // text width.
 func wrapRowsOf(dl engine.DisplayLine, textW int) int {
-	w := 0
-	for _, n := range dl.Widths {
-		w += int(n)
-	}
+	w := engine.DisplayLineWidth(dl)
 	if w <= 0 {
 		return 1
 	}

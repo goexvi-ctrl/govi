@@ -16,7 +16,7 @@ func TestRuneWidthWide(t *testing.T) {
 		{'\t', 8}, // tab at column 0
 	}
 	for _, tc := range cases {
-		if got := runeWidth(tc.r, 0, 8); got != tc.want {
+		if got := runeWidth(tc.r, 0, 8, false); got != tc.want {
 			t.Errorf("runeWidth(%q) = %d, want %d", tc.r, got, tc.want)
 		}
 	}
@@ -30,7 +30,7 @@ func TestDisplayWidthWide(t *testing.T) {
 }
 
 func TestDisplayCellsWide(t *testing.T) {
-	dl := makeDisplayLine([]rune("a日b"), 8)
+	dl := makeDisplayLine([]rune("a日b"), 8, false)
 	cells := DisplayCells(dl)
 	// a (1) + 日 (2: glyph + continuation) + b (1) = 4 cells.
 	if len(cells) != 4 {
@@ -42,7 +42,7 @@ func TestDisplayCellsWide(t *testing.T) {
 }
 
 func TestDisplayColumnWide(t *testing.T) {
-	dl := makeDisplayLine([]rune("a日本z"), 8)
+	dl := makeDisplayLine([]rune("a日本z"), 8, false)
 	// Column (rune index) -> display column.
 	checks := map[int]int{0: 0, 1: 1, 2: 3, 3: 5}
 	for col, want := range checks {

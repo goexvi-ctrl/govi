@@ -319,10 +319,14 @@ func (e *Engine) printRange(c *exCmd, number, list bool) error {
 	if err != nil {
 		return err
 	}
+	useList := list || e.scr.opts.Bool("list")
 	for ln := l1; ln <= l2; ln++ {
-		text := string(e.scr.lineRunes(ln))
-		if list {
-			text = strings.ReplaceAll(text, "\t", "^I") + "$"
+		runes := e.scr.lineRunes(ln)
+		var text string
+		if useList {
+			text = FormatListLine(runes)
+		} else {
+			text = string(runes)
 		}
 		if number {
 			text = fmt.Sprintf("%6d  %s", ln, text)

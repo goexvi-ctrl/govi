@@ -78,6 +78,7 @@ type DisplayLine struct {
 	Text   []rune
 	Widths []int8
 	Spans  []Span
+	List   bool // :set list; a trailing $ is shown after Text
 }
 
 // View is the read-only semantic document model the frontend renders. All
@@ -103,6 +104,8 @@ type View interface {
 	Modified() bool
 	// Number reports whether line numbers should be shown (:set number).
 	Number() bool
+	// List reports whether list mode is on (:set list).
+	List() bool
 	// ExTranscript returns the scrolling ex-mode output lines; non-nil only
 	// while Mode() == ModeExText.
 	ExTranscript() []string

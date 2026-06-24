@@ -381,10 +381,7 @@ func caretRuneIndex(dl engine.DisplayLine, dcol int) int {
 
 // wrapRowsOf returns how many screen rows a display line occupies at textW.
 func wrapRowsOf(dl engine.DisplayLine, textW int) int {
-	w := 0
-	for _, n := range dl.Widths {
-		w += int(n)
-	}
+	w := engine.DisplayLineWidth(dl)
 	if w <= 0 {
 		return 1
 	}

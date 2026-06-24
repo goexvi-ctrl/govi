@@ -9,9 +9,9 @@ import (
 )
 
 // Options are stored generically by name so the full nvi option set is easy to
-// carry. Only some options drive implemented behavior; the rest are recognized
-// and settable (and listed by :set all) but inert. This mirrors nvi's O_*
-// table (common/options.c, options_def.h).
+// carry. Only some options drive implemented behavior; the rest are recognized,
+// settable (and listed by :set all), and inert until wired up. This mirrors
+// nvi's O_* table (common/options.c, options_def.h).
 
 type optType int
 

@@ -185,11 +185,16 @@ func (s *screen) textCols() int {
 }
 
 // displayWidth returns the total display width (columns) of line lno, with tabs
-// and control characters expanded per the tabstop.
+// and control characters expanded per the tabstop and list option.
 func (s *screen) displayWidth(lno int64) int {
+	list := s.opts.Bool("list")
 	col := 0
+	tab := s.opts.Int("tabstop")
 	for _, r := range s.lineRunes(lno) {
-		col += runeWidth(r, col, s.opts.Int("tabstop"))
+		col += runeWidth(r, col, tab, list)
+	}
+	if list {
+		col++
 	}
 	return col
 }
@@ -198,9 +203,11 @@ func (s *screen) displayWidth(lno int64) int {
 // lno.
 func (s *screen) displayColOf(lno int64, col int) int {
 	runes := s.lineRunes(lno)
+	list := s.opts.Bool("list")
+	tab := s.opts.Int("tabstop")
 	c := 0
 	for i := 0; i < col && i < len(runes); i++ {
-		c += runeWidth(runes[i], c, s.opts.Int("tabstop"))
+		c += runeWidth(runes[i], c, tab, list)
 	}
 	return c
 }
@@ -209,9 +216,11 @@ func (s *screen) displayColOf(lno int64, col int) int {
 // dcol on line lno (clamped to the last rune when dcol is past the line end).
 func (s *screen) colAtDisplay(lno int64, dcol int) int {
 	runes := s.lineRunes(lno)
+	list := s.opts.Bool("list")
+	tab := s.opts.Int("tabstop")
 	c := 0
 	for i, r := range runes {
-		w := runeWidth(r, c, s.opts.Int("tabstop"))
+		w := runeWidth(r, c, tab, list)
 		if c+w > dcol {
 			return i
 		}

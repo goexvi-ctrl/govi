@@ -37,6 +37,7 @@ func (f *fakeView) Message() (string, engine.MessageKind) {
 func (f *fakeView) Name() string            { return "" }
 func (f *fakeView) Modified() bool          { return false }
 func (f *fakeView) Number() bool            { return f.number }
+func (f *fakeView) List() bool              { return false }
 func (f *fakeView) ExTranscript() []string  { return f.transcript }
 func (f *fakeView) PendingOutput() []string       { return nil }
 func (f *fakeView) PendingOutputPrompt() string { return "" }

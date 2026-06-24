@@ -28,13 +28,17 @@ func GutterWidth(lineCount int64, number bool) int {
 
 // runeWidth returns the number of display columns rune r occupies when it
 // begins at display column col, given the tabstop. Tabs advance to the next
-// tabstop; control characters render as a two-cell ^X form; East Asian wide and
+// tabstop unless list mode is on, in which case they occupy two columns (^I).
+// Control characters render as a two-cell ^X form; East Asian wide and
 // fullwidth runes (e.g. 日) occupy two columns; other runes occupy one. This is
 // the editor's wcwidth equivalent and is independent of the rune's UTF-8 byte
 // length (the buffer already holds decoded runes).
-func runeWidth(r rune, col, tabstop int) int {
+func runeWidth(r rune, col, tabstop int, list bool) int {
 	switch {
 	case r == '\t':
+		if list {
+			return 2
+		}
 		return tabstop - col%tabstop
 	case r < 0x20:
 		return 2 // ^A .. ^Z etc.
@@ -49,17 +53,30 @@ func runeWidth(r rune, col, tabstop int) int {
 }
 
 // makeDisplayLine builds a DisplayLine from logical buffer runes, computing the
-// per-rune display width using the given tabstop. Text aliases the caller's
-// slice and must be treated as read-only by the frontend.
-func makeDisplayLine(runes []rune, tabstop int) DisplayLine {
+// per-rune display width using the given tabstop and list option. Text aliases
+// the caller's slice and must be treated as read-only by the frontend.
+func makeDisplayLine(runes []rune, tabstop int, list bool) DisplayLine {
 	widths := make([]int8, len(runes))
 	col := 0
 	for i, r := range runes {
-		w := runeWidth(r, col, tabstop)
+		w := runeWidth(r, col, tabstop, list)
 		widths[i] = int8(w)
 		col += w
 	}
-	return DisplayLine{Text: runes, Widths: widths}
+	return DisplayLine{Text: runes, Widths: widths, List: list}
+}
+
+// DisplayLineWidth returns the total display width of dl, including the trailing
+// $ when list mode is on.
+func DisplayLineWidth(dl DisplayLine) int {
+	w := 0
+	for _, n := range dl.Widths {
+		w += int(n)
+	}
+	if dl.List {
+		w++
+	}
+	return w
 }
 
 // Cell is one display cell produced from a DisplayLine: the glyph to paint and
@@ -71,19 +88,25 @@ type Cell struct {
 
 // DisplayCells expands a DisplayLine into the flat sequence of cells a frontend
 // paints left to right, applying tab expansion and control-character
-// representation. It is the single shared renderer used by all frontends.
+// representation. List mode shows tabs as ^I and appends a trailing $.
 func DisplayCells(dl DisplayLine) []Cell {
-	cells := make([]Cell, 0, len(dl.Text))
+	cells := make([]Cell, 0, len(dl.Text)+1)
 	col := 0
 	for i, r := range dl.Text {
 		st := styleAt(dl.Spans, i)
 		switch {
 		case r == '\t':
-			w := int(dl.Widths[i])
-			for k := 0; k < w; k++ {
-				cells = append(cells, Cell{Rune: ' ', Style: st})
+			if dl.List {
+				cells = append(cells, Cell{Rune: '^', Style: st})
+				cells = append(cells, Cell{Rune: 'I', Style: st})
+				col += 2
+			} else {
+				w := int(dl.Widths[i])
+				for k := 0; k < w; k++ {
+					cells = append(cells, Cell{Rune: ' ', Style: st})
+				}
+				col += w
 			}
-			col += w
 		case r < 0x20:
 			cells = append(cells, Cell{Rune: '^', Style: st})
 			cells = append(cells, Cell{Rune: r + 0x40, Style: st})
@@ -107,12 +130,40 @@ func DisplayCells(dl DisplayLine) []Cell {
 			col += w
 		}
 	}
+	if dl.List {
+		cells = append(cells, Cell{Rune: '$', Style: StyleNormal})
+	}
 	return cells
+}
+
+// FormatListLine formats buffer runes for ex :list output (and :print/:number
+// when the list option is set): tabs and control characters in ^X form, plus a
+// trailing $.
+func FormatListLine(runes []rune) string {
+	if len(runes) == 0 {
+		return "$"
+	}
+	out := make([]rune, 0, len(runes)*2+1)
+	for _, r := range runes {
+		switch {
+		case r == '\t':
+			out = append(out, '^', 'I')
+		case r < 0x20:
+			out = append(out, '^', r+0x40)
+		case r == 0x7f:
+			out = append(out, '^', '?')
+		default:
+			out = append(out, r)
+		}
+	}
+	out = append(out, '$')
+	return string(out)
 }
 
 // DisplayColumn returns the display column (0-based) at which logical rune
 // index col begins, accounting for tab/control expansion. A col at or past the
-// end of the line returns the column just past the last cell.
+// end of the line returns the column just past the last cell (not including the
+// list-mode trailing $).
 func DisplayColumn(dl DisplayLine, col int) int {
 	if col < 0 {
 		return 0
