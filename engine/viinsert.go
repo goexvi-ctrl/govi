@@ -145,6 +145,11 @@ func (m *vimode) insertNewline(e *Engine) {
 	s.cursor = Pos{Line: s.cursor.Line + 1, Col: len(indent)}
 }
 
+// insertBackspace implements ^H / Backspace in insert mode: erase the
+// character before the cursor, or at column 0 join the current line onto the
+// previous one. At the very start of the buffer (line 1, col 0) there is
+// nothing to erase and no line to join, so this is a deliberate no-op; govi
+// does not ring the bell there as traditional vi does.
 func (m *vimode) insertBackspace(e *Engine) {
 	s := e.scr
 	if s.cursor.Col > 0 {
@@ -228,6 +233,11 @@ func isHexDigit(r rune) bool {
 }
 
 // finishHex inserts the character whose hex code was collected after ^X.
+// hexBuf only ever holds digits accumulated by insertKey, so the value is
+// well-defined here. An over-long entry (more digits than a code point needs)
+// can exceed unicode.MaxRune; rune(v) then yields an invalid rune that renders
+// as U+FFFD rather than crashing, which is acceptable for this literal-entry
+// path, so no range clamp is applied.
 func (m *vimode) finishHex(e *Engine) {
 	m.hexMode = false
 	if len(m.hexBuf) == 0 {
