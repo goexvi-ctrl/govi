@@ -322,6 +322,7 @@ final class WaitCoordinator {
         defer { lock.unlock() }
         if fifoPath == nil, let fifo = LaunchPath.readLaunchWaitFifo() {
             fifoPath = fifo
+            signaled = false // new wait session: re-arm (signaled is a per-session one-shot)
             LaunchPath.clearLaunchWait()
         }
         guard fifoPath != nil else { return }
