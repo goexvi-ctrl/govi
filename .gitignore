@@ -27,6 +27,5 @@
 .aider*
 
 # Ignore docs we don't plan to check in
-docs/parity-new.md
 docs/qwen-review
 
