@@ -67,6 +67,8 @@ func init() {
 		{full: "Next", min: 1, fn: (*Engine).exPrev},
 		{full: "rewind", min: 3, fn: (*Engine).exRewind},
 		{full: "args", min: 2, fn: (*Engine).exArgs},
+		{full: "cd", min: 2, fn: (*Engine).exCd},
+		{full: "chdir", min: 2, fn: (*Engine).exCd},
 		{full: "file", min: 1, fn: (*Engine).exFile},
 		{full: "tag", min: 2, fn: (*Engine).exTag},
 		{full: "preserve", min: 3, fn: (*Engine).exPreserve},

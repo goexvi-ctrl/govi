@@ -106,7 +106,7 @@ func (e *Engine) tagPop() error {
 // command.
 func (e *Engine) lookupTag(name string) (file, excmd string, err error) {
 	for _, tagsPath := range strings.Fields(e.scr.opts.Str("tags")) {
-		f, ferr := os.Open(tagsPath)
+		f, ferr := os.Open(e.resolvePath(tagsPath))
 		if ferr != nil {
 			continue
 		}

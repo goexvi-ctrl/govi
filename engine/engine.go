@@ -50,6 +50,7 @@ type Engine struct {
 
 	startup   bool // true while reading EXINIT / exrc startup information
 	launchCtx LaunchContext
+	cwd       string // per-instance working directory (:cd, relative :read/:write)
 }
 
 // New returns an Engine that renders through fe. Call Open and Resize before
@@ -102,6 +103,7 @@ func (e *Engine) replaceBuffer(store buffer.LineStore, name string) {
 // unsaved buffer named path (vi's "new file"). Large files are paged from disk
 // rather than read whole.
 func (e *Engine) Open(path string) error {
+	path = e.resolvePath(path)
 	// Remember the file we are leaving as the alternate file.
 	if e.scr != nil && e.scr.name != "" && e.scr.name != path {
 		e.altFile = e.scr.name

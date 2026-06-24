@@ -82,6 +82,9 @@ func GoviStart(path, foreground, background *C.char) C.longlong {
 	_ = in.eng.SetStrOption("background", cString(background))
 	if ctx, err := engine.ReadLaunchContext(); err == nil {
 		in.eng.SetLaunchContext(ctx)
+		if ctx.Cwd != "" {
+			in.eng.SetCwd(ctx.Cwd)
+		}
 	}
 	if err := in.eng.LoadStartup(); err != nil {
 		return 0
@@ -89,6 +92,7 @@ func GoviStart(path, foreground, background *C.char) C.longlong {
 	if in.eng.ShouldQuit() {
 		return 0
 	}
+	in.eng.InitCwd()
 	if p := C.GoString(path); p != "" {
 		if err := in.eng.Open(p); err != nil {
 			return 0
@@ -97,6 +101,17 @@ func GoviStart(path, foreground, background *C.char) C.longlong {
 	nextHandle++
 	insts[nextHandle] = in
 	return C.longlong(nextHandle)
+}
+
+// GoviCwd returns this editor's working directory (malloc'd; caller frees).
+//
+//export GoviCwd
+func GoviCwd(h C.longlong) *C.char {
+	if in := get(h); in != nil {
+		in.eng.InitCwd()
+		return C.CString(in.eng.Cwd())
+	}
+	return C.CString("")
 }
 
 // GoviForegroundSpec returns this tab's foreground color spec (malloc'd;

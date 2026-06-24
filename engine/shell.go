@@ -24,6 +24,10 @@ func (e *Engine) shellProg() string {
 func (e *Engine) runShellCmd(cmd, input string) (string, error) {
 	shell := e.shellProg()
 	c := exec.Command(shell, "-c", cmd)
+	e.ensureCwd()
+	if e.cwd != "" {
+		c.Dir = e.cwd
+	}
 	if input != "" {
 		c.Stdin = strings.NewReader(input)
 	}

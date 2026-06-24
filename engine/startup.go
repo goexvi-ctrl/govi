@@ -34,7 +34,7 @@ func (e *Engine) exSource(c *exCmd) error {
 	if path == "" {
 		return fmt.Errorf("Usage: source file")
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(e.resolvePath(path))
 	if err != nil {
 		return err
 	}

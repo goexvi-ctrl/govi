@@ -152,6 +152,11 @@ func defaultOptions() options {
 	if term := os.Getenv("TERM"); term != "" {
 		o.s["term"] = term
 	}
+	if cdpath := os.Getenv("CDPATH"); cdpath != "" {
+		o.s["cdpath"] = cdpath
+	} else {
+		o.s["cdpath"] = ":"
+	}
 	return o
 }
 

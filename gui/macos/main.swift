@@ -145,6 +145,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
+        view.syncWorkingDirectory()
         view.updateTitle()
     }
 

@@ -268,7 +268,11 @@ func (e *Engine) exLineNumber(c *exCmd) error {
 }
 
 func (e *Engine) exWrite(c *exCmd) error {
-	return e.Save(strings.TrimSpace(c.arg))
+	arg := strings.TrimSpace(c.arg)
+	if arg != "" {
+		arg = e.resolvePath(arg)
+	}
+	return e.Save(arg)
 }
 
 // Save writes the buffer to path (or the current file when path is empty).
@@ -280,6 +284,7 @@ func (e *Engine) Save(path string) error {
 	if path == "" {
 		return fmt.Errorf("No current filename")
 	}
+	path = e.resolvePath(path)
 	n, b, err := e.writeFile(path)
 	if err != nil {
 		return err
@@ -339,7 +344,7 @@ func (e *Engine) exRead(c *exCmd) error {
 	if path == "" {
 		return fmt.Errorf("Filename required")
 	}
-	data, err := readFileLines(path)
+	data, err := readFileLines(e.resolvePath(path))
 	if err != nil {
 		return err
 	}

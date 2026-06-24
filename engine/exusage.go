@@ -23,6 +23,8 @@ var exCmdMeta = map[string]exCmdUsage{
 	"abbreviate":   {"define an input abbreviation", ":ab[breviate] lhs rhs"},
 	"append":       {"append text after line", ":[line] append"},
 	"args":         {"display the argument list", ":ar[gs]"},
+	"cd":           {"change working directory", ":cd[!] [directory]"},
+	"chdir":        {"change working directory", ":chd[ir][!] [directory]"},
 	"change":       {"change lines", ":[range] change"},
 	"copy":         {"copy lines", ":[range] copy [buffer] address"},
 	"delete":       {"delete lines", ":[range] delete [buffer]"},

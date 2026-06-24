@@ -211,6 +211,9 @@ final class GoviView: NSView, NSTextInputClient {
     // step is run after every input: it handles quit, bell, title, recomposes
     // the grid, repaints, and arms any pending timer (map/showmatch/recovery).
     func step() {
+        if window?.isKeyWindow == true {
+            syncWorkingDirectory()
+        }
         if GoviShouldQuit(handle) != 0 {
             // windowShouldClose prompts when there are unsaved changes.
             window?.close()
@@ -229,6 +232,17 @@ final class GoviView: NSView, NSTextInputClient {
         GoviCompose(handle, Int32(rows), Int32(cols))
         syncColorsFromEngine()
         updateSpelling()
+    }
+
+    // syncWorkingDirectory sets the process cwd to this tab's directory so
+    // :r/:w relative paths and shell commands match the focused editor.
+    func syncWorkingDirectory() {
+        guard let c = GoviCwd(handle) else { return }
+        let dir = String(cString: c)
+        GoviFree(c)
+        if !dir.isEmpty {
+            FileManager.default.changeCurrentDirectoryPath(dir)
+        }
     }
 
     func updateTitle() {
