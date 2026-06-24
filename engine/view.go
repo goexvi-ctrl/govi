@@ -16,7 +16,7 @@ func (v view) Cursor() Pos { return v.s.cursor }
 func (v view) Mode() Mode { return v.s.mode }
 
 func (v view) Viewport() Viewport {
-	return Viewport{Top: v.s.top, Rows: v.s.rows, Cols: v.s.cols}
+	return Viewport{Top: v.s.top, Rows: v.s.rows, MapRows: v.s.mapRows, Cols: v.s.cols}
 }
 
 func (v view) Message() (string, MessageKind) {

@@ -176,6 +176,8 @@ func (e *Engine) MatchTime() int { return e.scr.opts.Int("matchtime") }
 // Resize sets the viewport geometry (text rows and columns) and repaints fully.
 func (e *Engine) Resize(rows, cols int) {
 	e.scr.rows = rows
+	e.scr.mapRows = rows
+	e.scr.minMapRows = rows
 	e.scr.cols = cols
 	// Keep the columns/lines options in step with the terminal geometry.
 	e.scr.opts.i["columns"] = cols

@@ -223,22 +223,27 @@ func (f *Frontend) Render(v engine.View, _ engine.ChangeSet) {
 	}
 
 	rows := textRows(h)
-	top := v.Viewport().Top
+	vp := v.Viewport()
+	top := vp.Top
+	mapRows := vp.MapRows
+	if mapRows <= 0 || mapRows > rows {
+		mapRows = rows
+	}
 	gutter := gutterWidth(v)
 	textW := w - gutter
 	if textW < 1 {
 		textW = 1
 	}
 
-	// Draw logical lines from `top`, wrapping each onto continuation rows until
-	// the screen is full.
+	// Draw logical lines from `top` into the active map (nvi t_rows); rows below
+	// the map stay blank until j expands the map.
 	row := 0
 	lno := top
-	for row < rows && lno <= v.LineCount() {
+	for row < mapRows && lno <= v.LineCount() {
 		cells := engine.DisplayCells(v.Line(lno))
 		first := true
 		// Emit at least one row even for an empty line.
-		for i := 0; (i < len(cells) || first) && row < rows; i += textW {
+		for i := 0; (i < len(cells) || first) && row < mapRows; i += textW {
 			if gutter > 0 && first {
 				f.drawGutter(lno, row, gutter)
 			}
@@ -257,13 +262,19 @@ func (f *Frontend) Render(v engine.View, _ engine.ChangeSet) {
 		}
 		lno++
 	}
-	// Tildes for rows past the end of the buffer.
-	for ; row < rows; row++ {
+	// Tildes for map rows past the end of the buffer.
+	for ; row < mapRows; row++ {
 		f.scr.SetContent(0, row, '~', nil, tc.StyleDefault)
+	}
+	// Blank filler below a reduced z[count] map.
+	for ; row < rows; row++ {
+		for x := 0; x < w; x++ {
+			f.scr.SetContent(x, row, ' ', nil, tc.StyleDefault)
+		}
 	}
 
 	f.drawStatus(v, w, rows)
-	f.placeCursor(v, rows, gutter, textW)
+	f.placeCursor(v, mapRows, rows, gutter, textW)
 	f.scr.Show()
 }
 
@@ -349,10 +360,10 @@ func (f *Frontend) drawStatus(v engine.View, w, row int) {
 	}
 }
 
-func (f *Frontend) placeCursor(v engine.View, rows, gutter, textW int) {
+func (f *Frontend) placeCursor(v engine.View, mapRows, statusRow, gutter, textW int) {
 	if v.Mode() == engine.ModeExColon {
 		msg, _ := v.Message()
-		f.scr.ShowCursor(len([]rune(msg)), rows) // end of the colon line
+		f.scr.ShowCursor(len([]rune(msg)), statusRow) // end of the colon line
 		return
 	}
 	cur := v.Cursor()
@@ -371,7 +382,7 @@ func (f *Frontend) placeCursor(v engine.View, rows, gutter, textW int) {
 	y += dx / textW
 	x := gutter + dx%textW
 
-	if y < 0 || y >= rows {
+	if y < 0 || y >= mapRows {
 		f.scr.HideCursor()
 		return
 	}

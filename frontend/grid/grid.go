@@ -150,7 +150,12 @@ func (g *Grid) composeExMode(v engine.View) {
 // line, and positions the cursor. sel, if non-nil, is drawn highlighted.
 func (g *Grid) composeEditor(v engine.View, sel *Selection) {
 	rows := textRows(g.Rows)
-	top := v.Viewport().Top
+	vp := v.Viewport()
+	top := vp.Top
+	mapRows := vp.MapRows
+	if mapRows <= 0 || mapRows > rows {
+		mapRows = rows
+	}
 	gutter := engine.GutterWidth(v.LineCount(), v.Number())
 	textW := g.Cols - gutter
 	if textW < 1 {
@@ -159,12 +164,12 @@ func (g *Grid) composeEditor(v engine.View, sel *Selection) {
 
 	row := 0
 	lno := top
-	for row < rows && lno <= v.LineCount() {
+	for row < mapRows && lno <= v.LineCount() {
 		dl := v.Line(lno)
 		cells := engine.DisplayCells(dl)
 		ds, de := selSpan(dl, lno, sel) // selected display-column interval
 		first := true
-		for i := 0; (i < len(cells) || first) && row < rows; i += textW {
+		for i := 0; (i < len(cells) || first) && row < mapRows; i += textW {
 			if gutter > 0 && first {
 				g.drawGutter(lno, row, gutter)
 			}
@@ -189,15 +194,21 @@ func (g *Grid) composeEditor(v engine.View, sel *Selection) {
 		}
 		lno++
 	}
-	// Tilde filler for rows past the end of the buffer.
-	for ; row < rows; row++ {
+	// Tilde filler for map rows past the end of the buffer.
+	for ; row < mapRows; row++ {
 		g.set(0, row, '~', engine.StyleNormal)
+	}
+	// Blank filler below a reduced z[count] map.
+	for ; row < rows; row++ {
+		for x := 0; x < g.Cols; x++ {
+			g.set(x, row, ' ', engine.StyleNormal)
+		}
 	}
 
 	msg, _ := v.Message()
 	g.drawText(msg, rows)
 
-	g.placeCursor(v, rows, gutter, textW)
+	g.placeCursor(v, mapRows, rows, gutter, textW)
 }
 
 func (g *Grid) drawGutter(lno int64, row, gutter int) {
@@ -214,11 +225,11 @@ func (g *Grid) drawGutter(lno int64, row, gutter int) {
 	g.set(x, row, ' ', engine.StyleNormal)
 }
 
-func (g *Grid) placeCursor(v engine.View, rows, gutter, textW int) {
+func (g *Grid) placeCursor(v engine.View, mapRows, statusRow, gutter, textW int) {
 	if v.Mode() == engine.ModeExColon {
 		msg, _ := v.Message()
 		g.CursorX = len([]rune(msg))
-		g.CursorY = rows
+		g.CursorY = statusRow
 		g.CursorVisible = true
 		return
 	}
@@ -236,7 +247,7 @@ func (g *Grid) placeCursor(v engine.View, rows, gutter, textW int) {
 	y += dx / textW
 	x := gutter + dx%textW
 
-	if y < 0 || y >= rows {
+	if y < 0 || y >= mapRows {
 		g.CursorVisible = false
 		return
 	}

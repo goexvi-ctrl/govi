@@ -114,26 +114,45 @@ func TestZScreenPositionLineAndWindow(t *testing.T) {
 		t.Fatalf("8z<CR>: top=%d cursor=%d, want 8/8", e.scr.top, e.scr.cursor.Line)
 	}
 
-	// 8z3.: line 8 centered in a 3-row window (vs_crel).
+	// 8z3.: line 8 at top in a 3-row map (vs_crel); type is ignored.
 	drive(e, "8z3.")
-	if e.scr.rows != 3 {
-		t.Fatalf("8z3.: rows = %d, want 3", e.scr.rows)
+	if e.scr.rows != 10 {
+		t.Fatalf("8z3.: full rows = %d, want 10", e.scr.rows)
 	}
-	if e.scr.cursor.Line != 8 {
-		t.Fatalf("8z3.: cursor line = %d, want 8", e.scr.cursor.Line)
+	if e.scr.mapRows != 3 {
+		t.Fatalf("8z3.: mapRows = %d, want 3", e.scr.mapRows)
 	}
-	if row := e.scr.screenRowOf(8, e.scr.top); row != 1 {
-		t.Fatalf("8z3.: line 8 at screen row %d, want 1 (middle of 3)", row)
+	if e.scr.top != 8 || e.scr.cursor.Line != 8 {
+		t.Fatalf("8z3.: top=%d cursor=%d, want 8/8", e.scr.top, e.scr.cursor.Line)
+	}
+	if row := e.scr.screenRowOf(8, e.scr.top); row != 0 {
+		t.Fatalf("8z3.: line 8 at screen row %d, want 0 (top)", row)
 	}
 
-	// z3.: current line, 3-row window.
+	// z3-, z3<enter> match z3.
 	drive(e, "5G")
-	drive(e, "z3.")
-	if e.scr.rows != 3 {
-		t.Fatalf("z3.: rows = %d, want 3", e.scr.rows)
+	drive(e, "z3-")
+	if e.scr.mapRows != 3 || e.scr.top != 5 {
+		t.Fatalf("z3-: mapRows=%d top=%d, want 3/5", e.scr.mapRows, e.scr.top)
 	}
-	if e.scr.cursor.Line != 5 {
-		t.Fatalf("z3.: cursor line = %d, want 5", e.scr.cursor.Line)
+	drive(e, "6G")
+	drive(e, "z3\r")
+	if e.scr.mapRows != 3 || e.scr.top != 6 {
+		t.Fatalf("z3<CR>: mapRows=%d top=%d, want 3/6", e.scr.mapRows, e.scr.top)
+	}
+
+	// j expands the map when the cursor passes the reduced window (nvi IS_SMALL).
+	drive(e, "1G")
+	drive(e, "z3.")
+	if e.scr.mapRows != 3 {
+		t.Fatalf("z3.: mapRows = %d, want 3", e.scr.mapRows)
+	}
+	drive(e, "jjj") // line 4 is below the 3-row map
+	if e.scr.mapRows != 4 {
+		t.Fatalf("after jjj: mapRows = %d, want 4", e.scr.mapRows)
+	}
+	if e.scr.cursor.Line != 4 {
+		t.Fatalf("after jjj: cursor line = %d, want 4", e.scr.cursor.Line)
 	}
 }
 

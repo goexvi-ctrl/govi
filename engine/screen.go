@@ -22,7 +22,9 @@ type screen struct {
 
 	cursor Pos   // 1-based line, 0-based rune column
 	top    int64 // first buffer line shown (1-based)
-	rows   int   // text rows available for the buffer
+	rows   int   // full text rows (nvi t_maxrows)
+	mapRows int  // active scroll-map height (nvi t_rows)
+	minMapRows int // minimum map height after z[count] (nvi t_minrows)
 	cols   int   // columns available
 
 	mode    Mode
@@ -249,10 +251,18 @@ func wrapRows(dw, w int) int {
 	return (dw + w - 1) / w
 }
 
+// effectiveMapRows returns the active map height, defaulting to the full screen.
+func (s *screen) effectiveMapRows() int {
+	if s.mapRows <= 0 || s.mapRows > s.rows {
+		return s.rows
+	}
+	return s.mapRows
+}
+
 // scrollToCursor adjusts top so the cursor's line is fully visible, accounting
-// for line wrapping (a long line occupies several screen rows). It does O(rows)
-// work regardless of how far the cursor jumped, so commands like G on a huge
-// file are fast.
+// for line wrapping (a long line occupies several screen rows). In a reduced
+// z[count] map (nvi IS_SMALL), the map grows line-by-line as the cursor moves
+// down instead of scrolling top while the rest of the screen stays blank.
 func (s *screen) scrollToCursor() {
 	if s.rows <= 0 {
 		return
@@ -265,24 +275,39 @@ func (s *screen) scrollToCursor() {
 		s.top = s.cursor.Line
 		return
 	}
-	// Otherwise compute the highest top that still shows the cursor line at the
-	// bottom of the screen by packing screen rows backward from the cursor. If
-	// that top is below the current one, the cursor was off the bottom, so
-	// scroll down to it; if not, the cursor is already visible and top is kept.
+
+	// Small map: expand toward full height until the cursor fits (vs_refresh.c).
+	if s.minMapRows < s.rows {
+		for {
+			if s.screenRowOf(s.cursor.Line, s.top) < s.effectiveMapRows() {
+				return
+			}
+			if s.mapRows < s.rows {
+				s.mapRows++
+				continue
+			}
+			break
+		}
+	}
+
+	// Full map: scroll top so the cursor line fits at the bottom.
 	if newTop := s.topForBottom(s.cursor.Line); newTop > s.top {
 		s.top = newTop
 	}
 }
 
 // topForBottom returns the topmost line such that lines [top, bottom] fit within
-// the available screen rows when wrapped (bottom shown at the screen's last
-// row). It reads at most ~rows lines.
+// the active map when wrapped (bottom shown at the map's last row).
 func (s *screen) topForBottom(bottom int64) int64 {
+	return s.topForBottomRows(bottom, s.effectiveMapRows())
+}
+
+func (s *screen) topForBottomRows(bottom int64, mapH int) int64 {
 	used := 0
 	top := bottom
 	for ln := bottom; ln >= 1; ln-- {
 		r := s.screenLines(ln)
-		if used+r > s.rows {
+		if used+r > mapH {
 			break
 		}
 		used += r
@@ -292,12 +317,16 @@ func (s *screen) topForBottom(bottom int64) int64 {
 }
 
 // topForMiddle returns the topmost line such that line target's first screen row
-// sits near the middle of the viewport when wrapped (nvi P_MIDDLE / vs_sm_fill).
+// sits near the middle of the map when wrapped (nvi P_MIDDLE / vs_sm_fill).
 func (s *screen) topForMiddle(target int64) int64 {
-	if s.rows <= 0 {
+	return s.topForMiddleRows(target, s.effectiveMapRows())
+}
+
+func (s *screen) topForMiddleRows(target int64, mapH int) int64 {
+	if mapH <= 0 {
 		return 1
 	}
-	mid := s.rows / 2
+	mid := mapH / 2
 	used := 0
 	top := target
 	for ln := target - 1; ln >= 1; ln-- {

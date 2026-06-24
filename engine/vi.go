@@ -469,7 +469,8 @@ func (e *Engine) execBuffer(name rune) {
 }
 
 // screenPosition implements [line]z[window]<type> (nvi v_z.c / vs_sm_fill).
-// haveLine selects count1; haveWin with win>0 shrinks the viewport (vs_crel).
+// haveLine selects count1; haveWin with win>0 sets a small scroll map (vs_crel)
+// and always places the line at the top — z3., z3-, and z3<enter> are equivalent.
 func (e *Engine) screenPosition(typ rune, line int64, haveLine bool, win int, haveWin bool) {
 	s := e.scr
 	target := s.cursor.Line
@@ -492,8 +493,16 @@ func (e *Engine) screenPosition(typ rune, line int64, haveLine bool, win int, ha
 		if win > max {
 			win = max
 		}
-		s.rows = win
+		s.minMapRows = win
+		s.mapRows = win
+		s.top = target
+		if s.top < 1 {
+			s.top = 1
+		}
+		return
 	}
+	s.mapRows = s.rows
+	s.minMapRows = s.rows
 	switch typ {
 	case '\r', '\n', '+':
 		s.top = target

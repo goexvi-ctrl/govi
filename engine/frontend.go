@@ -37,9 +37,10 @@ type Pos struct {
 // are part of editor semantics; a GUI may scroll smoothly but must keep Top as
 // the logical first visible line for those commands to behave correctly.
 type Viewport struct {
-	Top  int64 // first buffer line the engine wants visible (1-based)
-	Rows int   // text rows available, as last set via Engine.Resize
-	Cols int   // columns available, as last set via Engine.Resize
+	Top     int64 // first buffer line the engine wants visible (1-based)
+	Rows    int   // full text rows available, as last set via Engine.Resize
+	MapRows int   // active map height (nvi t_rows); 0 means use Rows
+	Cols    int   // columns available, as last set via Engine.Resize
 }
 
 // MessageKind classifies the status/message line content, mirroring nvi's

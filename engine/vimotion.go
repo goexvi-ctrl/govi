@@ -114,14 +114,14 @@ func (e *Engine) computeMotion(key rune, count int, explicit bool, charArg rune)
 		line := s.top + int64(count) - 1
 		return motion{to: Pos{Line: line, Col: s.firstNonBlank(clampLine(s, line))}, linewise: true}, true
 	case 'L':
-		bottom := s.top + int64(s.rows) - 1
+		bottom := s.top + int64(s.effectiveMapRows()) - 1
 		if bottom > s.lineCount() {
 			bottom = s.lineCount()
 		}
 		line := bottom - int64(count) + 1
 		return motion{to: Pos{Line: line, Col: s.firstNonBlank(clampLine(s, line))}, linewise: true}, true
 	case 'M':
-		bottom := s.top + int64(s.rows) - 1
+		bottom := s.top + int64(s.effectiveMapRows()) - 1
 		if bottom > s.lineCount() {
 			bottom = s.lineCount()
 		}
