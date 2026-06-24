@@ -39,7 +39,7 @@ func (v view) Message() (string, MessageKind) {
 
 func (v view) Name() string { return v.s.name }
 
-func (v view) Modified() bool { return v.s.modified }
+func (v view) Modified() bool { return v.s.dirty() }
 
 func (v view) Number() bool { return v.s.opts.Bool("number") }
 

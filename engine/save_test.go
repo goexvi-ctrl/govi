@@ -6,6 +6,22 @@ import (
 	"testing"
 )
 
+func TestModifiedDuringInsert(t *testing.T) {
+	e, _, _ := newTestEngine(t, "hello\n")
+	drive(e, "ix") // insert mode, type 'x' (still in insert)
+	v := view{e.scr}
+	if !v.Modified() {
+		t.Fatal("buffer should be modified while insert mode has edits")
+	}
+	if err := e.exExecute("quit"); err == nil {
+		t.Fatal(":quit should refuse while insert has unsaved edits")
+	}
+	drive(e, "\x1b") // leave insert; modified flag is set explicitly too
+	if !v.Modified() {
+		t.Fatal("buffer should stay modified after leaving insert")
+	}
+}
+
 func TestSaveUntitledAdoptsName(t *testing.T) {
 	e, _, _ := newTestEngine(t, "hello\n")
 	e.scr.name = ""

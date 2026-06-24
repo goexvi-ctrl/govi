@@ -20,7 +20,7 @@ func (e *Engine) exEdit(c *exCmd) error {
 			return fmt.Errorf("No current filename")
 		}
 	}
-	if e.scr.modified && !c.force {
+	if e.scr.dirty() && !c.force {
 		return fmt.Errorf("No write since last change (use :e! to override)")
 	}
 	return e.Open(path)
@@ -28,7 +28,7 @@ func (e *Engine) exEdit(c *exCmd) error {
 
 // exNext implements :n[!] -- edit the next file in the argument list.
 func (e *Engine) exNext(c *exCmd) error {
-	if e.scr.modified && !c.force {
+	if e.scr.dirty() && !c.force {
 		return fmt.Errorf("No write since last change (use :n! to override)")
 	}
 	if e.argIdx+1 >= len(e.argv) {
@@ -40,7 +40,7 @@ func (e *Engine) exNext(c *exCmd) error {
 
 // exPrev implements :prev[!] / :N -- edit the previous file in the list.
 func (e *Engine) exPrev(c *exCmd) error {
-	if e.scr.modified && !c.force {
+	if e.scr.dirty() && !c.force {
 		return fmt.Errorf("No write since last change (use :prev! to override)")
 	}
 	if e.argIdx <= 0 {
@@ -52,7 +52,7 @@ func (e *Engine) exPrev(c *exCmd) error {
 
 // exRewind implements :rewind[!] -- edit the first file in the list.
 func (e *Engine) exRewind(c *exCmd) error {
-	if e.scr.modified && !c.force {
+	if e.scr.dirty() && !c.force {
 		return fmt.Errorf("No write since last change (use :rewind! to override)")
 	}
 	if len(e.argv) == 0 {

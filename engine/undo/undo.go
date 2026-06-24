@@ -60,6 +60,11 @@ func (l *Log) Begin(cursor Pos) {
 	l.curFrom = cursor
 }
 
+// Pending reports whether a change set is open and has recorded mutations.
+// The buffer may differ from the last saved copy even before End runs (e.g.
+// while still in insert mode).
+func (l *Log) Pending() bool { return l.open && len(l.cur) > 0 }
+
 // End closes the current change set; cursor is where the cursor ended up. An
 // empty change set (no mutations) is discarded. Any non-empty change set clears
 // the redo stack.

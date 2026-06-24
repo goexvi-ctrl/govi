@@ -109,6 +109,10 @@ func (s *screen) firstNonBlank(lno int64) int {
 	return 0
 }
 
+// dirty reports unsaved buffer changes, including edits still inside an open
+// beginChange/endChange bracket (e.g. text typed in insert mode before ESC).
+func (s *screen) dirty() bool { return s.modified || s.log.Pending() }
+
 // Line-edit primitives. All buffer mutations go through these so they are
 // recorded for undo and so marks are kept consistent. Callers must bracket a
 // logical change with Engine.beginChange/endChange.
