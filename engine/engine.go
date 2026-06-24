@@ -222,15 +222,9 @@ func (e *Engine) Input(ev Event) {
 		}
 	}
 
-	// A pending output overlay (e.g. :set all) is dismissed by the next key.
-	if e.scr.pendingOutput != nil {
-		switch ev.(type) {
-		case KeyEvent, StringEvent, InterruptEvent:
-			e.scr.pendingOutput = nil
-			e.mapPending = nil
-			e.fe.Render(view{e.scr}, ChangeSet{Full: true})
-			return
-		}
+	// A pending output overlay (e.g. :set all, :exusage) is paged by keypress.
+	if e.handlePendingOutput(ev) {
+		return
 	}
 
 	switch v := ev.(type) {

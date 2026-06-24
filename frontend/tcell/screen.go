@@ -211,7 +211,7 @@ func (f *Frontend) Render(v engine.View, _ engine.ChangeSet) {
 	w, h := f.scr.Size()
 
 	if out := v.PendingOutput(); out != nil {
-		f.renderOutput(out, w, h)
+		f.renderOutput(out, v.PendingOutputPrompt(), w, h)
 		f.scr.Show()
 		return
 	}
@@ -299,20 +299,19 @@ func (f *Frontend) renderExMode(v engine.View, w, h int) {
 	f.scr.ShowCursor(len([]rune(prompt)), h-1)
 }
 
-// renderOutput shows multi-line command output (e.g. :set all), with a continue
-// prompt on the bottom row. If the output exceeds the screen it shows the tail.
-func (f *Frontend) renderOutput(lines []string, w, h int) {
+// renderOutput shows one page of command output with a continue prompt on the
+// bottom row (nvi msg_cmsg CMSG_CONT_Q / CMSG_CONT_EX).
+func (f *Frontend) renderOutput(lines []string, prompt string, w, h int) {
 	avail := h - 1
-	start := 0
-	if len(lines) > avail {
-		start = len(lines) - avail
-	}
 	row := 0
-	for _, line := range lines[start:] {
-		f.drawText(line, row, w)
+	for i := 0; i < len(lines) && row < avail; i++ {
+		f.drawText(lines[i], row, w)
 		row++
 	}
-	f.drawText("[Press any key to continue]", h-1, w)
+	if prompt == "" {
+		prompt = "Press any key to continue [: to enter more ex commands]: "
+	}
+	f.drawText(prompt, h-1, w)
 	f.scr.HideCursor()
 }
 

@@ -50,8 +50,9 @@ type screen struct {
 	exInput *exInputState
 
 	// pendingOutput is multi-line command output (e.g. :set all) shown over the
-	// buffer in vi mode until the next keypress.
+	// buffer in vi mode until dismissed; pendingPage selects the visible page.
 	pendingOutput []string
+	pendingPage   int
 
 	// search and substitute state
 	lastPattern    string

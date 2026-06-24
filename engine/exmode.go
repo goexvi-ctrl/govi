@@ -128,6 +128,7 @@ func (e *Engine) showOutput(lines []string) {
 		return
 	}
 	e.scr.pendingOutput = lines
+	e.scr.pendingPage = 0
 }
 
 // printLine emits a line of command output: to the transcript in ex mode, or to

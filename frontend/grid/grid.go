@@ -94,7 +94,7 @@ func ComposeSel(v engine.View, rows, cols int, sel *Selection) Grid {
 	g := Grid{Rows: rows, Cols: cols, Cells: make([]Glyph, rows*cols)}
 
 	if out := v.PendingOutput(); out != nil {
-		g.composeOverlay(out)
+		g.composeOverlay(out, v.PendingOutputPrompt())
 		return g
 	}
 	if v.Mode() == engine.ModeExText {
@@ -105,20 +105,19 @@ func ComposeSel(v engine.View, rows, cols int, sel *Selection) Grid {
 	return g
 }
 
-// composeOverlay shows multi-line command output (e.g. :set all) with a
-// continue prompt on the bottom row; the cursor is hidden.
-func (g *Grid) composeOverlay(lines []string) {
+// composeOverlay shows one page of command output with a continue prompt on the
+// bottom row; the cursor is hidden.
+func (g *Grid) composeOverlay(lines []string, prompt string) {
 	avail := g.Rows - 1
-	start := 0
-	if len(lines) > avail {
-		start = len(lines) - avail
-	}
 	y := 0
-	for _, line := range lines[start:] {
-		g.drawText(line, y)
+	for i := 0; i < len(lines) && y < avail; i++ {
+		g.drawText(lines[i], y)
 		y++
 	}
-	g.drawText("[Press any key to continue]", g.Rows-1)
+	if prompt == "" {
+		prompt = "Press any key to continue [: to enter more ex commands]: "
+	}
+	g.drawText(prompt, g.Rows-1)
 	g.CursorVisible = false
 }
 

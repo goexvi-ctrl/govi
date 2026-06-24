@@ -45,6 +45,8 @@ func (v view) Number() bool { return v.s.opts.Bool("number") }
 
 func (v view) ExTranscript() []string { return v.s.exTranscript }
 
-func (v view) PendingOutput() []string { return v.s.pendingOutput }
+func (v view) PendingOutput() []string { return v.s.pendingPageLines() }
+
+func (v view) PendingOutputPrompt() string { return v.s.pendingOutputPrompt() }
 
 func (v view) MatchHighlight() (Pos, bool) { return v.s.matchPos, v.s.matchActive }
