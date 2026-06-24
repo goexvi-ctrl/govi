@@ -120,6 +120,10 @@ func colonControlKey(ev KeyEvent, s *screen) bool {
 	case 0x17: // ^W VWERASE
 		s.colonWordErase()
 		return true
+	case 0x18: // ^X hex entry
+		s.cmdHexMode = true
+		s.cmdHexBuf = s.cmdHexBuf[:0]
+		return true
 	}
 	return false
 }

@@ -101,6 +101,31 @@ func TestColonCtrlAInsertsControl(t *testing.T) {
 	}
 }
 
+func TestColonRawCtrlB(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	drive(e, ":")
+	e.Input(KeyEvent{Rune: 0x02}) // ^B as a tty C0 byte (GUI path)
+	if len(e.scr.colon) != 1 || e.scr.colon[0] != 2 {
+		t.Fatalf("colon = %v, want [STX]", e.scr.colon)
+	}
+	msg, _ := (view{e.scr}).Message()
+	if msg != ":^B" {
+		t.Fatalf("msg = %q, want :^B", msg)
+	}
+}
+
+func TestColonRawCtrlXHex(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	drive(e, ":")
+	e.Input(KeyEvent{Rune: 0x18}) // ^X
+	e.Input(KeyEvent{Rune: '4'})
+	e.Input(KeyEvent{Rune: '1'})
+	e.Input(KeyEvent{Rune: ' '}) // non-hex terminates hex entry
+	if len(e.scr.colon) < 1 || e.scr.colon[0] != 'A' {
+		t.Fatalf("colon = %v, want leading A", e.scr.colon)
+	}
+}
+
 func TestColonUmlautNFC(t *testing.T) {
 	e, _, _ := newTestEngine(t, "x\n")
 	drive(e, ":")

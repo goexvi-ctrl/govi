@@ -503,7 +503,7 @@ final class GoviView: NSView, NSTextInputClient {
     // Autorepeat (isARepeat) is handled directly: interpretKeyEvents does not
     // deliver repeats to insertText/doCommand.
     override func keyDown(with event: NSEvent) {
-        if event.modifierFlags.contains(.control) {
+        if isControlKey(event) {
             handleControlKey(event)
             return
         }
@@ -569,13 +569,42 @@ final class GoviView: NSView, NSTextInputClient {
         }
     }
 
+    // isControlKey reports whether event is a control-modified keystroke. Use the
+    // device-independent modifier mask (not raw modifierFlags) and accept C0 bytes
+    // in `characters` — macOS often delivers ^A as SOH without .control set.
+    private func isControlKey(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags.contains(.control) { return true }
+        if let c = event.characters?.unicodeScalars.first, c.value >= 1 && c.value <= 31 {
+            return true
+        }
+        return false
+    }
+
+    // handleControlKey feeds vi/ex control bytes to the engine. Colon-line editing
+    // expects the C0 code (^A -> SOH), not a letter with a modifier flag.
     private func handleControlKey(_ event: NSEvent) {
         if selActive { clearSelection() } // a command cancels the selection
-        var mods: Int32 = GoviView.modCtrl
-        if event.modifierFlags.contains(.option) { mods |= GoviView.modAlt }
-        guard let chars = event.charactersIgnoringModifiers, !chars.isEmpty else { return }
-        for scalar in chars.unicodeScalars {
-            GoviKeyRune(handle, Int32(scalar.value), mods)
+        var mods: Int32 = 0
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.option) {
+            mods |= GoviView.modAlt
+        }
+        let scalars: [Unicode.Scalar]
+        if let c = event.characters, let first = c.unicodeScalars.first, first.value >= 1 && first.value <= 31 {
+            scalars = Array(c.unicodeScalars)
+        } else if let raw = event.charactersIgnoringModifiers {
+            scalars = Array(raw.unicodeScalars)
+        } else {
+            return
+        }
+        for scalar in scalars {
+            let code: Int32
+            if scalar.value <= 31 {
+                code = Int32(scalar.value)
+            } else {
+                code = Int32(scalar.value & 0x1f)
+            }
+            GoviKeyRune(handle, code, mods)
         }
         step()
     }
