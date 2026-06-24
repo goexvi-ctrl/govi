@@ -6,6 +6,10 @@ import (
 )
 
 func TestSetAllShowsManyOptions(t *testing.T) {
+	// cdpath is seeded from $CDPATH (see options.go); an ambient value would
+	// make the 80-column width check below depend on the developer's shell
+	// environment, so pin it for a deterministic display.
+	t.Setenv("CDPATH", "")
 	e, _, _ := newTestEngine(t, "x\n")
 	e.Resize(23, 80)
 	drive(e, ":set all\r")
