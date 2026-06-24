@@ -67,6 +67,8 @@ enum Settings {
     private static let showDimensionsKey = "showDimensionsInTitle"
     private static let fontFamilyKey = "editorFontFamily"
     private static let fontSizeKey = "editorFontSize"
+    private static let fgColorKey = "foregroundColor"
+    private static let bgColorKey = "backgroundColor"
 
     static let initialTextRows = 24
     static let initialColumns = 80
@@ -182,6 +184,32 @@ enum Settings {
         fontFamily.font(size: fontSize)
     }
 
+    // foregroundColorSpec and backgroundColorSpec hold the user's setting
+    // (#RGB, #RRGGBB, or a ColorNames key). Empty means system default.
+    static var foregroundColorSpec: String {
+        get { UserDefaults.standard.string(forKey: fgColorKey) ?? "" }
+        set {
+            UserDefaults.standard.set(newValue, forKey: fgColorKey)
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
+
+    static var backgroundColorSpec: String {
+        get { UserDefaults.standard.string(forKey: bgColorKey) ?? "" }
+        set {
+            UserDefaults.standard.set(newValue, forKey: bgColorKey)
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
+
+    static var foregroundColor: NSColor {
+        ColorParser.parse(foregroundColorSpec) ?? NSColor.textColor
+    }
+
+    static var backgroundColor: NSColor {
+        ColorParser.parse(backgroundColorSpec) ?? NSColor.textBackgroundColor
+    }
+
     private static func clampWindow(_ value: CGFloat, min: CGFloat, max: CGFloat) -> CGFloat {
         Swift.min(Swift.max(value, min), max)
     }
@@ -225,11 +253,15 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
     private let openFilesPopup = NSPopUpButton()
     private let warnCloseCheckbox = NSButton(checkboxWithTitle: "Warn before closing unsaved files", target: nil, action: nil)
     private let showDimensionsCheckbox = NSButton(checkboxWithTitle: "Show rows×columns in title bar (not tabs)", target: nil, action: nil)
+    private let fgColorField = NSTextField()
+    private let bgColorField = NSTextField()
+    private let fgColorSwatch = NSView()
+    private let bgColorSwatch = NSView()
     private static let maxPadding: Double = 64
 
     private init() {
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 350),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 420),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         win.title = "Settings"
         super.init(window: win)
@@ -286,8 +318,13 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         showDimensionsCheckbox.target = self
         showDimensionsCheckbox.action = #selector(showDimensionsChanged)
 
+        let fgRow = makeColorRow(label: "Foreground:", field: fgColorField, swatch: fgColorSwatch,
+                                 placeholder: "#RRGGBB or color name (empty = system)")
+        let bgRow = makeColorRow(label: "Background:", field: bgColorField, swatch: bgColorSwatch,
+                                 placeholder: "#RRGGBB or color name (empty = system)")
+
         let stack = NSStackView(views: [
-            paddingRow, rowsRow, colsRow, fontRow, fontSizeRow, openRow,
+            paddingRow, rowsRow, colsRow, fontRow, fontSizeRow, fgRow, bgRow, openRow,
             showDimensionsCheckbox, warnCloseCheckbox,
         ])
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -303,8 +340,31 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
             stack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -20),
         ])
 
-        [paddingField, rowsField, colsField, fontSizeField].forEach { $0.delegate = self }
+        [paddingField, rowsField, colsField, fontSizeField, fgColorField, bgColorField]
+            .forEach { $0.delegate = self }
         syncFromSettings()
+    }
+
+    private func makeColorRow(
+        label text: String, field: NSTextField, swatch: NSView, placeholder: String
+    ) -> NSStackView {
+        let label = NSTextField(labelWithString: text)
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.placeholderString = placeholder
+        field.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        swatch.translatesAutoresizingMaskIntoConstraints = false
+        swatch.wantsLayer = true
+        swatch.layer?.borderWidth = 1
+        swatch.layer?.borderColor = NSColor.separatorColor.cgColor
+        NSLayoutConstraint.activate([
+            swatch.widthAnchor.constraint(equalToConstant: 28),
+            swatch.heightAnchor.constraint(equalToConstant: 20),
+        ])
+        let row = NSStackView(views: [label, field, swatch])
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.alignment = .centerY
+        row.spacing = 8
+        return row
     }
 
     private func makeNumericRow(
@@ -340,6 +400,15 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         openFilesPopup.selectItem(at: Settings.openFilesIn == .tab ? 1 : 0)
         warnCloseCheckbox.state = Settings.warnOnUnsavedClose ? .on : .off
         showDimensionsCheckbox.state = Settings.showDimensionsInTitle ? .on : .off
+        fgColorField.stringValue = Settings.foregroundColorSpec
+        bgColorField.stringValue = Settings.backgroundColorSpec
+        updateSwatch(fgColorSwatch, spec: Settings.foregroundColorSpec, fallback: Settings.foregroundColor)
+        updateSwatch(bgColorSwatch, spec: Settings.backgroundColorSpec, fallback: Settings.backgroundColor)
+    }
+
+    private func updateSwatch(_ swatch: NSView, spec: String, fallback: NSColor) {
+        let c = ColorParser.parse(spec) ?? fallback
+        swatch.layer?.backgroundColor = c.cgColor
     }
 
     private func syncNumeric(_ field: NSTextField, _ stepper: NSStepper, value: Double) {
@@ -426,9 +495,28 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
             commitNumeric(fontSizeField, fontSizeStepper,
                           lo: Double(Settings.minFontSize), hi: Double(Settings.maxFontSize),
                           raw: field.doubleValue, assign: { Settings.fontSize = $0 })
+        case fgColorField:
+            commitColor(fgColorField, fgColorSwatch, fallback: NSColor.textColor,
+                        assign: { Settings.foregroundColorSpec = $0 })
+        case bgColorField:
+            commitColor(bgColorField, bgColorSwatch, fallback: NSColor.textBackgroundColor,
+                        assign: { Settings.backgroundColorSpec = $0 })
         default:
             break
         }
+    }
+
+    private func commitColor(
+        _ field: NSTextField, _ swatch: NSView, fallback: NSColor, assign: (String) -> Void
+    ) {
+        let raw = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !raw.isEmpty && ColorParser.parse(raw) == nil {
+            NSSound.beep()
+            syncFromSettings()
+            return
+        }
+        assign(raw)
+        updateSwatch(swatch, spec: raw, fallback: fallback)
     }
 
     func show() {

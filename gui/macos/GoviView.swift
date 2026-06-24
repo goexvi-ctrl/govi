@@ -39,8 +39,8 @@ final class GoviView: NSView, NSTextInputClient {
     private var cellW: CGFloat = 8
     private var cellH: CGFloat = 16
 
-    private let bgColor = NSColor.textBackgroundColor
-    private let fgColor = NSColor.textColor
+    private var bgColor = Settings.backgroundColor
+    private var fgColor = Settings.foregroundColor
     private let cursorColor = NSColor.systemBlue
 
     // Inset (pixels) between the window edge and the text grid, from Settings.
@@ -101,6 +101,8 @@ final class GoviView: NSView, NSTextInputClient {
         padding = Settings.padding
         spellEnabled = Settings.spellChecking
         font = Settings.editorFont
+        bgColor = Settings.backgroundColor
+        fgColor = Settings.foregroundColor
         measureFont()
         updateGeometry() // padding and font metrics may change the cell rows/cols
         updateSpelling()
