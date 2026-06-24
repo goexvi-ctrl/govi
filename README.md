@@ -64,7 +64,7 @@ govi [-g [-w]] [-r [file]] [-s] [file ...]
 | Flag | Meaning |
 |------|---------|
 | **`-g`** | Open the files in **Govi.app** (macOS) instead of the terminal |
-| **`-w`** | With **`-g`**, block until every opened tab/window closes (useful as an `EDITOR`); requires at least one file |
+| **`-w`** | With **`-g`**, block until the tabs/windows for *these* files are closed (useful as an `EDITOR`); requires at least one file |
 | **`-r`** | List recoverable files (`govi -r`) or recover a named file (`govi -r file`) |
 | **`-s`** | Silent startup: do not read startup files or `EXINIT`/`NEXINIT` |
 | **`file ...`** | Files to edit. With multiple files, **`:n`** / **`:prev`** move through the argument list |

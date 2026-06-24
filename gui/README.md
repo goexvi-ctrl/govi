@@ -64,7 +64,7 @@ Use the `govi` binary's GUI mode (`govi -g`):
 ```sh
 govi -g file1 file2 ...   # opens the files as tabs in one window
 govi -g                   # just launch / focus Govi.app
-govi -g -w file           # block until the opened tabs/windows close
+govi -g -w file           # block until file's tab/window is closed
 ```
 
 Multiple files passed together open as **tabs in a single window**. A file that

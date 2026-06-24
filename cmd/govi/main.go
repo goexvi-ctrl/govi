@@ -20,7 +20,7 @@ func main() {
 	recover := flag.Bool("r", false, "recover the named file from a recovery file")
 	silent := flag.Bool("s", false, "do not read startup files or EXINIT/NEXINIT")
 	gui := flag.Bool("g", false, "open the files in the Govi.app GUI instead of the terminal")
-	wait := flag.Bool("w", false, "with -g, block until the opened tabs/windows close")
+	wait := flag.Bool("w", false, "with -g, block until the tabs/windows for these files are closed")
 	flag.Parse()
 
 	if *gui {
