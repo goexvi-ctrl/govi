@@ -13,7 +13,9 @@
 # same order as nvi and writes it to
 #   ~/Library/Application Support/Govi/launch-context
 # for Govi.app to read (GUI apps launched via open(1) do not inherit the shell
-# cwd or EXINIT/NEXINIT).
+# cwd or EXINIT/NEXINIT). File paths are also written to launch-files so a cold
+# launch still opens them when the open-documents Apple Event is delayed or lost
+# (e.g. when a non-GUI parent execs govi).
 #
 # Govi.app is located via, in order: $GOVI_APP, the build/ dir next to this
 # script, this script's own directory, then /Applications.
@@ -146,6 +148,18 @@ done
 if [ "$#" -eq 0 ]; then
 	exit 1
 fi
+
+# Record absolute paths for a cold launch. Govi.app reads launch-files on
+# startup when macOS has not yet delivered the open-documents Apple Event (or
+# when the parent process is not GUI-attached, . The app
+# deletes this file after consuming it; a running instance gets paths via the
+# normal open event instead.
+_launch_dir="${HOME:-$(eval echo "~$(id -un)")}/Library/Application Support/Govi"
+mkdir -p "$_launch_dir"
+: > "$_launch_dir/launch-files"
+for _f in "$@"; do
+	echo "$_f" >> "$_launch_dir/launch-files"
+done
 
 # `open -a` launches the app or, if it is already running, delivers the files to
 # that instance and brings it to the front.

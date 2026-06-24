@@ -218,6 +218,27 @@ final class EditorWindow: NSObject, NSWindowDelegate {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    // True once startup file paths have been taken from argv, an open event, or
+    // launch-files (written by the govi shell script).
+    private var openedDocumentsAtLaunch = false
+
+    private static var launchFilesURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Govi/launch-files", isDirectory: false)
+    }
+
+    // readLaunchFiles returns absolute paths recorded by gui/govi before open(1).
+    private static func readLaunchFiles() -> [String] {
+        guard let text = try? String(contentsOf: launchFilesURL, encoding: .utf8) else { return [] }
+        return text.split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func clearLaunchFiles() {
+        try? FileManager.default.removeItem(at: launchFilesURL)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Files passed by direct exec (Govi.app/Contents/MacOS/Govi file ...).
         // Files passed via `open`/Finder arrive through application(_:open:).
@@ -225,15 +246,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let paths = CommandLine.arguments.dropFirst().map { arg -> String in
             (arg as NSString).isAbsolutePath ? arg : "\(cwd)/\(arg)"
         }
-        EditorWindow.openPaths(Array(paths))
-        // If nothing was opened (no args and no open event), show an empty
-        // window. Deferred so any launch-time open event is handled first.
+        if !paths.isEmpty {
+            openedDocumentsAtLaunch = true
+            EditorWindow.openPaths(Array(paths))
+        }
+        // Defer twice so launch-time open events and launch-files are visible
+        // before creating an empty window (cold launches from background parents
+        // may deliver paths only via launch-files).
         DispatchQueue.main.async {
-            if !EditorWindow.anyOpen {
-                EditorWindow.open(path: "")
+            DispatchQueue.main.async {
+                self.finishColdLaunch()
             }
         }
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func finishColdLaunch() {
+        if !openedDocumentsAtLaunch {
+            let pending = Self.readLaunchFiles()
+            if !pending.isEmpty {
+                EditorWindow.openPaths(pending)
+                openedDocumentsAtLaunch = true
+            }
+        }
+        Self.clearLaunchFiles()
+        if !EditorWindow.anyOpen {
+            EditorWindow.open(path: "")
+        }
     }
 
     // application(_:open:) is the open-documents Apple Event. macOS routes
@@ -241,6 +280,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // delivering to the *running* instance when one exists, which is what makes
     // the command-line `govi` tool reuse a running app.
     func application(_ application: NSApplication, open urls: [URL]) {
+        openedDocumentsAtLaunch = true
+        Self.clearLaunchFiles()
         EditorWindow.openPaths(urls.filter { $0.isFileURL }.map { $0.path })
         NSApp.activate(ignoringOtherApps: true)
     }
