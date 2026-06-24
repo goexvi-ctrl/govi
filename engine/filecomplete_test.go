@@ -56,7 +56,7 @@ func TestColonFileCompleteSingle(t *testing.T) {
 	}
 }
 
-func TestColonFileCompleteList(t *testing.T) {
+func TestColonFileCompleteAmbiguous(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{"aaa", "aab", "aac"} {
 		if err := os.WriteFile(filepath.Join(dir, name), nil, 0o644); err != nil {
@@ -64,7 +64,7 @@ func TestColonFileCompleteList(t *testing.T) {
 		}
 	}
 
-	e, _, _ := newTestEngine(t, "x\n")
+	e, fe, _ := newTestEngine(t, "x\n")
 	e.SetCwd(dir)
 	e.Resize(10, 40)
 	drive(e, ":")
@@ -73,11 +73,14 @@ func TestColonFileCompleteList(t *testing.T) {
 	e.Input(KeyEvent{Rune: 'a'})
 	e.Input(KeyEvent{Key: KeyTab})
 
-	if got := string(e.scr.colon); got != "e aa" {
-		t.Fatalf("colon = %q, want %q", got, "e aa")
+	if got := string(e.scr.colon); got != "e a" {
+		t.Fatalf("colon = %q, want %q", got, "e a")
 	}
-	if e.scr.pendingOutput == nil {
-		t.Fatal("expected completion listing overlay")
+	if fe.bells != 1 {
+		t.Fatalf("bells = %d, want 1", fe.bells)
+	}
+	if e.scr.pendingOutput != nil {
+		t.Fatal("ambiguous completion should not show listing overlay")
 	}
 }
 
@@ -99,5 +102,42 @@ func TestColonFileCompleteDirSlash(t *testing.T) {
 
 	if got := string(e.scr.colon); got != "e proj/" {
 		t.Fatalf("colon = %q, want %q", got, "e proj/")
+	}
+}
+
+func TestJoinDisplayPathRoot(t *testing.T) {
+	if got := joinDisplayPath("/", "tmp"); got != "/tmp" {
+		t.Fatalf("joinDisplayPath = %q, want %q", got, "/tmp")
+	}
+}
+
+func TestGlobFileNamesAbsolute(t *testing.T) {
+	matches, err := globFileNames("/tm", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, m := range matches {
+		if m == "/tmp" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("/tm* should include /tmp, got %v", matches)
+	}
+}
+
+func TestColonFileCompleteAbsolute(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	e.Resize(10, 40)
+	drive(e, ":")
+	for _, r := range "r /tm" {
+		e.Input(KeyEvent{Rune: r})
+	}
+	e.Input(KeyEvent{Key: KeyTab})
+
+	if got := string(e.scr.colon); got != "r /tmp/" {
+		t.Fatalf("colon = %q, want %q", got, "r /tmp/")
 	}
 }
