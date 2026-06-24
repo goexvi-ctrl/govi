@@ -55,6 +55,20 @@ func (e *Engine) resolvePath(path string) string {
 	return filepath.Clean(filepath.Join(e.cwd, path))
 }
 
+// canonicalPath resolves path against cwd and returns an absolute, cleaned path
+// for buffer naming and :e / :w.
+func (e *Engine) canonicalPath(path string) string {
+	path = e.resolvePath(path)
+	if path == "" {
+		return path
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return filepath.Clean(abs)
+}
+
 // exCd implements :cd[!] and :chdir[!] (ex/ex_cd.c).
 func (e *Engine) exCd(c *exCmd) error {
 	if e.scr.dirty() && !c.force {

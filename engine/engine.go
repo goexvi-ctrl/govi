@@ -103,7 +103,7 @@ func (e *Engine) replaceBuffer(store buffer.LineStore, name string) {
 // unsaved buffer named path (vi's "new file"). Large files are paged from disk
 // rather than read whole.
 func (e *Engine) Open(path string) error {
-	path = e.resolvePath(path)
+	path = e.canonicalPath(path)
 	// Remember the file we are leaving as the alternate file.
 	if e.scr != nil && e.scr.name != "" && e.scr.name != path {
 		e.altFile = e.scr.name

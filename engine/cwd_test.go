@@ -69,3 +69,17 @@ func TestResolvePathAbsolute(t *testing.T) {
 		t.Fatalf("resolvePath = %q", got)
 	}
 }
+
+func TestCanonicalPathRelative(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "sub")
+	if err := os.Mkdir(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	e := newBareEngine(t)
+	e.SetCwd(sub)
+	want := filepath.Join(sub, "foo.txt")
+	if got := e.canonicalPath("foo.txt"); got != want {
+		t.Fatalf("canonicalPath = %q, want %q", got, want)
+	}
+}
