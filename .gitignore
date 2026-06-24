@@ -23,9 +23,10 @@
 
 # Test scratch (large-file generation, recovery temp dirs)
 /testdata/large/
+/vi.recover
 
 .aider*
 
 # Ignore docs we don't plan to check in
-docs/qwen-review
+/docs/qwen-review
 
