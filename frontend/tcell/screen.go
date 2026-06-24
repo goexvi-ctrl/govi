@@ -39,6 +39,11 @@ func New() (*Frontend, error) {
 // used by tests (with a SimulationScreen) and by hosts that manage their own
 // screen. The screen is initialized here.
 func NewWithScreen(scr tc.Screen) (*Frontend, error) {
+	// Save cooked termios and install fatal-signal handlers before tcell
+	// switches the tty to raw mode. Go's signal.Notify cannot catch synchronous
+	// signals (SIGSEGV, SIGBUS, ...); without this, kill(1) leaves the shell raw.
+	saveEmergencyTermios()
+	installEmergencyHandlers()
 	if err := scr.Init(); err != nil {
 		return nil, err
 	}

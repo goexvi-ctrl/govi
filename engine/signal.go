@@ -68,6 +68,22 @@ func SignalInfoFor(sig os.Signal) SignalInfo {
 		return SignalInfo{SigActFatal, "User defined signal 1"}
 	case syscall.SIGUSR2:
 		return SignalInfo{SigActFatal, "User defined signal 2"}
+	case syscall.SIGSEGV:
+		return SignalInfo{SigActFatal, "Segmentation fault"}
+	case syscall.SIGBUS:
+		return SignalInfo{SigActFatal, "Bus error"}
+	case syscall.SIGFPE:
+		return SignalInfo{SigActFatal, "Floating-point exception"}
+	case syscall.SIGILL:
+		return SignalInfo{SigActFatal, "Illegal instruction"}
+	case syscall.SIGABRT:
+		return SignalInfo{SigActFatal, "Abort"}
+	case syscall.SIGSYS:
+		return SignalInfo{SigActFatal, "Bad system call"}
+	case syscall.SIGXCPU:
+		return SignalInfo{SigActFatal, "Cputime limit exceeded"}
+	case syscall.SIGXFSZ:
+		return SignalInfo{SigActFatal, "Filesize limit exceeded"}
 	}
 	if s, ok := sig.(syscall.Signal); ok {
 		return SignalInfo{SigActFatal, fmt.Sprintf("Signal %d", s)}
