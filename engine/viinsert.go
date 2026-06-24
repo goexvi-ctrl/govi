@@ -34,18 +34,7 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 	// ^V quotes the next key: insert it literally with no special handling.
 	if m.literalNext {
 		m.literalNext = false
-		r := ev.Rune
-		if r == 0 {
-			switch ev.Key {
-			case KeyEnter:
-				r = '\r'
-			case KeyEscape:
-				r = 0x1b
-			case KeyTab:
-				r = '\t'
-			}
-		}
-		if r != 0 {
+		if r, ok := literalRune(ev); ok {
 			m.insertRune(e, r)
 			m.insertText = append(m.insertText, r)
 		}

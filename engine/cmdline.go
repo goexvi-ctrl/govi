@@ -14,7 +14,7 @@ func (e *Engine) colonEditKey(ev KeyEvent, opts colonEditOpts) {
 
 	if s.cmdLiteralNext {
 		s.cmdLiteralNext = false
-		if r := colonLiteralRune(ev); r != 0 {
+		if r, ok := literalRune(ev); ok {
 			s.colon = append(s.colon, r)
 		}
 		return
@@ -25,8 +25,8 @@ func (e *Engine) colonEditKey(ev KeyEvent, opts colonEditOpts) {
 			s.cmdHexBuf = append(s.cmdHexBuf, ev.Rune)
 			return
 		}
-		if r := s.cmdlineFinishHex(); r != 0 {
-			s.colon = append(s.colon, r)
+		if len(s.cmdHexBuf) > 0 {
+			s.colon = append(s.colon, s.cmdlineFinishHex())
 		}
 	}
 
@@ -55,25 +55,6 @@ func (e *Engine) colonEditKey(ev KeyEvent, opts colonEditOpts) {
 		if ev.Rune != 0 && ev.Rune != 0x1b {
 			s.colon = append(s.colon, ev.Rune)
 		}
-	}
-}
-
-func colonLiteralRune(ev KeyEvent) rune {
-	switch {
-	case ev.Key == KeyEnter || ev.Rune == '\r':
-		return '\r' // ^M
-	case ev.Rune == '\n':
-		return '\n' // ^J
-	case ev.Key == KeyTab || ev.Rune == '\t':
-		return '\t'
-	case ev.Key == KeyEscape:
-		return 0x1b
-	case ev.Key == KeyBackspace || ev.Rune == '\b' || ev.Rune == 0x7f:
-		return '\b'
-	case ev.Rune != 0:
-		return ev.Rune
-	default:
-		return 0
 	}
 }
 
