@@ -376,6 +376,16 @@ func (e *Engine) writeFile(path string) (lines, bytes int64, err error) {
 		os.Remove(tmpName)
 		return 0, 0, err
 	}
+	// Atomic rename replaces the directory entry with the temp inode, so copy
+	// the prior file's mode onto the temp (nvi preserves mode by truncating in
+	// place via open; we use temp+rename for atomicity).
+	if info, err := os.Stat(path); err == nil {
+		mode := info.Mode() & (os.ModePerm | os.ModeSetuid | os.ModeSetgid)
+		if err := os.Chmod(tmpName, mode); err != nil {
+			os.Remove(tmpName)
+			return 0, 0, err
+		}
+	}
 	if err := os.Rename(tmpName, path); err != nil {
 		os.Remove(tmpName)
 		return 0, 0, err
