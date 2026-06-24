@@ -71,3 +71,59 @@ func TestExShellNoRunner(t *testing.T) {
 		t.Fatal("expected error without ShellRunner")
 	}
 }
+
+type bangStubFrontend struct {
+	captureFrontend
+	out        string
+	onTerminal bool
+	called     bool
+}
+
+func (f *bangStubFrontend) RunBang(shell, cmd, cwd string, cols, rows int) (string, bool, error) {
+	f.called = true
+	return f.out, f.onTerminal, nil
+}
+
+func TestExBangShowsAllLines(t *testing.T) {
+	fe := &bangStubFrontend{out: "one\ntwo\nthree\n"}
+	e := New(fe, Options{})
+	e.OpenArgs(nil)
+	e.Resize(10, 40)
+
+	if err := e.exExecute("!echo test"); err != nil {
+		t.Fatal(err)
+	}
+	if !fe.called {
+		t.Fatal("RunBang not called")
+	}
+	if got := len(e.scr.pendingOutput); got != 3 {
+		t.Fatalf("pendingOutput lines = %d, want 3 (%v)", got, e.scr.pendingOutput)
+	}
+}
+
+func TestExBangPipeFallback(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	e.Resize(10, 40)
+	if err := e.exExecute("!printf 'a\\nb\\n'"); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(e.scr.pendingOutput); got != 2 {
+		t.Fatalf("pendingOutput = %v, want 2 lines", e.scr.pendingOutput)
+	}
+}
+
+func TestShellEnvSetsColumns(t *testing.T) {
+	env := shellEnv(120, 30)
+	var cols, lines string
+	for _, e := range env {
+		if len(e) > 8 && e[:8] == "COLUMNS=" {
+			cols = e[8:]
+		}
+		if len(e) > 6 && e[:6] == "LINES=" {
+			lines = e[6:]
+		}
+	}
+	if cols != "120" || lines != "30" {
+		t.Fatalf("env COLUMNS=%q LINES=%q", cols, lines)
+	}
+}

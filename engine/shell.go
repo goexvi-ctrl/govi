@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -20,19 +21,52 @@ func (e *Engine) shellProg() string {
 
 // runShellCmd runs cmd via the shell option, feeding input on stdin. It returns
 // combined stdout and stderr, matching nvi's filter pipes (ex_filter.c dup2's
-// both to the utility output pipe).
-func (e *Engine) runShellCmd(cmd, input string) (string, error) {
+// both to the utility output pipe). cols and rows set COLUMNS/LINES so utilities
+// such as ls format multi-column output when stdout is not a tty.
+func (e *Engine) runShellCmd(cmd, input string, cols, rows int) (string, error) {
 	shell := e.shellProg()
 	c := exec.Command(shell, "-c", cmd)
 	e.ensureCwd()
 	if e.cwd != "" {
 		c.Dir = e.cwd
 	}
+	c.Env = shellEnv(cols, rows)
 	if input != "" {
 		c.Stdin = strings.NewReader(input)
 	}
 	out, err := c.CombinedOutput()
 	return string(out), err
+}
+
+func shellEnv(cols, rows int) []string {
+	env := os.Environ()
+	if cols < 1 {
+		cols = 80
+	}
+	if rows < 1 {
+		rows = 24
+	}
+	env = setEnvVar(env, "COLUMNS", fmt.Sprintf("%d", cols))
+	env = setEnvVar(env, "LINES", fmt.Sprintf("%d", rows))
+	return env
+}
+
+func setEnvVar(env []string, key, val string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(env)+1)
+	found := false
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			out = append(out, prefix+val)
+			found = true
+		} else {
+			out = append(out, e)
+		}
+	}
+	if !found {
+		out = append(out, prefix+val)
+	}
+	return out
 }
 
 // exShell implements :sh[ell]: run an interactive shell (ex/ex_shell.c).
@@ -56,16 +90,7 @@ func (e *Engine) exBang(c *exCmd) error {
 		return fmt.Errorf("Usage: [range]!command")
 	}
 	if c.addrCount == 0 {
-		out, err := e.runShellCmd(cmd, "")
-		if err != nil {
-			return fmt.Errorf("%s: %v", cmd, err)
-		}
-		first := firstLine(out)
-		if first == "" {
-			first = "(command completed)"
-		}
-		e.scr.msg, e.scr.msgKind = first, MsgInfo
-		return nil
+		return e.runBangNoRange(cmd)
 	}
 	return e.filterLines(c.addr1, c.addr2, cmd)
 }
@@ -81,7 +106,7 @@ func (e *Engine) filterLines(l1, l2 int64, cmd string) error {
 		in.WriteString(string(s.lineRunes(i)))
 		in.WriteByte('\n')
 	}
-	out, err := e.runShellCmd(cmd, in.String())
+	out, err := e.runShellCmd(cmd, in.String(), e.bangCols(), e.bangRows())
 	if err != nil {
 		// nvi still replaces the filtered lines with stdout/stderr even when
 		// the utility exits non-zero (ex_filter.c reads the pipe before wait).
@@ -116,13 +141,6 @@ func (e *Engine) startFilter(l1, l2 int64) {
 	e.scr.cmdPrefix = '!'
 	e.scr.colon = nil
 	e.scr.filterL1, e.scr.filterL2 = l1, l2
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }
 
 func splitOutputLines(s string) [][]rune {
