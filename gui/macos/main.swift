@@ -306,54 +306,59 @@ enum LaunchPath {
     }
 }
 
-// WaitCoordinator unblocks a `govi -w` launcher once every waited-on path is no
-// longer open in any window/tab. The launcher creates a FIFO and records its path
-// in launch-wait; opening that FIFO for writing is the completion signal.
+// WaitCoordinator unblocks `govi -g -w` launchers. Each -w invocation records a
+// FIFO in launch-wait and is tracked as an independent session over only the
+// files that invocation opened; its FIFO is signaled (opened for writing) once
+// none of those files remain open in any window/tab. Later invocations -- with
+// or without -w -- start their own session (or none) and never extend an
+// existing one, so closing just the -w file releases its launcher.
 final class WaitCoordinator {
     static let shared = WaitCoordinator()
 
-    private var fifoPath: String?
-    private var waitPaths: Set<String> = []
-    private var signaled = false
+    private struct Session {
+        let fifo: String
+        let paths: Set<String>
+    }
+    private var sessions: [Session] = []
     private let lock = NSLock()
 
+    // registerWait starts a wait session when the just-launched invocation
+    // recorded a FIFO in launch-wait; paths are the files it opened. Invocations
+    // without -w leave no launch-wait and add no session. It is called before the
+    // windows exist, so completion is first evaluated by the checkComplete() that
+    // openPaths runs after opening them.
     func registerWait(paths: [String]) {
         lock.lock()
         defer { lock.unlock() }
-        if fifoPath == nil, let fifo = LaunchPath.readLaunchWaitFifo() {
-            fifoPath = fifo
-            signaled = false // new wait session: re-arm (signaled is a per-session one-shot)
-            LaunchPath.clearLaunchWait()
-        }
-        guard fifoPath != nil else { return }
-        waitPaths.formUnion(paths)
+        guard let fifo = LaunchPath.readLaunchWaitFifo() else { return }
+        LaunchPath.clearLaunchWait()
+        sessions.append(Session(fifo: fifo, paths: Set(paths)))
     }
 
     func editorClosed(path: String) {
         lock.lock()
         defer { lock.unlock() }
-        checkCompleteLocked()
+        checkLocked()
     }
 
     func checkComplete() {
         lock.lock()
         defer { lock.unlock() }
-        checkCompleteLocked()
+        checkLocked()
     }
 
-    private func checkCompleteLocked() {
-        guard !signaled, fifoPath != nil else { return }
-        if waitPaths.contains(where: { EditorWindow.anyEditing(path: $0) }) {
-            return
+    // checkLocked signals and drops every session whose files are all closed.
+    private func checkLocked() {
+        sessions = sessions.filter { session in
+            if session.paths.contains(where: { EditorWindow.anyEditing(path: $0) }) {
+                return true // still waiting on at least one open file
+            }
+            signal(fifo: session.fifo)
+            return false
         }
-        signalLocked()
     }
 
-    private func signalLocked() {
-        guard !signaled, let fifo = fifoPath else { return }
-        signaled = true
-        fifoPath = nil
-        waitPaths.removeAll()
+    private func signal(fifo: String) {
         DispatchQueue.global(qos: .utility).async {
             let fd = open(fifo, O_WRONLY)
             if fd >= 0 {
