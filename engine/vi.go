@@ -444,16 +444,18 @@ func (e *Engine) execBuffer(name rune) {
 }
 
 // screenPosition implements z<type>: redraw with the current line at the top
-// (CR/+), center (.), or bottom (-) of the screen.
+// (CR/+), center (.), or bottom (-) of the screen. Positioning is wrap-aware:
+// long lines occupy multiple screen rows (nvi vs_sm_fill).
 func (e *Engine) screenPosition(typ rune) {
 	s := e.scr
+	line := s.cursor.Line
 	switch typ {
 	case '\r', '\n', '+':
-		s.top = s.cursor.Line
+		s.top = line
 	case '.':
-		s.top = s.cursor.Line - int64(s.rows/2)
+		s.top = s.topForMiddle(line)
 	case '-':
-		s.top = s.cursor.Line - int64(s.rows-1)
+		s.top = s.topForBottom(line)
 	default:
 		e.fe.Bell()
 		return

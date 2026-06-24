@@ -290,3 +290,36 @@ func (s *screen) topForBottom(bottom int64) int64 {
 	}
 	return top
 }
+
+// topForMiddle returns the topmost line such that line target's first screen row
+// sits near the middle of the viewport when wrapped (nvi P_MIDDLE / vs_sm_fill).
+func (s *screen) topForMiddle(target int64) int64 {
+	if s.rows <= 0 {
+		return 1
+	}
+	mid := s.rows / 2
+	used := 0
+	top := target
+	for ln := target - 1; ln >= 1; ln-- {
+		r := s.screenLines(ln)
+		if used+r > mid {
+			break
+		}
+		used += r
+		top = ln
+	}
+	if top < 1 {
+		top = 1
+	}
+	return top
+}
+
+// screenRowOf returns the 0-based screen row where line's first row appears when
+// top is the first buffer line shown.
+func (s *screen) screenRowOf(line, top int64) int {
+	row := 0
+	for ln := top; ln < line; ln++ {
+		row += s.screenLines(ln)
+	}
+	return row
+}

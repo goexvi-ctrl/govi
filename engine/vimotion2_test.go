@@ -1,6 +1,10 @@
 package engine
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 func curAt(t *testing.T, e *Engine, line int64, col int, what string) {
 	t.Helper()
@@ -54,6 +58,39 @@ func TestZScreenPosition(t *testing.T) {
 	drive(e, "z.") // center line 5 (rows=5 -> top = 5 - 2 = 3)
 	if e.scr.top != 3 {
 		t.Fatalf("z.: top = %d, want 3", e.scr.top)
+	}
+	if row := e.scr.screenRowOf(5, e.scr.top); row != 2 {
+		t.Fatalf("z.: line 5 at screen row %d, want 2 (middle of 5)", row)
+	}
+}
+
+func TestZScreenPositionWrap(t *testing.T) {
+	// One long wrapped line above a short target line: logical-line z. used to
+	// leave the target ~80% down the screen.
+	long := strings.Repeat("x", 25)
+	e, _, _ := newTestEngine(t, long+"\nshort\n")
+	e.Resize(4, 10) // 4 text rows, 10 cols -> long line uses 3 rows
+	drive(e, "2G")
+	drive(e, "z.")
+
+	if e.scr.top != 2 {
+		t.Fatalf("z. wrap: top = %d, want 2", e.scr.top)
+	}
+	if row := e.scr.screenRowOf(2, e.scr.top); row != 0 {
+		t.Fatalf("z. wrap: line 2 at screen row %d, want 0", row)
+	}
+
+	// Ten single-line rows: target should land near the vertical center.
+	var b strings.Builder
+	for i := 1; i <= 10; i++ {
+		fmt.Fprintf(&b, "line%d\n", i)
+	}
+	e, _, _ = newTestEngine(t, b.String())
+	e.Resize(10, 40)
+	drive(e, "5G")
+	drive(e, "z.")
+	if row := e.scr.screenRowOf(5, e.scr.top); row < 4 || row > 5 {
+		t.Fatalf("z. center: line 5 at screen row %d, want 4 or 5", row)
 	}
 }
 
