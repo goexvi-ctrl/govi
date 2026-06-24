@@ -125,7 +125,7 @@ func (m *vimode) finishCommand(e *Engine) {
 			e.scr.desiredEOL = true
 		}
 	} else {
-		e.scr.desiredCol = e.scr.displayColOf(e.scr.cursor.Line, e.scr.cursor.Col)
+		e.scr.desiredCol = e.scr.displayCursorColOf(e.scr.cursor.Line, e.scr.cursor.Col)
 		e.scr.desiredEOL = m.setEOL
 	}
 	m.preserveCol = false

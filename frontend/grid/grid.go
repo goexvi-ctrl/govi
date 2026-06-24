@@ -242,7 +242,7 @@ func (g *Grid) placeCursor(v engine.View, mapRows, statusRow, gutter, textW int)
 	for ln := top; ln < cur.Line; ln++ {
 		y += wrapRowsOf(v.Line(ln), textW)
 	}
-	dx := engine.DisplayColumn(v.Line(cur.Line), cur.Col)
+	dx := engine.CursorDisplayColumn(v.Line(cur.Line), cur.Col, v.Mode())
 	y += dx / textW
 	x := gutter + dx%textW
 

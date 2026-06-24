@@ -175,6 +175,25 @@ func DisplayColumn(dl DisplayLine, col int) int {
 	return out
 }
 
+// CursorDisplayColumn returns where the cursor should appear for logical rune
+// index col. In command mode the cursor sits on the last display cell of the
+// character (nvi vs_line.c: scno-1); in insert/replace it sits on the first
+// (scno-chlen).
+func CursorDisplayColumn(dl DisplayLine, col int, mode Mode) int {
+	start := DisplayColumn(dl, col)
+	if col < 0 || col >= len(dl.Widths) {
+		return start
+	}
+	w := int(dl.Widths[col])
+	if w < 1 {
+		w = 1
+	}
+	if mode == ModeInsert || mode == ModeReplace {
+		return start
+	}
+	return start + w - 1
+}
+
 func styleAt(spans []Span, i int) Style {
 	for _, s := range spans {
 		if i >= s.Start && i < s.End {

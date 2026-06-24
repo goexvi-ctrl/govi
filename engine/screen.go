@@ -212,6 +212,13 @@ func (s *screen) displayColOf(lno int64, col int) int {
 	return c
 }
 
+// displayCursorColOf returns the display column where the cursor should appear
+// for rune index col on line lno (see CursorDisplayColumn).
+func (s *screen) displayCursorColOf(lno int64, col int) int {
+	dl := makeDisplayLine(s.lineRunes(lno), s.opts.Int("tabstop"), s.opts.Bool("list"))
+	return CursorDisplayColumn(dl, col, s.mode)
+}
+
 // colAtDisplay returns the rune index whose cell span contains display column
 // dcol on line lno (clamped to the last rune when dcol is past the line end).
 func (s *screen) colAtDisplay(lno int64, dcol int) int {
