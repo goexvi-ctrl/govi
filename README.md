@@ -74,6 +74,14 @@ forwarding the working directory and startup environment. Set **`GOVI_APP`** if 
 app bundle is not in the default search path (next to the `govi` binary,
 `gui/build/Govi.app` in a checkout, or `/Applications/Govi.app`).
 
+**`govi -g` with no file** opens a *temporary* buffer (backed by a `vi.XXXXXX`
+file in the temp directory, like nvi), which is **deleted when its window/tab
+closes**. Because the temporary file is discarded, **`:wq`/`:x`/`ZZ`/`:q` warn
+("File is a temporary; exit will discard modifications") instead of quitting** —
+save your work with **`:w file`** (which adopts that name), or discard it with
+**`:q!`** / **`ZQ`**. (govi does not write the temporary file itself; that would
+only matter if you had copied its name for use from another process.)
+
 ---
 
 ## Modes
