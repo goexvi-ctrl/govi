@@ -9,7 +9,7 @@ import (
 
 // LaunchContext carries startup information from a command-line launcher when
 // the editor host does not inherit the shell's cwd or environment (e.g. macOS
-// Govi.app opened via the open(1) command).
+// GoVi.app opened via the open(1) command).
 type LaunchContext struct {
 	Cwd      string // invocation directory for ./.nexrc / ./.exrc
 	Silent   bool   // -s: skip all startup
@@ -26,7 +26,7 @@ func LaunchContextDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, "Library", "Application Support", "Govi"), nil
+	return filepath.Join(home, "Library", "Application Support", "GoVi"), nil
 }
 
 // ReadLaunchContext reads the launcher's startup context. Missing files yield a

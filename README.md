@@ -2,15 +2,15 @@
 
 # govi
 
-**Govi** is an Ex/Vi text editor — a modern Go reimplementation of Keith Bostic's **nvi** preserving
-learned muscle memory.  **Govi**'s development focus has been on **vi**.
+**GoVi** is an Ex/Vi text editor — a modern Go reimplementation of Keith Bostic's **nvi** preserving
+learned muscle memory.  **GoVi**'s development focus has been on **vi**.
 
 This repository builds to different **govi** programs:
 
 | Program | What it is |
 |---------|------------|
 | **`govi`** | Terminal editor (full-screen, like classic vi) |
-| **`Govi.app`** | Native macOS graphical editor; **`govi -g`** opens files in it from the shell |
+| **`GoVi.app`** | Native macOS graphical editor; **`govi -g`** opens files in it from the shell |
 
 Both use the same editor engine. If you know vi, you already know govi.
 
@@ -20,7 +20,7 @@ Both use the same editor engine. If you know vi, you already know govi.
 
 - **Go 1.26 or newer** to build either frontend.
 - A **Unix-like system** (Linux, macOS, *BSD) for the terminal editor.
-- For the macOS GUI (**Govi.app**): **macOS** with the **Swift toolchain**
+- For the macOS GUI (**GoVi.app**): **macOS** with the **Swift toolchain**
   (`swiftc`) from Xcode or the Command Line Tools.
 
 Build from a checkout of the govi repository.
@@ -31,7 +31,7 @@ Build from a checkout of the govi repository.
 
 ### Terminal
 
-**Govi** for the terminal only requires the Go toolchain:
+**GoVi** for the terminal only requires the Go toolchain:
 
 ```sh
 cd cmd/govi        # location of package main
@@ -52,17 +52,17 @@ save, **`:q`** to quit. **`:help`** points you at the built-in command lists.
 ### macOS GUI
 
 ```sh
-make              # builds govi and gui/build/Govi.app
-./govi -g file    # open in Govi.app (creates the file if missing)
+make              # builds govi and gui/build/GoVi.app
+./govi -g file    # open in GoVi.app (creates the file if missing)
 ```
 
-Or double-click **Govi.app**. Use it like vi: **`i`**, **Esc**, **`:w`**, **`:q`**, **`dd`**,
+Or double-click **GoVi.app**. Use it like vi: **`i`**, **Esc**, **`:w`**, **`:q`**, **`dd`**,
 **`/pattern`**, and the rest.
 
 Install to `~/bin`:
 
 ```sh
-make install      # installs ~/bin/govi and ~/bin/Govi.app
+make install      # installs ~/bin/govi and ~/bin/GoVi.app
 ```
 
 ---
@@ -75,16 +75,16 @@ govi [-g [-w]] [-r [file]] [-s] [file ...]
 
 | Flag | Meaning |
 |------|---------|
-| **`-g`** | Open the files in **Govi.app** (macOS) instead of the terminal |
+| **`-g`** | Open the files in **GoVi.app** (macOS) instead of the terminal |
 | **`-w`** | With **`-g`**, block until the tabs/windows for *these* files are closed (useful as an `EDITOR`); requires at least one file |
 | **`-r`** | List recoverable files (`govi -r`) or recover a named file (`govi -r file`) |
 | **`-s`** | Silent startup: do not read startup files or `EXINIT`/`NEXINIT` |
 | **`file ...`** | Files to edit. With multiple files, **`:n`** / **`:prev`** move through the argument list |
 
-With **`-g`**, `govi` hands the files to a running **Govi.app** (or launches it),
+With **`-g`**, `govi` hands the files to a running **GoVi.app** (or launches it),
 forwarding the working directory and startup environment. Set **`GOVI_APP`** if the
 app bundle is not in the default search path (next to the `govi` binary,
-`gui/build/Govi.app` in a checkout, or `/Applications/Govi.app`).
+`gui/build/GoVi.app` in a checkout, or `/Applications/GoVi.app`).
 
 **`govi -g` with no file** opens a *temporary* buffer (backed by a `vi.XXXXXX`
 file in the temp directory, like nvi), which is **deleted when its window/tab
@@ -133,7 +133,7 @@ These are the authoritative references; the summaries below match them.
 > the built-in **`:viusage`** and **`:exusage`** help. To just start editing,
 > follow [Quick start](#quick-start) above, then skip ahead to
 > [Options](#options-set), [Startup files](#startup-files), and
-> [Govi.app](#goviapp-macos-gui) — and come back to these tables as a reference.
+> [GoVi.app](#goviapp-macos-gui) — and come back to these tables as a reference.
 
 ### Movement
 
@@ -404,9 +404,9 @@ every option. Boolean options: **`:set option`** / **`:set nooption`**. Query:
 | **sections** | sect | NHSHH… | Section boundaries for **`[[` `]]`** |
 | **paragraphs** | para | IPLPPPQPP… | Paragraph boundaries for **`{` `}`** |
 
-### Govi.app display options
+### GoVi.app display options
 
-These options are stored per tab in the engine. In **Govi.app** they change the
+These options are stored per tab in the engine. In **GoVi.app** they change the
 text and background colors. In the terminal **`govi`** they are settable but do
 not change the display.
 
@@ -437,7 +437,7 @@ file to edit is opened, in this order:
 Startup files contain **ex** commands, not vi keystrokes. Unsafe startup files
 (group-writable or not owned by you) are rejected.
 
-**Govi.app** follows the same rules when a tab is created. Application **Settings**
+**GoVi.app** follows the same rules when a tab is created. Application **Settings**
 defaults for foreground/background are applied first; startup files and **`:set`**
 can override them per tab.
 
@@ -483,7 +483,7 @@ recovery data automatically after a short idle period.
 
 ---
 
-## Govi.app (macOS GUI)
+## GoVi.app (macOS GUI)
 
 ### Windows and tabs
 
@@ -550,7 +550,7 @@ transcript; **`:visual`** returns to the normal editor view.
 ## Building and testing
 
 ```sh
-make              # govi + Govi.app
+make              # govi + GoVi.app
 make test         # go test ./...
 make clean        # remove build artifacts
 ```
@@ -569,9 +569,9 @@ feature. Notable gaps:
 - **No split screens** — no **`^W`**, **`:bg`**, **`:fg`**, **`:resize`**
 - **UTF-8** text only
 - **No cscope** integration
-- **Suspend** (**`^Z`**, **`:suspend`**) — Unix terminal only; not in Govi.app
+- **Suspend** (**`^Z`**, **`:suspend`**) — Unix terminal only; not in GoVi.app
 - Many legacy options are **settable but inert** (see parity doc)
-- **`foreground`** / **`background`** colors — **Govi.app** only
+- **`foreground`** / **`background`** colors — **GoVi.app** only
 
 For day-to-day editing, the vi/ex command set above is fully usable in both
 frontends.

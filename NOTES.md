@@ -25,7 +25,7 @@ engine/            embeddable core — no terminal/GUI imports
   buffer/          LineStore: line-addressed text storage (in-memory + paged)
   ...              (undo, mark, register, vi, ex, regex, options, seq — see plan)
 frontend/tcell/    terminal frontend (renders View to cells)
-cmd/govi/          terminal entry point (govi; govi -g launches Govi.app)
+cmd/govi/          terminal entry point (govi; govi -g launches GoVi.app)
 internal/conformance/  oracle harness: drives C nvi + govi, diffs observable output
 ```
 

@@ -1,4 +1,4 @@
-# Govi.app — the editor engine embedded in a native macOS application
+# GoVi.app — the editor engine embedded in a native macOS application
 
 This is the **embeddability proof** for govi: a native macOS (AppKit) application
 with the govi editor engine running **in-process**. nvi is *embedded*, not
@@ -13,7 +13,7 @@ This is the foundation for editor features that go beyond a terminal can offer
 
 ```
   ┌──────────────────────────────────────────────┐
-  │  Govi.app  (Swift / AppKit)                    │
+  │  GoVi.app  (Swift / AppKit)                    │
   │                                                │
   │  GoviView : NSView                             │
   │    keyDown ─────────► GoviKeyRune/KeySpecial   │   C ABI
@@ -55,7 +55,7 @@ Requires a Go toolchain and the Xcode command-line tools (`swiftc`, `clang`):
 ./gui/build.sh
 ```
 
-This produces `gui/build/Govi.app`.
+This produces `gui/build/GoVi.app`.
 
 ## Run
 
@@ -63,25 +63,25 @@ Use the `govi` binary's GUI mode (`govi -g`):
 
 ```sh
 govi -g file1 file2 ...   # opens the files as tabs in one window
-govi -g                   # just launch / focus Govi.app
+govi -g                   # just launch / focus GoVi.app
 govi -g -w file           # block until file's tab/window is closed
 ```
 
 Multiple files passed together open as **tabs in a single window**. A file that
 is already open is focused rather than duplicated.
 
-`govi -g` launches Govi.app if needed, or hands the files to an **already-running**
+`govi -g` launches GoVi.app if needed, or hands the files to an **already-running**
 instance via the macOS open-documents event (no custom IPC), and brings it to
 the front — so it works like a normal command-line editor launcher. Re-opening a
-file that's already open just focuses its window. It finds Govi.app via
-`$GOVI_APP`, then next to the `govi` binary, then `gui/build/Govi.app` in a
-checkout, then `/Applications/Govi.app`.
+file that's already open just focuses its window. It finds GoVi.app via
+`$GOVI_APP`, then next to the `govi` binary, then `gui/build/GoVi.app` in a
+checkout, then `/Applications/GoVi.app`.
 
 Or run the app directly:
 
 ```sh
-open gui/build/Govi.app --args /path/to/file   # only on a fresh launch
-gui/build/Govi.app/Contents/MacOS/Govi /path/to/file
+open gui/build/GoVi.app --args /path/to/file   # only on a fresh launch
+gui/build/GoVi.app/Contents/MacOS/GoVi /path/to/file
 ```
 
 Use it like vi: `i` to insert, `Esc`, `:w`, `:q`, `dd`, `/pattern`, etc. All

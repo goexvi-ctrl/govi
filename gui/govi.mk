@@ -1,4 +1,4 @@
-# Dependency-aware build rules for the macOS Govi.app bundle.
+# Dependency-aware build rules for the macOS GoVi.app bundle.
 #
 # Included from the repository Makefile:
 #   include gui/govi.mk
@@ -13,10 +13,10 @@ GOVI_ROOT    := $(GOVI_GUI_DIR)/..
 GOVI_BUILD   := $(GOVI_GUI_DIR)/build
 GOVI_LIB     := $(GOVI_BUILD)/libgovi.a
 GOVI_LIB_HDR := $(GOVI_BUILD)/libgovi.h
-GOVI_BIN     := $(GOVI_BUILD)/Govi
-GOVI_APP     := $(GOVI_BUILD)/Govi.app
+GOVI_BIN     := $(GOVI_BUILD)/GoVi
+GOVI_APP     := $(GOVI_BUILD)/GoVi.app
 GOVI_PLIST   := $(GOVI_APP)/Contents/Info.plist
-GOVI_EXE     := $(GOVI_APP)/Contents/MacOS/Govi
+GOVI_EXE     := $(GOVI_APP)/Contents/MacOS/GoVi
 
 GOVI_SWIFT_SRC := $(wildcard $(GOVI_GUI_DIR)/macos/*.swift)
 GOVI_BRIDGE_GO := $(wildcard $(GOVI_GUI_DIR)/bridge/*.go)

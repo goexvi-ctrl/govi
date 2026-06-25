@@ -7,7 +7,7 @@ column always refers to that original nvi.
 govi ships two frontends over one shared engine, so each gets its own column:
 
 - **govi** — the terminal editor.
-- **Govi.app** — the native macOS GUI.
+- **GoVi.app** — the native macOS GUI.
 
 Editing behavior is identical between the two (same engine); the columns differ
 only for frontend-specific features such as job control, screen repaint, the
@@ -32,7 +32,7 @@ parity row can be checked against the source description quickly.
 
 ## Vi command-mode commands
 
-| Command | Description | nvi | govi | Govi.app | Notes |
+| Command | Description | nvi | govi | GoVi.app | Notes |
 |---|---|---|---|---|---|
 | `^A` | search forward for word under cursor | yes | ✅ | ✅ | |
 | `^B` `^F` | page up / down | yes | ✅ | ✅ | |
@@ -80,7 +80,7 @@ parity row can be checked against the source description quickly.
 
 ## Vi text-input-mode commands
 
-| Command | Description | nvi | govi | Govi.app | Notes |
+| Command | Description | nvi | govi | GoVi.app | Notes |
 |---|---|---|---|---|---|
 | `NUL` (`^@`) | replay previous input | yes | ✅ | ✅ | |
 | `^D` / `^T` | autoindent erase / shift to shiftwidth | yes | 🟡 | 🟡 | implemented as line shift left/right |
@@ -96,7 +96,7 @@ parity row can be checked against the source description quickly.
 
 ## Ex commands
 
-| Command | nvi | govi | Govi.app | Notes |
+| Command | nvi | govi | GoVi.app | Notes |
 |---|---|---|---|---|
 | `:[range]d[elete]` | yes | ✅✔ | ✅✔ | buffer + count |
 | `:[range]m[ove]` / `:[range]co`/`t` | yes | ✅✔ | ✅✔ | |
@@ -136,7 +136,7 @@ parity row can be checked against the source description quickly.
 | `:pre[serve]` `:rec[over]` | yes | ✅ | ✅ | crash recovery (govi format) |
 | `:ve[rsion]` | yes | ✅ | ✅ | git-derived build metadata (`govi-0.1`, date, hash) |
 | `:@`/`:*` (exec buffer) `:w>>` `:wn` etc. | yes | 🟡 | 🟡 | partial |
-| `:sh[ell]` | yes | ✅ | ❌ | terminal spawns an interactive shell (`tcell` suspend); not implemented in Govi.app; blocked when `secure` |
+| `:sh[ell]` | yes | ✅ | ❌ | terminal spawns an interactive shell (`tcell` suspend); not implemented in GoVi.app; blocked when `secure` |
 
 ## Options
 
@@ -144,7 +144,7 @@ govi carries the full nvi option table (74 options, matching the reference
 manual's Set Options section) — all are settable, queryable, and shown by
 `:set all`. The ones that drive behavior:
 
-| Option | nvi | govi | Govi.app | Notes |
+| Option | nvi | govi | GoVi.app | Notes |
 |---|---|---|---|---|
 | `autoindent` (ai) | yes | ✅✔ | ✅✔ | |
 | `ignorecase` (ic) | yes | ✅✔ | ✅✔ | search/substitute |
@@ -161,7 +161,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | `columns`/`lines` | yes | ✅ | ✅ | track terminal / window geometry |
 | `shell` | yes | ✅ | ✅ | used by `!` filter and `:shell` |
 | `exrc` | yes | ✅ | ✅ | read `./.nexrc`/`./.exrc` at startup (ownership-checked) |
-| `foreground`/`background` (fg/bg) | — | ⚙️ | ✅ | per-tab text colors in Govi.app; settable but inert in the terminal |
+| `foreground`/`background` (fg/bg) | — | ⚙️ | ✅ | per-tab text colors in GoVi.app; settable but inert in the terminal |
 | `lisp`, `redraw`, `slowopen`/`slow`, `optimize`/`opt` | yes | — | — | non-objectives (see below); settable but never drive behavior |
 | `autowrite` (aw) | yes | ❌ | ❌ | auto-write on file/tag/navigation commands |
 | `backup` | yes | ❌ | ❌ | backup file path and versioning |
@@ -178,7 +178,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 
 ## Subsystems
 
-| Subsystem | nvi | govi | Govi.app | Notes |
+| Subsystem | nvi | govi | GoVi.app | Notes |
 |---|---|---|---|---|
 | Large-file editing | recno DB paging | ✅ | ✅ | paged piece-table line store; multi-GB |
 | Undo / redo | yes | ✅✔ | ✅✔ | multi-level; nvi directional `u`/`.` |
@@ -200,7 +200,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | Startup files (`/etc/vi.exrc`, `~/.nexrc`/`.exrc`, `EXINIT`/`NEXINIT`) | yes | ✅ | ✅ | read at startup unless `-s`; ownership/permission checked; honors `exrc`; `:source` |
 | Signals (SIGHUP/SIGTERM/…) | yes | ✅ | — | terminal: trap, restore cooked tty, print signal name; `^\` vi→ex; GUI uses the AppKit lifecycle |
 | Split screens / windows (`^W` `:bg`/`:fg`/`:resize`) | yes | ❌ | ❌ | |
-| Job control (`^Z` `:suspend`/`:stop`) | yes | ✅ | — | terminal frontend (`tcell`); not Govi.app |
+| Job control (`^Z` `:suspend`/`:stop`) | yes | ✅ | — | terminal frontend (`tcell`); not GoVi.app |
 | Cscope integration | yes | — | — | out of scope |
 | Message catalogs (i18n) | yes | — | — | English only; out of scope |
 | File encodings | iconv | 🟡 | 🟡 | UTF-8 only |
@@ -208,9 +208,9 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | Ex addressing | yes | ✅✔ | ✅✔ | `.`, `$`, `N`, `'mark`, `/pat/`, `?pat?`, offsets, `%` range |
 
 
-## Govi.app additions
+## GoVi.app additions
 
-Govi.app embeds the same engine in a native macOS (AppKit) app, so it adds GUI
+GoVi.app embeds the same engine in a native macOS (AppKit) app, so it adds GUI
 affordances the terminal frontend has no place for. These are extras on top of
 the shared editor, not nvi-parity items:
 
@@ -227,7 +227,7 @@ the shared editor, not nvi-parity items:
 | `govi -g` launcher | open files in a running app (tabs/windows), `-w` to block as `$EDITOR`; no file opens an nvi-style temp buffer |
 | Wheel / trackpad scrolling | viewport scrolls like a normal windowed app |
 
-Govi.app is macOS-only: nvi's **Motif** and **GTK** GUI backends are **not
+GoVi.app is macOS-only: nvi's **Motif** and **GTK** GUI backends are **not
 implemented** (and are not planned). nvi's separate-process GUI **IPC** protocol
 is a non-objective (below) — govi embeds the engine in-process instead.
 
@@ -242,8 +242,8 @@ never drive behavior.
 |---|---|
 | Tcl/Tk scripting (`engine/10`) | scripting embedding is out of scope |
 | Perl scripting | scripting embedding is out of scope |
-| nvi GUI IPC protocol | nvi drives a separate GUI process over an IPC channel; govi embeds the engine in-process (`gui/bridge`) for Govi.app instead |
-| Motif / GTK GUI backends | govi's GUI is macOS-only (Govi.app); see "Govi.app additions" |
+| nvi GUI IPC protocol | nvi drives a separate GUI process over an IPC channel; govi embeds the engine in-process (`gui/bridge`) for GoVi.app instead |
+| Motif / GTK GUI backends | govi's GUI is macOS-only (GoVi.app); see "GoVi.app additions" |
 | `lisp` mode | a no-op in nvi itself; nothing to match |
 | `redraw` option | terminal-optimization hint; govi repaints every input |
 | `slowopen` / `slow` option | slow-terminal drawing mode; irrelevant to govi's renderer |
@@ -266,4 +266,4 @@ never drive behavior.
 
 *Rows marked ✔ are pinned by `internal/conformance` tests that diff govi's engine
 against Keith Bostic's nvi binary. Both frontends share that engine, so the mark
-applies to govi and Govi.app alike.*
+applies to govi and GoVi.app alike.*

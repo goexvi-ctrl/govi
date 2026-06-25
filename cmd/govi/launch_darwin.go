@@ -12,9 +12,9 @@ import (
 	"syscall"
 )
 
-// runGUI implements `govi -g`: open the given files in Govi.app, behaving like
+// runGUI implements `govi -g`: open the given files in GoVi.app, behaving like
 // a command-line launcher. It mirrors nvi startup resolution and writes a
-// launch context that Govi.app reads, because a GUI app started via open(1)
+// launch context that GoVi.app reads, because a GUI app started via open(1)
 // does not inherit the shell's cwd or EXINIT/NEXINIT. Returns a process exit
 // code.
 //
@@ -89,7 +89,7 @@ func runGUI(silent, wait bool, files []string) int {
 		return 1
 	}
 
-	// Record absolute paths for a cold launch: Govi.app reads launch-files when
+	// Record absolute paths for a cold launch: GoVi.app reads launch-files when
 	// macOS has not yet delivered the open-documents Apple Event (or when the
 	// parent process is not GUI-attached). The app deletes this after consuming
 	// it; a running instance gets paths via the normal open event instead.
@@ -123,7 +123,7 @@ func runGUI(silent, wait bool, files []string) int {
 	return 0
 }
 
-// findGoviApp locates Govi.app via, in order: $GOVI_APP, alongside the running
+// findGoviApp locates GoVi.app via, in order: $GOVI_APP, alongside the running
 // binary (installed layout), the dev build dirs, then /Applications.
 func findGoviApp() (string, error) {
 	if app := os.Getenv("GOVI_APP"); app != "" {
@@ -140,16 +140,16 @@ func findGoviApp() (string, error) {
 	}
 	dir := filepath.Dir(exe)
 	for _, cand := range []string{
-		filepath.Join(dir, "Govi.app"),                 // installed: ~/bin/Govi.app
-		filepath.Join(dir, "gui", "build", "Govi.app"), // dev: repo-root binary
-		filepath.Join(dir, "build", "Govi.app"),
-		"/Applications/Govi.app",
+		filepath.Join(dir, "GoVi.app"),                 // installed: ~/bin/GoVi.app
+		filepath.Join(dir, "gui", "build", "GoVi.app"), // dev: repo-root binary
+		filepath.Join(dir, "build", "GoVi.app"),
+		"/Applications/GoVi.app",
 	} {
 		if isDir(cand) {
 			return cand, nil
 		}
 	}
-	return "", fmt.Errorf("cannot find Govi.app; set GOVI_APP to its path")
+	return "", fmt.Errorf("cannot find GoVi.app; set GOVI_APP to its path")
 }
 
 func isDir(p string) bool {
@@ -157,21 +157,21 @@ func isDir(p string) bool {
 	return err == nil && fi.IsDir()
 }
 
-// goviSupportDir returns (creating if needed) the per-user directory Govi.app
+// goviSupportDir returns (creating if needed) the per-user directory GoVi.app
 // reads its launch context from.
 func goviSupportDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(home, "Library", "Application Support", "Govi")
+	dir := filepath.Join(home, "Library", "Application Support", "GoVi")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
 	return dir, nil
 }
 
-// writeLaunchContext records startup information for Govi.app: cwd, silent flag,
+// writeLaunchContext records startup information for GoVi.app: cwd, silent flag,
 // the resolved system/home exrc paths, and (when set) the EXINIT/NEXINIT text.
 func writeLaunchContext(dir string, silent bool) error {
 	// Reset the env-init capture files; rewritten below when set.
@@ -266,7 +266,7 @@ func writeLines(path string, lines []string) error {
 }
 
 // makeWaitFifo creates a FIFO for -w and records its path in launch-wait for
-// Govi.app to signal when the opened tabs/windows have closed.
+// GoVi.app to signal when the opened tabs/windows have closed.
 func makeWaitFifo(supportDir string) (string, error) {
 	f, err := os.CreateTemp("", "govwait.*")
 	if err != nil {
@@ -285,7 +285,7 @@ func makeWaitFifo(supportDir string) (string, error) {
 	return path, nil
 }
 
-// waitForFifo blocks until Govi.app opens the write end and signals completion.
+// waitForFifo blocks until GoVi.app opens the write end and signals completion.
 func waitForFifo(path string) {
 	f, err := os.Open(path)
 	if err != nil {

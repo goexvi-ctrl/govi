@@ -42,7 +42,7 @@ func TestLoadStartupLaunchCwd(t *testing.T) {
 func TestReadLaunchContext(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
-	ctxDir := filepath.Join(dir, "Library", "Application Support", "Govi")
+	ctxDir := filepath.Join(dir, "Library", "Application Support", "GoVi")
 	if err := os.MkdirAll(ctxDir, 0o700); err != nil {
 		t.Fatal(err)
 	}

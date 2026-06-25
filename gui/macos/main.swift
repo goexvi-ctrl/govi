@@ -1,7 +1,7 @@
 import Cocoa
 import Darwin
 
-// Govi: a native macOS application with the govi (Go nvi) editor engine embedded
+// GoVi: a native macOS application with the govi (Go nvi) editor engine embedded
 // in-process. The engine is linked in as a C archive (libgovi); this app drives
 // it and renders its screen in a custom NSView. nvi is *embedded*, not exec'd.
 //
@@ -283,7 +283,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
 enum LaunchPath {
     private static var supportDir: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Govi", isDirectory: true)
+            .appendingPathComponent("GoVi", isDirectory: true)
     }
 
     static var launchFilesURL: URL {
@@ -434,7 +434,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var coldLaunchComplete = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Files passed by direct exec (Govi.app/Contents/MacOS/Govi file ...).
+        // Files passed by direct exec (GoVi.app/Contents/MacOS/GoVi file ...).
         let cwd = FileManager.default.currentDirectoryPath
         let paths = CommandLine.arguments.dropFirst().map { arg -> String in
             LaunchPath.normalize((arg as NSString).isAbsolutePath ? arg : "\(cwd)/\(arg)")
@@ -482,7 +482,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // application(_:open:) is the open-documents Apple Event. macOS routes
-    // `open -a Govi.app file ...` (and Finder double-clicks / drags) here --
+    // `open -a GoVi.app file ...` (and Finder double-clicks / drags) here --
     // delivering to the *running* instance when one exists, which is what makes
     // the command-line `govi` tool reuse a running app.
     func application(_ application: NSApplication, open urls: [URL]) {

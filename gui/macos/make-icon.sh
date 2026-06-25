@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build AppIcon.icns from a square source image (e.g. icon.jpg) for Govi.app.
+# Build AppIcon.icns from a square source image (e.g. icon.jpg) for GoVi.app.
 set -eu
 
 src=${1:?usage: make-icon.sh source-image output.icns}

@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// SetCwd sets this editor instance's working directory (per tab in Govi.app).
+// SetCwd sets this editor instance's working directory (per tab in GoVi.app).
 func (e *Engine) SetCwd(dir string) {
 	if dir != "" {
 		e.cwd = filepath.Clean(dir)

@@ -2,7 +2,7 @@
 // embeddable engine to the tcell terminal frontend. The engine carries no
 // terminal dependency; this command is just one host for it.
 //
-// With -g, govi instead opens the named files in the Govi.app macOS GUI (see
+// With -g, govi instead opens the named files in the GoVi.app macOS GUI (see
 // launch_darwin.go) and does not start the terminal editor.
 package main
 
@@ -19,7 +19,7 @@ import (
 func main() {
 	recover := flag.Bool("r", false, "recover the named file from a recovery file")
 	silent := flag.Bool("s", false, "do not read startup files or EXINIT/NEXINIT")
-	gui := flag.Bool("g", false, "open the files in the Govi.app GUI instead of the terminal")
+	gui := flag.Bool("g", false, "open the files in the GoVi.app GUI instead of the terminal")
 	wait := flag.Bool("w", false, "with -g, block until the tabs/windows for these files are closed")
 	flag.Parse()
 
