@@ -300,6 +300,19 @@ enum LaunchPath {
         try? FileManager.default.removeItem(at: launchFilesURL)
     }
 
+    static var launchNewURL: URL {
+        supportDir.appendingPathComponent("launch-new", isDirectory: false)
+    }
+
+    // consumeLaunchNew reports whether `govi -g` (no files) asked for a new empty
+    // editor, removing the sentinel so it fires once.
+    static func consumeLaunchNew() -> Bool {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: launchNewURL.path) else { return false }
+        try? fm.removeItem(at: launchNewURL)
+        return true
+    }
+
     static func readLaunchCwd() -> String? {
         guard let text = try? String(contentsOf: launchContextURL, encoding: .utf8) else { return nil }
         for line in text.split(whereSeparator: \.isNewline) {
@@ -430,10 +443,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         pendingOpenPaths.removeAll()
         LaunchPath.clearLaunchFiles()
+        _ = LaunchPath.consumeLaunchNew() // cold launch already opens an empty window below
         coldLaunchComplete = true
         if !EditorWindow.anyOpen {
             EditorWindow.open(path: "")
         }
+    }
+
+    // applicationShouldHandleReopen fires when `open`-ing an already-running app
+    // (and on Dock clicks). `govi -g` with no files leaves a sentinel so it opens
+    // a fresh empty editor even when windows are already open; a plain reopen with
+    // no windows opens one too.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if LaunchPath.consumeLaunchNew() || !hasVisibleWindows {
+            EditorWindow.open(path: "")
+        }
+        return true
     }
 
     // application(_:open:) is the open-documents Apple Event. macOS routes

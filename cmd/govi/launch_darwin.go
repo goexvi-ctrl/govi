@@ -41,8 +41,11 @@ func runGUI(silent, wait bool, files []string) int {
 		return 1
 	}
 
-	// No files: just launch or focus the app.
+	// No files: launch the app, or ask an already-running instance to open a
+	// fresh empty editor. open(1) only activates a running app, so leave a
+	// sentinel it consumes on the reopen event.
 	if len(files) == 0 {
+		_ = os.WriteFile(filepath.Join(supportDir, "launch-new"), nil, 0o644)
 		if err := exec.Command("open", app).Run(); err != nil {
 			fmt.Fprintln(os.Stderr, "govi:", err)
 			return 1
