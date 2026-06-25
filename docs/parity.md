@@ -136,7 +136,7 @@ parity row can be checked against the source description quickly.
 | `:pre[serve]` `:rec[over]` | yes | ✅ | ✅ | crash recovery (govi format) |
 | `:ve[rsion]` | yes | ✅ | ✅ | git-derived build metadata (`govi-0.1`, date, hash) |
 | `:@`/`:*` (exec buffer) `:w>>` `:wn` etc. | yes | 🟡 | 🟡 | partial |
-| `:sh[ell]` | yes | 🟡 | 🟡 | terminal: `tcell` suspend to a shell; Govi.app: opens Terminal; blocked when `secure` |
+| `:sh[ell]` | yes | ✅ | ❌ | terminal spawns an interactive shell (`tcell` suspend); not implemented in Govi.app; blocked when `secure` |
 
 ## Options
 
