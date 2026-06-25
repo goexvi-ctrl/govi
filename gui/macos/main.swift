@@ -75,7 +75,9 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         guard !normalized.isEmpty else { return }
         WaitCoordinator.shared.registerWait(paths: normalized)
 
-        switch Settings.openFilesIn {
+        // With tabbing off, force separate windows regardless of the popup.
+        let mode: Settings.OpenFilesIn = Settings.useTabs ? Settings.openFilesIn : .newWindow
+        switch mode {
         case .newWindow:
             for p in normalized {
                 if let w = existing(path: p) {
@@ -142,10 +144,17 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         // together and dragged between windows; .automatic respects the user's
         // "prefer tabs" setting for Cmd-N while still allowing explicit tabs.
         window.tabbingIdentifier = "govi"
-        window.tabbingMode = .automatic
+        // .automatic respects the system "prefer tabs" setting; .disallowed gives
+        // standalone windows with no tab bar (Settings: "Use window tabs" off).
+        window.tabbingMode = Settings.useTabs ? .automatic : .disallowed
     }
 
     private func showStandalone() {
+        // Start cascading from the top-left of the main screen's visible area
+        // (below the menu bar), not the bottom-left corner of the display.
+        if EditorWindow.cascadePoint == .zero, let vf = NSScreen.main?.visibleFrame {
+            EditorWindow.cascadePoint = NSPoint(x: vf.minX + 20, y: vf.maxY - 20)
+        }
         EditorWindow.cascadePoint = window.cascadeTopLeft(from: EditorWindow.cascadePoint)
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(view)
@@ -173,6 +182,14 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         f.origin.y -= deltaH // keep the top edge fixed as the window grows down
         f.size.width += deltaW
         f.size.height += deltaH
+        // Growing downward can push the window off the bottom of the screen; keep
+        // it within the visible frame.
+        if let vf = (window.screen ?? NSScreen.main)?.visibleFrame {
+            if f.maxY > vf.maxY { f.origin.y = vf.maxY - f.size.height }
+            if f.minY < vf.minY { f.origin.y = vf.minY }
+            if f.maxX > vf.maxX { f.origin.x = vf.maxX - f.size.width }
+            if f.minX < vf.minX { f.origin.x = vf.minX }
+        }
         window.setFrame(f, display: true)
     }
 
@@ -459,6 +476,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             EditorWindow.open(path: "")
         }
         return true
+    }
+
+    // Reopen isn't always delivered for `open`-ing a running app, but activation
+    // is. consumeLaunchNew is atomic, so whichever fires first opens exactly one
+    // new editor for `govi -g` (no files); the other becomes a no-op.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        if LaunchPath.consumeLaunchNew() {
+            EditorWindow.open(path: "")
+        }
     }
 
     // application(_:open:) is the open-documents Apple Event. macOS routes

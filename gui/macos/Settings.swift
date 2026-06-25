@@ -62,6 +62,22 @@ enum Settings {
         }
     }
 
+    private static let useTabsKey = "useTabs"
+
+    // useTabs controls macOS window tabbing. When off, every editor is a
+    // standalone window and no tab bar is shown (even with "prefer tabs" on).
+    static var useTabs: Bool {
+        get {
+            let d = UserDefaults.standard
+            guard d.object(forKey: useTabsKey) != nil else { return true }
+            return d.bool(forKey: useTabsKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: useTabsKey)
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
+
     private static let defaultRowsKey = "defaultTextRows"
     private static let defaultColsKey = "defaultColumns"
     private static let showDimensionsKey = "showDimensionsInTitle"
@@ -245,6 +261,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
     private let fontSizeField = NSTextField()
     private let fontSizeStepper = NSStepper()
     private let openFilesPopup = NSPopUpButton()
+    private let useTabsCheckbox = NSButton(checkboxWithTitle: "Use window tabs (show the tab bar)", target: nil, action: nil)
     private let warnCloseCheckbox = NSButton(checkboxWithTitle: "Warn before closing unsaved files", target: nil, action: nil)
     private let showDimensionsCheckbox = NSButton(checkboxWithTitle: "Show rows×columns in title bar (not tabs)", target: nil, action: nil)
     private let fgColorField = NSTextField()
@@ -305,6 +322,9 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         openRow.alignment = .centerY
         openRow.spacing = 8
 
+        useTabsCheckbox.translatesAutoresizingMaskIntoConstraints = false
+        useTabsCheckbox.target = self
+        useTabsCheckbox.action = #selector(useTabsChanged)
         warnCloseCheckbox.translatesAutoresizingMaskIntoConstraints = false
         warnCloseCheckbox.target = self
         warnCloseCheckbox.action = #selector(warnCloseChanged)
@@ -319,7 +339,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
 
         let stack = NSStackView(views: [
             paddingRow, rowsRow, colsRow, fontRow, fontSizeRow, fgRow, bgRow, openRow,
-            showDimensionsCheckbox, warnCloseCheckbox,
+            useTabsCheckbox, showDimensionsCheckbox, warnCloseCheckbox,
         ])
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.orientation = .vertical
@@ -392,6 +412,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
             fontPopup.selectItem(at: idx)
         }
         openFilesPopup.selectItem(at: Settings.openFilesIn == .tab ? 1 : 0)
+        useTabsCheckbox.state = Settings.useTabs ? .on : .off
         warnCloseCheckbox.state = Settings.warnOnUnsavedClose ? .on : .off
         showDimensionsCheckbox.state = Settings.showDimensionsInTitle ? .on : .off
         fgColorField.stringValue = Settings.defaultForegroundColorSpec
@@ -453,6 +474,10 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
 
     @objc private func openFilesChanged() {
         Settings.openFilesIn = openFilesPopup.indexOfSelectedItem == 1 ? .tab : .newWindow
+    }
+
+    @objc private func useTabsChanged() {
+        Settings.useTabs = useTabsCheckbox.state == .on
     }
 
     @objc private func warnCloseChanged() {
