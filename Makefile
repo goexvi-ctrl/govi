@@ -30,4 +30,4 @@ $(IDIR)/Govi.app: gui/build/Govi.app $(GOVI_ICNS)
 	ditto gui/build/Govi.app $@
 
 clean:
-	rm -rf gui/build/Govi.app govi
+	rm -rf govi gui/build cmd/govi/govi
