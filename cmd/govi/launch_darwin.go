@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // runGUI implements `govi -g`: open the given files in Govi.app, behaving like
@@ -41,12 +42,23 @@ func runGUI(silent, wait bool, files []string) int {
 		return 1
 	}
 
-	// No files: launch the app, or ask an already-running instance to open a
-	// fresh empty editor. open(1) only activates a running app, so leave a
-	// sentinel it consumes on the reopen event.
+	// No files: ask the app (even one already running) for a fresh empty editor
+	// by opening a unique sentinel file under the support "new" dir. `open -a`
+	// routes it through the open-documents event, which a running app reliably
+	// receives (unlike a plain activation); the app recognizes the sentinel,
+	// opens an empty buffer, and deletes it. The unique name keeps macOS from
+	// skipping it as an already-open path.
 	if len(files) == 0 {
-		_ = os.WriteFile(filepath.Join(supportDir, "launch-new"), nil, 0o644)
-		if err := exec.Command("open", app).Run(); err != nil {
+		newDir := filepath.Join(supportDir, "new")
+		if err := os.MkdirAll(newDir, 0o755); err != nil {
+			fmt.Fprintln(os.Stderr, "govi:", err)
+			return 1
+		}
+		sentinel := filepath.Join(newDir, fmt.Sprintf("%d-%d", os.Getpid(), time.Now().UnixNano()))
+		if f, err := os.Create(sentinel); err == nil {
+			f.Close()
+		}
+		if err := exec.Command("open", "-a", app, sentinel).Run(); err != nil {
 			fmt.Fprintln(os.Stderr, "govi:", err)
 			return 1
 		}

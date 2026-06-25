@@ -71,7 +71,20 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     // when none exists). In new-window mode, each file gets its own window.
     // Already-open files are focused in place rather than duplicated.
     static func openPaths(_ paths: [String]) {
-        let normalized = paths.map { LaunchPath.normalize($0) }
+        // Split out `govi -g` (no files) sentinels: each opens a fresh empty
+        // editor (macOS tabbing decides window vs tab per the Use-tabs setting).
+        var normalized: [String] = []
+        var newEditors = 0
+        for p in paths {
+            let n = LaunchPath.normalize(p)
+            if LaunchPath.isNewEditorSentinel(n) {
+                LaunchPath.removeSentinel(n)
+                newEditors += 1
+            } else {
+                normalized.append(n)
+            }
+        }
+        for _ in 0..<newEditors { _ = open(path: "") }
         guard !normalized.isEmpty else { return }
         WaitCoordinator.shared.registerWait(paths: normalized)
 
@@ -317,17 +330,20 @@ enum LaunchPath {
         try? FileManager.default.removeItem(at: launchFilesURL)
     }
 
-    static var launchNewURL: URL {
-        supportDir.appendingPathComponent("launch-new", isDirectory: false)
+    static var newDirURL: URL {
+        supportDir.appendingPathComponent("new", isDirectory: true)
     }
 
-    // consumeLaunchNew reports whether `govi -g` (no files) asked for a new empty
-    // editor, removing the sentinel so it fires once.
-    static func consumeLaunchNew() -> Bool {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: launchNewURL.path) else { return false }
-        try? fm.removeItem(at: launchNewURL)
-        return true
+    // isNewEditorSentinel reports whether path is one of `govi -g`'s "open a new
+    // empty editor" marker files: a unique file the launcher drops in the support
+    // "new" dir and opens, so the request rides the reliable open-documents event.
+    static func isNewEditorSentinel(_ path: String) -> Bool {
+        let parent = URL(fileURLWithPath: (path as NSString).deletingLastPathComponent)
+        return parent.standardizedFileURL.path == newDirURL.standardizedFileURL.path
+    }
+
+    static func removeSentinel(_ path: String) {
+        try? FileManager.default.removeItem(atPath: path)
     }
 
     static func readLaunchCwd() -> String? {
@@ -460,7 +476,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         pendingOpenPaths.removeAll()
         LaunchPath.clearLaunchFiles()
-        _ = LaunchPath.consumeLaunchNew() // cold launch already opens an empty window below
         coldLaunchComplete = true
         if !EditorWindow.anyOpen {
             EditorWindow.open(path: "")
@@ -472,19 +487,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // a fresh empty editor even when windows are already open; a plain reopen with
     // no windows opens one too.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        if LaunchPath.consumeLaunchNew() || !hasVisibleWindows {
+        if !hasVisibleWindows {
             EditorWindow.open(path: "")
         }
         return true
-    }
-
-    // Reopen isn't always delivered for `open`-ing a running app, but activation
-    // is. consumeLaunchNew is atomic, so whichever fires first opens exactly one
-    // new editor for `govi -g` (no files); the other becomes a no-op.
-    func applicationDidBecomeActive(_ notification: Notification) {
-        if LaunchPath.consumeLaunchNew() {
-            EditorWindow.open(path: "")
-        }
     }
 
     // application(_:open:) is the open-documents Apple Event. macOS routes
