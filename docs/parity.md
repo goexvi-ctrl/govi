@@ -201,13 +201,35 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | Signals (SIGHUP/SIGTERM/…) | yes | ✅ | — | terminal: trap, restore cooked tty, print signal name; `^\` vi→ex; GUI uses the AppKit lifecycle |
 | Split screens / windows (`^W` `:bg`/`:fg`/`:resize`) | yes | ❌ | ❌ | |
 | Job control (`^Z` `:suspend`/`:stop`) | yes | ✅ | — | terminal frontend (`tcell`); not Govi.app |
-| GUI backends (motif/gtk/ipc) | yes | — | 🟡 | Govi.app is a native macOS AppKit app: multi-window/tabs, mouse selection, spell check, per-tab colors; nvi's motif/gtk/ipc out of scope |
 | Cscope integration | yes | — | — | out of scope |
 | Message catalogs (i18n) | yes | — | — | English only; out of scope |
 | File encodings | iconv | 🟡 | 🟡 | UTF-8 only |
 | Perl / Tcl scripting | yes | — | — | non-objective (see below) |
 | Ex addressing | yes | ✅✔ | ✅✔ | `.`, `$`, `N`, `'mark`, `/pat/`, `?pat?`, offsets, `%` range |
 
+
+## Govi.app additions
+
+Govi.app embeds the same engine in a native macOS (AppKit) app, so it adds GUI
+affordances the terminal frontend has no place for. These are extras on top of
+the shared editor, not nvi-parity items:
+
+| Feature | Notes |
+|---|---|
+| Native app embedding | engine runs in-process behind a C archive (`gui/bridge`); no terminal, no exec of `govi` |
+| Multiple windows / native tabs | Cmd-N, Cmd-T, drag/merge tabs; `Use window tabs` setting |
+| Mouse + system clipboard | click to position, drag-select, double/triple-click word/line, Cmd-C/X/V, Cmd-A |
+| Spell checking | NSSpellChecker underline, suggestions, Ignore/Learn, Look Up |
+| International input | Option/dead keys and IME composition; control keys stay vi commands |
+| Per-tab colors | `:set foreground=`/`background=` and Settings defaults |
+| Settings window (Cmd-,) | padding, default rows/cols, font + size, colors, open-in tab/window, tabs on/off, unsaved-close warning, title-bar dimensions |
+| Font size shortcuts | Cmd-= / Cmd-- adjust the font; the window resizes to keep its rows × cols |
+| `govi -g` launcher | open files in a running app (tabs/windows), `-w` to block as `$EDITOR`; no file opens an nvi-style temp buffer |
+| Wheel / trackpad scrolling | viewport scrolls like a normal windowed app |
+
+Govi.app is macOS-only: nvi's **Motif** and **GTK** GUI backends are **not
+implemented** (and are not planned). nvi's separate-process GUI **IPC** protocol
+is a non-objective (below) — govi embeds the engine in-process instead.
 
 ## Non-objectives (explicitly out of scope)
 
@@ -220,6 +242,8 @@ never drive behavior.
 |---|---|
 | Tcl/Tk scripting (`engine/10`) | scripting embedding is out of scope |
 | Perl scripting | scripting embedding is out of scope |
+| nvi GUI IPC protocol | nvi drives a separate GUI process over an IPC channel; govi embeds the engine in-process (`gui/bridge`) for Govi.app instead |
+| Motif / GTK GUI backends | govi's GUI is macOS-only (Govi.app); see "Govi.app additions" |
 | `lisp` mode | a no-op in nvi itself; nothing to match |
 | `redraw` option | terminal-optimization hint; govi repaints every input |
 | `slowopen` / `slow` option | slow-terminal drawing mode; irrelevant to govi's renderer |
