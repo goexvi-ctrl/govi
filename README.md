@@ -1,9 +1,11 @@
+<img src="icon.png" alt="GoVi Icon" width="128">
+
 # govi
 
-**govi** is a vi/ex text editor — a Go reimplementation of BSD **nvi** with the same
-modes, commands, and editing semantics you already know from `vi`, `nex`, or `nvi`.
+**Govi** is an Ex/Vi text editor — a modern Go reimplementation of Keith Bostic's **nvi** preserving
+learned muscle memory.  **Govi**'s development focus has been on **vi**.
 
-It ships in two forms:
+This repository builds to different **govi** programs:
 
 | Program | What it is |
 |---------|------------|
@@ -28,6 +30,16 @@ Build from a checkout of the govi repository.
 ## Quick start
 
 ### Terminal
+
+**Govi** for the terminal only requires the Go toolchain:
+
+```sh
+cd cmd/govi        # location of package main
+go build           # build govi
+./govi file.txt    # edit a file
+```
+
+It can also be built from the top level directory with make:
 
 ```sh
 make govi          # build ./govi
