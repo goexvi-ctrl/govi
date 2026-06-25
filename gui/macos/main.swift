@@ -18,6 +18,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     let window: NSWindow
     let view: GoviView
     var path: String // the file this window is editing ("" = untitled)
+    private let tempFileToDelete: String? // nvi-style vi.XXXXXX temp, removed on close
 
     // anyOpen reports whether any editor window exists.
     static var anyOpen: Bool { !windows.isEmpty }
@@ -71,20 +72,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     // when none exists). In new-window mode, each file gets its own window.
     // Already-open files are focused in place rather than duplicated.
     static func openPaths(_ paths: [String]) {
-        // Split out `govi -g` (no files) sentinels: each opens a fresh empty
-        // editor (macOS tabbing decides window vs tab per the Use-tabs setting).
-        var normalized: [String] = []
-        var newEditors = 0
-        for p in paths {
-            let n = LaunchPath.normalize(p)
-            if LaunchPath.isNewEditorSentinel(n) {
-                LaunchPath.removeSentinel(n)
-                newEditors += 1
-            } else {
-                normalized.append(n)
-            }
-        }
-        for _ in 0..<newEditors { _ = open(path: "") }
+        let normalized = paths.map { LaunchPath.normalize($0) }
         guard !normalized.isEmpty else { return }
         WaitCoordinator.shared.registerWait(paths: normalized)
 
@@ -140,6 +128,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
 
     private init(handle: Int64, path: String) {
         self.path = LaunchPath.normalize(path)
+        self.tempFileToDelete = LaunchPath.isGoviTempFile(self.path) ? self.path : nil
         let size = GoviView.contentSize(
             textRows: Settings.defaultTextRows, cols: Settings.defaultColumns)
         let frame = NSRect(x: 0, y: 0, width: size.width, height: size.height)
@@ -220,6 +209,9 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         GoviClose(view.handle)
         EditorWindow.windows.remove(self)
         WaitCoordinator.shared.editorClosed(path: closedPath)
+        if let tmp = tempFileToDelete {
+            try? FileManager.default.removeItem(atPath: tmp)
+        }
     }
 
     // confirmClose returns true when the window/tab may close. When
@@ -330,17 +322,13 @@ enum LaunchPath {
         try? FileManager.default.removeItem(at: launchFilesURL)
     }
 
-    // isNewEditorSentinel reports whether path is one of `govi -g`'s "open a new
-    // empty editor" marker files: a uniquely-named temp file (govi-new-*) the
-    // launcher opens so the request rides the reliable open-documents event. It
-    // lives in the temp dir because LaunchServices rejects opening files under
-    // ~/Library, so it is recognized by name, not location.
-    static func isNewEditorSentinel(_ path: String) -> Bool {
-        (path as NSString).lastPathComponent.hasPrefix("govi-new-")
-    }
-
-    static func removeSentinel(_ path: String) {
-        try? FileManager.default.removeItem(atPath: path)
+    // isGoviTempFile reports whether path is a temp file `govi -g` (no files)
+    // created for an empty editor (nvi-style vi.XXXXXX in the temp dir). Such a
+    // file is deleted when its window/tab closes.
+    static func isGoviTempFile(_ path: String) -> Bool {
+        guard (path as NSString).lastPathComponent.hasPrefix("vi.") else { return false }
+        let parent = URL(fileURLWithPath: (path as NSString).deletingLastPathComponent).standardizedFileURL.path
+        return parent == URL(fileURLWithPath: NSTemporaryDirectory()).standardizedFileURL.path
     }
 
     static func readLaunchCwd() -> String? {

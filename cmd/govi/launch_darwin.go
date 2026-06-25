@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 )
 
 // runGUI implements `govi -g`: open the given files in Govi.app, behaving like
@@ -49,15 +48,18 @@ func runGUI(silent, wait bool, files []string) int {
 	// opens an empty buffer, and deletes it. The unique name keeps macOS from
 	// skipping it as an already-open path.
 	if len(files) == 0 {
-		// The sentinel must live where LaunchServices will open a document:
-		// ~/Library is rejected (error -5000), so use the temp dir. The app
-		// recognizes the "govi-new-" name, opens an empty buffer, and deletes it;
-		// the unique name keeps macOS from skipping it as an already-open doc.
-		sentinel := filepath.Join(os.TempDir(), fmt.Sprintf("govi-new-%d-%d", os.Getpid(), time.Now().UnixNano()))
-		if f, err := os.Create(sentinel); err == nil {
-			f.Close()
+		// Open an empty editor the way nvi does: create a temp file (vi.XXXXXX)
+		// and open it; the app deletes it when its window/tab closes. It lives in
+		// the temp dir because LaunchServices won't open documents under ~/Library,
+		// and the unique name avoids macOS skipping an already-open path.
+		f, err := os.CreateTemp("", "vi.")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "govi:", err)
+			return 1
 		}
-		if err := exec.Command("open", "-a", app, sentinel).Run(); err != nil {
+		name := f.Name()
+		f.Close()
+		if err := exec.Command("open", "-a", app, name).Run(); err != nil {
 			fmt.Fprintln(os.Stderr, "govi:", err)
 			return 1
 		}
