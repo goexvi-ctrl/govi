@@ -457,6 +457,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Settings.spellChecking.toggle()
     }
 
+    // View > Increase/Decrease Font Size (Cmd-= / Cmd--). Settings clamps to the
+    // allowed range and posts a change that resizes each window to keep its grid.
+    @objc func increaseFontSize(_ sender: Any?) {
+        Settings.fontSize = Settings.fontSize + 1
+    }
+
+    @objc func decreaseFontSize(_ sender: Any?) {
+        Settings.fontSize = Settings.fontSize - 1
+    }
+
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(toggleSpelling(_:)) {
             item.state = Settings.spellChecking ? .on : .off
@@ -530,6 +540,19 @@ func makeMenu(target: AppDelegate) -> NSMenu {
                                          action: #selector(AppDelegate.toggleSpelling(_:)), keyEquivalent: "")
     checkItem.target = target
     editMenu.addItem(spellingItem)
+
+    // View menu: font size. Cmd-= grows, Cmd-- shrinks (by 1 point); each open
+    // window resizes to keep its rows x cols.
+    let viewItem = NSMenuItem()
+    mainMenu.addItem(viewItem)
+    let viewMenu = NSMenu(title: "View")
+    viewItem.submenu = viewMenu
+    let biggerItem = viewMenu.addItem(withTitle: "Increase Font Size",
+                                      action: #selector(AppDelegate.increaseFontSize(_:)), keyEquivalent: "=")
+    biggerItem.target = target
+    let smallerItem = viewMenu.addItem(withTitle: "Decrease Font Size",
+                                       action: #selector(AppDelegate.decreaseFontSize(_:)), keyEquivalent: "-")
+    smallerItem.target = target
 
     // Window menu. AppKit fills it with the window list and, because the windows
     // use native tabbing, the tab commands (Show Tab Bar, Show All Tabs, Merge

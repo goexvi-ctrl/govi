@@ -134,7 +134,8 @@ final class GoviView: NSView, NSTextInputClient {
         spellEnabled = Settings.spellChecking
         font = Settings.editorFont
         measureFont()
-        updateGeometry() // padding and font metrics may change the cell rows/cols
+        resizeWindowToCells() // keep the same rows x cols; grow/shrink the window to fit
+        updateGeometry()      // refits only if the window could not take the target size
         updateSpelling()
         updateTitle()
         needsDisplay = true
@@ -175,6 +176,20 @@ final class GoviView: NSView, NSTextInputClient {
         cellW = ("0" as NSString).size(withAttributes: attrs).width
         let lm = NSLayoutManager()
         cellH = lm.defaultLineHeight(for: font)
+    }
+
+    // resizeWindowToCells sizes the window to keep the current rows x cols of
+    // text after a font or padding change, instead of re-fitting the grid into
+    // the old pixel size. The top-left corner stays fixed. No-op without a window
+    // (updateGeometry then handles the fallback).
+    private func resizeWindowToCells() {
+        guard let window = window else { return }
+        let content = GoviView.contentSize(textRows: textRows, cols: cols, font: font, padding: padding)
+        let newFrameSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: content)).size
+        var frame = window.frame
+        frame.origin.y += frame.size.height - newFrameSize.height // keep the top edge put
+        frame.size = newFrameSize
+        window.setFrame(frame, display: true)
     }
 
     // The grid's first row is at the top, so use a flipped coordinate system.
