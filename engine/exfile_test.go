@@ -41,7 +41,7 @@ func TestStatusNameTruncated(t *testing.T) {
 	if err := e.Open(p); err != nil {
 		t.Fatal(err)
 	}
-	msg := e.scr.msg
+	msg, _ := (view{e.scr}).Message() // truncation happens at render time
 	if !strings.HasPrefix(msg, "...") {
 		t.Fatalf("expected leading \"...\"; msg = %q", msg)
 	}
@@ -50,6 +50,14 @@ func TestStatusNameTruncated(t *testing.T) {
 	}
 	if n := len([]rune(msg)); n > 30 {
 		t.Fatalf("status line = %d cols, want <= 30: %q", n, msg)
+	}
+
+	// Widening the terminal must reveal the full name (truncation honors the
+	// live width, not the width at open time).
+	e.Resize(10, 300)
+	wide, _ := (view{e.scr}).Message()
+	if strings.HasPrefix(wide, "...") || !strings.Contains(wide, p) {
+		t.Fatalf("after widening, expected full path; msg = %q", wide)
 	}
 }
 

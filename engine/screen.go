@@ -89,6 +89,18 @@ func (s *screen) lineCount() int64 {
 	return 1
 }
 
+// statusCols is the width available for the status/message line, falling back to
+// the columns option (then 80) before the first Resize.
+func (s *screen) statusCols() int {
+	if s.cols > 0 {
+		return s.cols
+	}
+	if c := s.opts.Int("columns"); c > 0 {
+		return c
+	}
+	return 80
+}
+
 // lineRunes returns the runes of buffer line lno, or an empty slice for the
 // phantom line of an empty buffer / out-of-range request.
 func (s *screen) lineRunes(lno int64) []rune {

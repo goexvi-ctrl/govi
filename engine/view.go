@@ -26,7 +26,7 @@ func (v view) Message() (string, MessageKind) {
 		return v.colonDisplayMessage(), MsgNone
 	}
 	if v.s.msg != "" {
-		return v.s.msg, v.s.msgKind
+		return fitStatus(v.s.msg, v.s.statusCols()), v.s.msgKind
 	}
 	return v.statusLine(), MsgNone
 }
