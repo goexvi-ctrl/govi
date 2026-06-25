@@ -242,7 +242,7 @@ These are the authoritative references; the summaries below match them.
 | **`^U`** | Erase input line (nvi); not implemented in govi insert mode |
 | **`^V`** | Quote next character |
 | **`^D` `^T`** | Shift left / right (with autoindent) |
-| **`^X`** *hex* | Insert hexadecimal character |
+| **`^X`** *hex* | Insert a Unicode code point — up to 6 hex digits (2/4/6 for a byte / BMP / astral); ends at 6 digits or a non-hex key |
 | **`^@`** (NUL) | Replay previous insertion |
 | **`^Z`** | Suspend (leaves insert mode; terminal only) |
 

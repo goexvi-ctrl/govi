@@ -88,7 +88,7 @@ parity row can be checked against the source description quickly.
 | `^H` / erase | erase last character | yes | ✅ | ✅ | |
 | `^V` | quote next character | yes | ✅ | ✅ | |
 | `^W` | erase last word | yes | ✅✔ | ✅✔ | |
-| `^X` | insert hex character code | yes | ✅ | ✅ | |
+| `^X` | insert hex character code | yes | ✅ | ✅ | modern divergence: accepts up to 6 hex digits to insert any Unicode code point (ends at 6 digits or a non-hex key); invalid values → U+FFFD |
 | line erase | erase the input line | yes | ❌ | ❌ | |
 | `<esc>` | end input | yes | ✅✔ | ✅✔ | |
 | autoindent | leading-whitespace carry | yes | ✅✔ | ✅✔ | `o`/`O` and `↵` |

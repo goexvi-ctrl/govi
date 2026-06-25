@@ -37,6 +37,41 @@ func TestInsertHex(t *testing.T) {
 	}
 }
 
+func TestInsertHexUnicode(t *testing.T) {
+	// 4 hex digits: a BMP code point (U+00E9 é), ESC terminates.
+	e, _, _ := newTestEngine(t, "\n")
+	drive(e, "i")
+	e.Input(KeyEvent{Rune: 'x', Mods: ModCtrl})
+	drive(e, "00e9\x1b")
+	if bufText(e) != "é" {
+		t.Fatalf("4-digit ^X: got %q, want %q", bufText(e), "é")
+	}
+}
+
+func TestInsertHexAstralAutoTerminates(t *testing.T) {
+	// 6 hex digits auto-insert (no terminator); the next key is literal.
+	e, _, _ := newTestEngine(t, "\n")
+	drive(e, "i")
+	e.Input(KeyEvent{Rune: 'x', Mods: ModCtrl})
+	drive(e, "01f600") // U+1F600 😀
+	drive(e, "Z\x1b")
+	want := "\U0001F600Z"
+	if bufText(e) != want {
+		t.Fatalf("6-digit ^X auto-terminate: got %q, want %q", bufText(e), want)
+	}
+}
+
+func TestInsertHexOutOfRange(t *testing.T) {
+	// A value past U+10FFFF is inserted as U+FFFD.
+	e, _, _ := newTestEngine(t, "\n")
+	drive(e, "i")
+	e.Input(KeyEvent{Rune: 'x', Mods: ModCtrl})
+	drive(e, "ffffff\x1b")
+	if bufText(e) != "�" {
+		t.Fatalf("out-of-range ^X: got %q, want U+FFFD", bufText(e))
+	}
+}
+
 func TestNulReplay(t *testing.T) {
 	e, _, _ := newTestEngine(t, "\n")
 	drive(e, "ifoo\x1b")                        // insert "foo"

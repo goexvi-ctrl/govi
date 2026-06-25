@@ -1,5 +1,7 @@
 package engine
 
+import "unicode/utf8"
+
 // Insert and replace mode. Entered from command-mode commands (i I a A o O c R
 // s S), exited with ESC. Buffer edits happen through the screen primitives
 // inside the change bracket opened when insert began, so the whole insertion is
@@ -41,10 +43,14 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 		return
 	}
 
-	// ^X collects a hexadecimal character code until a non-hex key.
+	// ^X collects up to 6 hex digits -- enough for any Unicode code point -- and
+	// inserts that character. It ends at 6 digits or on the first non-hex key.
 	if m.hexMode {
 		if isHexDigit(ev.Rune) {
 			m.hexBuf = append(m.hexBuf, ev.Rune)
+			if len(m.hexBuf) >= 6 {
+				m.finishHex(e)
+			}
 			return
 		}
 		m.finishHex(e)
@@ -232,23 +238,24 @@ func isHexDigit(r rune) bool {
 	return r >= '0' && r <= '9' || r >= 'a' && r <= 'f' || r >= 'A' && r <= 'F'
 }
 
-// finishHex inserts the character whose hex code was collected after ^X.
-// hexBuf only ever holds digits accumulated by insertKey, so the value is
-// well-defined here. An over-long entry (more digits than a code point needs)
-// can exceed unicode.MaxRune; rune(v) then yields an invalid rune that renders
-// as U+FFFD rather than crashing, which is acceptable for this literal-entry
-// path, so no range clamp is applied.
+// finishHex inserts the character whose hex code (up to 6 digits) was collected
+// after ^X. This is a deliberate modern extension of nvi's ^X: any Unicode code
+// point can be entered -- 2 digits for a byte, 4 for the BMP, 6 for astral
+// planes. An out-of-range or surrogate value is inserted as U+FFFD.
 func (m *vimode) finishHex(e *Engine) {
 	m.hexMode = false
 	if len(m.hexBuf) == 0 {
 		return
 	}
-	var v int64
+	v := 0
 	for _, r := range m.hexBuf {
-		v = v*16 + int64(hexVal(r))
+		v = v*16 + hexVal(r)
 	}
 	m.hexBuf = m.hexBuf[:0]
 	r := rune(v)
+	if !utf8.ValidRune(r) {
+		r = utf8.RuneError
+	}
 	m.insertRune(e, r)
 	m.insertText = append(m.insertText, r)
 }

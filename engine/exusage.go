@@ -147,7 +147,7 @@ var viUsageList = []string{
 	"^H erase\tdelete previous character",
 	"^V\tquote next character",
 	"^W\tdelete previous word",
-	"^X[hex]\tinsert hexadecimal character",
+	"^X[hex]\tinsert a Unicode code point (up to 6 hex digits)",
 	"^Z\tsuspend (leave insert mode)",
 	"<esc>\tend insert",
 }
