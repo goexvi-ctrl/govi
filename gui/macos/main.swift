@@ -325,6 +325,16 @@ enum LaunchPath {
         try? FileManager.default.removeItem(at: launchFilesURL)
     }
 
+    // clearLaunchContext removes the launcher's one-shot context (and its EXINIT
+    // companions) after it has been consumed, so a later Finder launch or new
+    // window doesn't inherit a stale cwd/startup snapshot.
+    static func clearLaunchContext() {
+        let fm = FileManager.default
+        try? fm.removeItem(at: launchContextURL)
+        try? fm.removeItem(at: supportDir.appendingPathComponent("nexinit", isDirectory: false))
+        try? fm.removeItem(at: supportDir.appendingPathComponent("exinit", isDirectory: false))
+    }
+
     // isGoviTempFile reports whether path is a temp file `govi -g` (no files)
     // created for an empty editor (nvi-style vi.XXXXXX in the temp dir). Such a
     // file is deleted when its window/tab closes.
@@ -464,6 +474,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         pendingOpenPaths.removeAll()
         LaunchPath.clearLaunchFiles()
+        LaunchPath.clearLaunchContext() // one-shot: consumed by the opens above
         coldLaunchComplete = true
         if !EditorWindow.anyOpen {
             EditorWindow.open(path: "")
@@ -490,6 +501,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if coldLaunchComplete {
             LaunchPath.clearLaunchFiles()
             EditorWindow.openPaths(paths)
+            LaunchPath.clearLaunchContext() // consumed by the opens above
         } else {
             pendingOpenPaths.append(contentsOf: paths)
         }

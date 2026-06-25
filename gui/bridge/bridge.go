@@ -80,10 +80,16 @@ func GoviStart(path, foreground, background *C.char) C.longlong {
 	in.eng = engine.New(in.fe, engine.Options{})
 	_ = in.eng.SetStrOption("foreground", cString(foreground))
 	_ = in.eng.SetStrOption("background", cString(background))
-	if ctx, err := engine.ReadLaunchContext(); err == nil {
-		in.eng.SetLaunchContext(ctx)
-		if ctx.Cwd != "" {
-			in.eng.SetCwd(ctx.Cwd)
+	p := C.GoString(path)
+	// The launcher's context (shell cwd, EXINIT, exrc snapshot) applies only to
+	// files opened by a `govi -g` invocation. Empty windows (Cmd-N, cold-launch
+	// fallback) must not inherit it, or a stale context sets a surprising cwd.
+	if p != "" {
+		if ctx, err := engine.ReadLaunchContext(); err == nil {
+			in.eng.SetLaunchContext(ctx)
+			if ctx.Cwd != "" {
+				in.eng.SetCwd(ctx.Cwd)
+			}
 		}
 	}
 	if err := in.eng.LoadStartup(); err != nil {
@@ -93,7 +99,7 @@ func GoviStart(path, foreground, background *C.char) C.longlong {
 		return 0
 	}
 	in.eng.InitCwd()
-	if p := C.GoString(path); p != "" {
+	if p != "" {
 		if err := in.eng.Open(p); err != nil {
 			return 0
 		}
