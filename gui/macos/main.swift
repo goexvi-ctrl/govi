@@ -149,8 +149,31 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         EditorWindow.cascadePoint = window.cascadeTopLeft(from: EditorWindow.cascadePoint)
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(view)
+        fitWindowToGrid()
         view.updateGeometry()
         view.updateTitle()
+        // The macOS tab bar (with "prefer tabs" on) appears as the window is
+        // ordered front and steals editor rows; re-fit on the next tick once it
+        // has been laid out.
+        DispatchQueue.main.async { [weak self] in self?.fitWindowToGrid() }
+    }
+
+    // fitWindowToGrid grows/shrinks the window so the editor's content area is
+    // exactly the configured rows x cols, compensating for chrome that steals
+    // space after the window is shown -- notably the macOS tab bar. The top edge
+    // stays fixed.
+    private func fitWindowToGrid() {
+        window.layoutIfNeeded()
+        let desired = GoviView.contentSize(
+            textRows: Settings.defaultTextRows, cols: Settings.defaultColumns)
+        let deltaH = desired.height - view.bounds.height
+        let deltaW = desired.width - view.bounds.width
+        if abs(deltaH) < 0.5 && abs(deltaW) < 0.5 { return }
+        var f = window.frame
+        f.origin.y -= deltaH // keep the top edge fixed as the window grows down
+        f.size.width += deltaW
+        f.size.height += deltaH
+        window.setFrame(f, display: true)
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
