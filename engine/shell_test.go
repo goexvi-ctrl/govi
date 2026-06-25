@@ -181,6 +181,26 @@ func TestExReadFromCommand(t *testing.T) {
 	}
 }
 
+func TestExReadReportsLineCount(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	e.Resize(10, 40)
+	// report defaults to 5: reading more than that reports a count.
+	if err := e.exExecute("r !printf 'a\\nb\\nc\\nd\\ne\\nf\\n'"); err != nil {
+		t.Fatal(err)
+	}
+	if e.scr.msg != "6 lines added" {
+		t.Fatalf("msg = %q, want \"6 lines added\"", e.scr.msg)
+	}
+	// A small read (<= report) stays silent, like :r !date.
+	e.scr.msg = ""
+	if err := e.exExecute("r !printf 'y\\nz\\n'"); err != nil {
+		t.Fatal(err)
+	}
+	if e.scr.msg != "" {
+		t.Fatalf("small read should not report; msg = %q", e.scr.msg)
+	}
+}
+
 func TestExReadFromCommandSecure(t *testing.T) {
 	e, _, _ := newTestEngine(t, "x\n")
 	e.Resize(10, 40)

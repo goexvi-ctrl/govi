@@ -385,6 +385,11 @@ func (e *Engine) exRead(c *exCmd) error {
 	if len(data) > 0 {
 		s.cursor = Pos{Line: clampLine(s, at+1), Col: 0}
 	}
+	// nvi reports the count when more than 'report' lines are added.
+	if n := len(data); n > s.opts.Int("report") {
+		s.msg = fmt.Sprintf("%d lines added", n)
+		s.msgKind = MsgInfo
+	}
 	return nil
 }
 

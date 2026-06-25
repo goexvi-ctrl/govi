@@ -7,6 +7,18 @@ import (
 	"testing"
 )
 
+func TestNewFileMessage(t *testing.T) {
+	e, _, _ := newTestEngine(t, "")
+	p := filepath.Join(t.TempDir(), "brandnew")
+	if err := e.Open(p); err != nil {
+		t.Fatal(err)
+	}
+	want := p + ": new file: line 1"
+	if e.scr.msg != want {
+		t.Fatalf("new-file message = %q, want %q", e.scr.msg, want)
+	}
+}
+
 func writeTemp(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	p := filepath.Join(dir, name)

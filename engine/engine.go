@@ -115,7 +115,7 @@ func (e *Engine) Open(path string) error {
 			if len(e.argv) > 1 {
 				e.showFileCount = true
 			}
-			e.scr.msg = fmt.Sprintf("%q: new file", filepath.Base(path))
+			e.scr.msg = fmt.Sprintf("%s: new file: line %d", e.scr.name, e.scr.cursor.Line)
 			e.scr.msgKind = MsgInfo
 			return nil
 		}
