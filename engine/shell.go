@@ -134,6 +134,39 @@ func (e *Engine) filterLines(l1, l2 int64, cmd string) error {
 	return nil
 }
 
+// writeToCommand implements :[range]w !cmd -- pipe the addressed lines (default
+// the whole file) to cmd's standard input and show its output. Unlike :range!cmd
+// the buffer is left unchanged (nvi ex/ex_write.c, the "!" target).
+func (e *Engine) writeToCommand(c *exCmd, cmd string) error {
+	if e.scr.opts.Bool("secure") {
+		return fmt.Errorf("The ! command is not supported when the secure edit option is set")
+	}
+	s := e.scr
+	l1, l2 := int64(1), s.lineCount()
+	if c.addrCount > 0 {
+		l1, l2 = c.addr1, c.addr2
+	}
+	if l1 < 1 || l2 > s.lineCount() || l1 > l2 {
+		return fmt.Errorf("Invalid address")
+	}
+	var in strings.Builder
+	for i := l1; i <= l2; i++ {
+		in.WriteString(string(s.lineRunes(i)))
+		in.WriteByte('\n')
+	}
+	out, err := e.runShellCmd(cmd, in.String(), e.bangCols(), e.bangRows())
+	if err != nil {
+		// Like a filter, still show stdout/stderr when the utility exits
+		// non-zero; only a failure to launch is reported as an error.
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			return fmt.Errorf("%s: %v", cmd, err)
+		}
+	}
+	e.presentBangOutput(out)
+	return nil
+}
+
 // startFilter implements the vi ! operator: prompt with "!" on the status line
 // while the filter command is entered (nvi's v_filter / v_tcmd).
 func (e *Engine) startFilter(l1, l2 int64) {

@@ -1,6 +1,9 @@
 package engine
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 type shellStubFrontend struct {
 	captureFrontend
@@ -108,6 +111,55 @@ func TestExBangPipeFallback(t *testing.T) {
 	}
 	if got := len(e.scr.pendingOutput); got != 2 {
 		t.Fatalf("pendingOutput = %v, want 2 lines", e.scr.pendingOutput)
+	}
+}
+
+func TestExWriteToCommandPipesBuffer(t *testing.T) {
+	e, _, _ := newTestEngine(t, "one\ntwo\nthree\n")
+	e.Resize(10, 40)
+	out := t.TempDir() + "/piped"
+
+	// :w !cat > FILE sends the whole buffer to the command's stdin.
+	if err := e.exExecute("w !cat > " + out); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "one\ntwo\nthree\n" {
+		t.Fatalf("piped stdin = %q, want the whole buffer", got)
+	}
+	// The buffer must be unchanged and not marked saved-to-file.
+	if e.scr.lineCount() != 3 {
+		t.Fatalf("buffer changed: %d lines", e.scr.lineCount())
+	}
+}
+
+func TestExWriteToCommandRange(t *testing.T) {
+	e, _, _ := newTestEngine(t, "a\nb\nc\nd\n")
+	e.Resize(10, 40)
+	out := t.TempDir() + "/piped"
+
+	// :2,3w !cmd pipes only the addressed lines.
+	if err := e.exExecute("2,3w !cat > " + out); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "b\nc\n" {
+		t.Fatalf("piped range = %q, want \"b\\nc\\n\"", got)
+	}
+}
+
+func TestExWriteToCommandSecure(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	e.Resize(10, 40)
+	e.exExecute("set secure")
+	if err := e.exExecute("w !cat"); err == nil {
+		t.Fatal("expected secure error for :w !cmd")
 	}
 }
 

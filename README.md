@@ -257,6 +257,7 @@ ambiguous prefix rings the bell so you can type more.
 | Command | Summary |
 |---------|---------|
 | **`:write`** **`[:range] w[rite][!] [file]`** | Write buffer (or range) to file |
+| **`:write !cmd`** **`[:range] w[rite] !cmd`** | Pipe the lines (default whole file) to a shell command's input; buffer unchanged |
 | **`:wq`** | Write and quit |
 | **`:xit`** | Write if modified and quit |
 | **`:quit`** **`[:range] q[uit][!]`** | Quit |

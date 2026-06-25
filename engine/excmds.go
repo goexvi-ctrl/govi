@@ -269,6 +269,15 @@ func (e *Engine) exLineNumber(c *exCmd) error {
 
 func (e *Engine) exWrite(c *exCmd) error {
 	arg := strings.TrimSpace(c.arg)
+	// :[range]w !cmd pipes the addressed lines (default the whole file) to a
+	// shell command's standard input; the buffer is not written or modified.
+	if strings.HasPrefix(arg, "!") {
+		cmd := strings.TrimSpace(arg[1:])
+		if cmd == "" {
+			return fmt.Errorf("Usage: [range]w !command")
+		}
+		return e.writeToCommand(c, cmd)
+	}
 	if arg != "" {
 		arg = e.resolvePath(arg)
 	}
