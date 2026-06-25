@@ -9,6 +9,7 @@ import (
 
 func TestNewFileMessage(t *testing.T) {
 	e, _, _ := newTestEngine(t, "")
+	e.Resize(10, 200) // wide enough that the temp path is not truncated
 	p := filepath.Join(t.TempDir(), "brandnew")
 	if err := e.Open(p); err != nil {
 		t.Fatal(err)
@@ -21,6 +22,7 @@ func TestNewFileMessage(t *testing.T) {
 
 func TestExistingFileMessage(t *testing.T) {
 	e, _, _ := newTestEngine(t, "")
+	e.Resize(10, 200)
 	p := writeTemp(t, t.TempDir(), "have", "ab\ncd\n") // 2 lines, 6 bytes
 	if err := e.Open(p); err != nil {
 		t.Fatal(err)
@@ -28,6 +30,26 @@ func TestExistingFileMessage(t *testing.T) {
 	want := p + ": 2 lines, 6 characters"
 	if e.scr.msg != want {
 		t.Fatalf("existing-file message = %q, want %q", e.scr.msg, want)
+	}
+}
+
+func TestStatusNameTruncated(t *testing.T) {
+	e, _, _ := newTestEngine(t, "")
+	e.Resize(10, 30) // narrow: the name must be truncated to fit
+	p := filepath.Join(t.TempDir(), "deeply/nested/long/path/file")
+	os.MkdirAll(filepath.Dir(p), 0o755)
+	if err := e.Open(p); err != nil {
+		t.Fatal(err)
+	}
+	msg := e.scr.msg
+	if !strings.HasPrefix(msg, "...") {
+		t.Fatalf("expected leading \"...\"; msg = %q", msg)
+	}
+	if !strings.HasSuffix(msg, ": new file: line 1") {
+		t.Fatalf("trailing message lost; msg = %q", msg)
+	}
+	if n := len([]rune(msg)); n > 30 {
+		t.Fatalf("status line = %d cols, want <= 30: %q", n, msg)
 	}
 }
 
@@ -108,6 +130,7 @@ func TestExFileStatus(t *testing.T) {
 	dir := t.TempDir()
 	path := writeTemp(t, dir, "foo.txt", "a\nb\nc\n")
 	e, _, _ := newTestEngine(t, "")
+	e.Resize(10, 200) // wide: don't truncate the temp path in the status line
 	if err := e.Open(path); err != nil {
 		t.Fatal(err)
 	}
@@ -128,6 +151,7 @@ func TestExFileRename(t *testing.T) {
 	dir := t.TempDir()
 	path := writeTemp(t, dir, "old.txt", "hi\n")
 	e, fe, _ := newTestEngine(t, "")
+	e.Resize(10, 200)
 	if err := e.Open(path); err != nil {
 		t.Fatal(err)
 	}

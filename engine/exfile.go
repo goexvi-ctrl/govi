@@ -6,6 +6,18 @@ import (
 	"strings"
 )
 
+// fitStatusLine truncates an over-long status line from the front with a leading
+// "..." so it fits the screen width. The file name leads these lines, so this
+// drops leading path components like nvi's msgq_status.
+func (e *Engine) fitStatusLine(line string) string {
+	cols := e.bangCols()
+	r := []rune(line)
+	if cols < 4 || len(r) <= cols {
+		return line
+	}
+	return "..." + string(r[len(r)-(cols-3):])
+}
+
 // fileStatus builds the :f / ^G status line (nvi msgq_status).
 func (e *Engine) fileStatus() string {
 	s := e.scr
@@ -56,14 +68,14 @@ func (e *Engine) fileStatus() string {
 	n := s.lineCount()
 	if n <= 1 && s.lineLen(1) == 0 {
 		b.WriteString("empty file")
-		return b.String()
+		return e.fitStatusLine(b.String())
 	}
 	pct := int64(0)
 	if n > 0 {
 		pct = (s.cursor.Line * 100) / n
 	}
 	fmt.Fprintf(&b, "line %d of %d [%d%%]", s.cursor.Line, n, pct)
-	return b.String()
+	return e.fitStatusLine(b.String())
 }
 
 // exFile implements :f[ile] [name] — show status and optionally rename the buffer.
