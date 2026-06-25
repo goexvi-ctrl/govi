@@ -278,10 +278,37 @@ func (e *Engine) exWrite(c *exCmd) error {
 		}
 		return e.writeToCommand(c, cmd)
 	}
-	if arg != "" {
+	named := arg != ""
+	if named {
 		arg = e.resolvePath(arg)
 	}
-	return e.Save(arg)
+	if err := e.Save(arg); err != nil {
+		return err
+	}
+	// Writing a temporary buffer (govi -g, no file) to a real, named file makes
+	// it an ordinary buffer that is no longer discarded on exit.
+	if named && e.scr.tempFile {
+		e.scr.name = arg
+		e.scr.tempFile = false
+		e.scr.modified = false
+		e.scr.nameChanged = false
+	}
+	return nil
+}
+
+// SetTemporary marks the active buffer as backed by a throwaway temp file, so
+// quitting warns (and discards) like nvi instead of silently writing it. Set by
+// the GUI host for `govi -g` with no file (see GoviSetTemporary).
+func (e *Engine) SetTemporary() { e.scr.tempFile = true }
+
+// tempExitWarning returns nvi's warning when an unforced exit would discard a
+// temporary buffer's edits. The temp file is removed when its window closes, so
+// writing it is pointless: the user must :w a real file, or :q!/ZQ to discard.
+func (e *Engine) tempExitWarning(force bool) error {
+	if e.scr.tempFile && !force && e.scr.dirty() {
+		return fmt.Errorf("File is a temporary; exit will discard modifications")
+	}
+	return nil
 }
 
 // Save writes the buffer to path (or the current file when path is empty).
@@ -321,6 +348,13 @@ func sameFile(a, b string) bool {
 }
 
 func (e *Engine) exWriteQuit(c *exCmd) error {
+	// :wq with no name on a temporary buffer would write the throwaway temp file;
+	// warn instead. :wq file writes (and adopts) a real name, so allow it.
+	if strings.TrimSpace(c.arg) == "" {
+		if err := e.tempExitWarning(c.force); err != nil {
+			return err
+		}
+	}
 	if err := e.exWrite(c); err != nil {
 		return err
 	}
@@ -330,6 +364,11 @@ func (e *Engine) exWriteQuit(c *exCmd) error {
 
 // exXit implements :x and ZZ -- write only if the buffer was modified, then quit.
 func (e *Engine) exXit(c *exCmd) error {
+	if strings.TrimSpace(c.arg) == "" {
+		if err := e.tempExitWarning(c.force); err != nil {
+			return err
+		}
+	}
 	if e.scr.dirty() {
 		if err := e.exWrite(c); err != nil {
 			return err
@@ -340,6 +379,9 @@ func (e *Engine) exXit(c *exCmd) error {
 }
 
 func (e *Engine) exQuit(c *exCmd) error {
+	if err := e.tempExitWarning(c.force); err != nil {
+		return err
+	}
 	if e.scr.dirty() && !c.force {
 		return fmt.Errorf("No write since last change (use ! to override)")
 	}

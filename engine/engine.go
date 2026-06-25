@@ -90,6 +90,7 @@ func (e *Engine) replaceBuffer(store buffer.LineStore, name string) {
 	s.marks = mark.New()
 	s.name = name
 	s.nameChanged = false
+	s.tempFile = false
 	s.cursor = Pos{Line: 1, Col: 0}
 	s.top = 1
 	s.mode = ModeCommand

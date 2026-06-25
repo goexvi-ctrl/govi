@@ -61,6 +61,44 @@ func TestStatusNameTruncated(t *testing.T) {
 	}
 }
 
+func TestTemporaryBufferWarnsOnExit(t *testing.T) {
+	e, _, _ := newTestEngine(t, "")
+	e.Resize(10, 40)
+	e.SetTemporary()
+	drive(e, "iabc\x1b") // modify the buffer
+
+	if err := e.exExecute("wq"); err == nil {
+		t.Fatal(":wq on a temporary buffer should warn, not write/quit")
+	}
+	if e.quit {
+		t.Fatal(":wq must not quit a temporary buffer")
+	}
+	if err := e.exExecute("q"); err == nil {
+		t.Fatal(":q on a modified temporary buffer should warn")
+	}
+
+	// :wq <real file> writes a real file, adopts the name, and quits.
+	p := filepath.Join(t.TempDir(), "real.txt")
+	if err := e.exExecute("wq " + p); err != nil {
+		t.Fatalf(":wq <file> should succeed: %v", err)
+	}
+	if !e.quit {
+		t.Fatal(":wq <file> should have quit")
+	}
+}
+
+func TestTemporaryBufferForceQuitDiscards(t *testing.T) {
+	e, _, _ := newTestEngine(t, "")
+	e.SetTemporary()
+	drive(e, "ixyz\x1b")
+	if err := e.exExecute("q!"); err != nil {
+		t.Fatalf(":q! should discard a temporary buffer: %v", err)
+	}
+	if !e.quit {
+		t.Fatal(":q! should have quit")
+	}
+}
+
 func writeTemp(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	p := filepath.Join(dir, name)

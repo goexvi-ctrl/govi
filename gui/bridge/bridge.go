@@ -103,6 +103,17 @@ func GoviStart(path, foreground, background *C.char) C.longlong {
 	return C.longlong(nextHandle)
 }
 
+// GoviSetTemporary marks the editor's buffer as backed by a throwaway temp file
+// (govi -g with no file): quitting then warns and discards like nvi instead of
+// silently writing the soon-deleted temp.
+//
+//export GoviSetTemporary
+func GoviSetTemporary(h C.longlong) {
+	if in := get(h); in != nil {
+		in.eng.SetTemporary()
+	}
+}
+
 // GoviCwd returns this editor's working directory (malloc'd; caller frees).
 //
 //export GoviCwd

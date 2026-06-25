@@ -49,6 +49,9 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             alert.runModal()
             return nil
         }
+        if LaunchPath.isGoviTempFile(LaunchPath.normalize(path)) {
+            GoviSetTemporary(handle)
+        }
         let w = EditorWindow(handle: handle, path: path)
         windows.insert(w)
         return w

@@ -20,6 +20,7 @@ type screen struct {
 	name        string // file path, or "" for an unnamed buffer
 	modified    bool
 	nameChanged bool // :f renamed the buffer; cleared on write (nvi FR_NAMECHANGE)
+	tempFile    bool // backed by a throwaway temp file (govi -g, no file); discarded on exit
 
 	cursor     Pos   // 1-based line, 0-based rune column
 	top        int64 // first buffer line shown (1-based)
