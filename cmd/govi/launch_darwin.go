@@ -12,62 +12,117 @@ import (
 	"syscall"
 )
 
-// runGUI implements `govi -g`: open the given files in GoVi.app, behaving like
-// a command-line launcher. It mirrors nvi startup resolution and writes a
-// launch context that GoVi.app reads, because a GUI app started via open(1)
-// does not inherit the shell's cwd or EXINIT/NEXINIT. Returns a process exit
-// code.
+// runGUI implements `govi -g`: hand the files to GoVi.app through a govi:// URL.
 //
-// This is the Go port of the former gui/govi shell script.
+// A GUI app launched by open(1) inherits neither the shell's cwd nor a file
+// list, and URLs have length/encoding limits. So the launcher writes a one-shot
+// payload file (cwd, the files to open, the silent flag, and the -w FIFO) into a
+// fixed, app-owned directory, then runs `open "govi://open?ctx=<token>"` naming
+// only that payload. GoVi.app validates the token, reads the payload from the
+// fixed location, deletes it, and treats it as pure data -- it only opens files,
+// never writing or executing anything from the payload. LaunchServices routes
+// the govi:// URL to GoVi.app (cold or already running); no bundle lookup needed.
 func runGUI(silent, wait bool, files []string) int {
 	if wait && len(files) == 0 {
 		fmt.Fprintln(os.Stderr, "govi: -w requires at least one file")
 		return 2
 	}
-
-	app, err := findGoviApp()
+	// GoVi.app runs as the user who owns the active graphical session and reads
+	// its launch payload from that user's home dir. If we are a different user
+	// (e.g. su'd to another account in a terminal), the app can never read what
+	// we write, so refuse rather than silently open an empty window.
+	if cuid, err := consoleUID(); err == nil {
+		if me := os.Getuid(); uint32(me) != cuid {
+			fmt.Fprintf(os.Stderr,
+				"govi: -g must run as the user of the active graphical session (uid %d), but you are uid %d\n",
+				cuid, me)
+			return 1
+		}
+	}
+	dir, err := launchPayloadDir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "govi:", err)
 		return 1
 	}
-
-	supportDir, err := goviSupportDir()
+	paths, err := resolveOpenPaths(files)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "govi:", err)
 		return 1
 	}
-	if err := writeLaunchContext(supportDir, silent); err != nil {
-		fmt.Fprintln(os.Stderr, "govi:", err)
+	if len(paths) == 0 {
 		return 1
 	}
 
-	// No files: ask the app (even one already running) for a fresh empty editor
-	// by opening a unique sentinel file under the support "new" dir. `open -a`
-	// routes it through the open-documents event, which a running app reliably
-	// receives (unlike a plain activation); the app recognizes the sentinel,
-	// opens an empty buffer, and deletes it. The unique name keeps macOS from
-	// skipping it as an already-open path.
-	if len(files) == 0 {
-		// Open an empty editor the way nvi does: create a temp file (vi.XXXXXX)
-		// and open it; the app deletes it when its window/tab closes. It lives in
-		// the temp dir because LaunchServices won't open documents under ~/Library,
-		// and the unique name avoids macOS skipping an already-open path.
-		f, err := os.CreateTemp("", "vi.")
+	var fifo string
+	if wait {
+		fifo, err = makeWaitFifo()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "govi:", err)
 			return 1
 		}
-		name := f.Name()
-		f.Close()
-		if err := exec.Command("open", "-a", app, name).Run(); err != nil {
-			fmt.Fprintln(os.Stderr, "govi:", err)
-			return 1
-		}
-		return 0
 	}
 
-	// Resolve to absolute paths, creating any that do not exist (like vi, you
-	// can open a new file).
+	token, err := writePayload(dir, silent, paths, fifo)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "govi:", err)
+		return 1
+	}
+	if err := exec.Command("open", "govi://open?ctx="+token).Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "govi:", err)
+		return 1
+	}
+
+	if wait {
+		waitForFifo(fifo)
+		os.Remove(fifo)
+	}
+	return 0
+}
+
+// consoleUID returns the uid of the user owning the active graphical session.
+// On macOS the owner of /dev/console is the user logged in at the window server;
+// with fast user switching only the *active* session owns it, so a backgrounded
+// switched-out session is correctly not reported here. This is the uid GoVi.app
+// will run as when launched via `open`.
+func consoleUID() (uint32, error) {
+	fi, err := os.Stat("/dev/console")
+	if err != nil {
+		return 0, err
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, fmt.Errorf("cannot read /dev/console owner")
+	}
+	return st.Uid, nil
+}
+
+// launchPayloadDir is the fixed, app-owned directory GoVi.app validates payloads
+// against, so a stray govi:// URL cannot point the app at an arbitrary file.
+func launchPayloadDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(home, "Library", "Application Support", "GoVi", "launch")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// resolveOpenPaths makes each file absolute and creates any that don't exist
+// (like vi). With no files it creates a temp vi.XXXXXX -- an empty editor GoVi.app
+// discards when its window/tab closes.
+func resolveOpenPaths(files []string) ([]string, error) {
+	if len(files) == 0 {
+		f, err := os.CreateTemp("", "vi.")
+		if err != nil {
+			return nil, err
+		}
+		name := f.Name()
+		f.Close()
+		return []string{name}, nil
+	}
 	cwd, _ := os.Getwd()
 	var paths []string
 	for _, f := range files {
@@ -85,189 +140,38 @@ func runGUI(silent, wait bool, files []string) int {
 		}
 		paths = append(paths, p)
 	}
-	if len(paths) == 0 {
-		return 1
-	}
-
-	// Record absolute paths for a cold launch: GoVi.app reads launch-files when
-	// macOS has not yet delivered the open-documents Apple Event (or when the
-	// parent process is not GUI-attached). The app deletes this after consuming
-	// it; a running instance gets paths via the normal open event instead.
-	if err := writeLines(filepath.Join(supportDir, "launch-files"), paths); err != nil {
-		fmt.Fprintln(os.Stderr, "govi:", err)
-		return 1
-	}
-
-	var fifo string
-	if wait {
-		fifo, err = makeWaitFifo(supportDir)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "govi:", err)
-			return 1
-		}
-	}
-
-	// `open -a` launches the app or, if already running, delivers the files to
-	// that instance and brings it to the front.
-	openArgs := append([]string{"-a", app}, paths...)
-	if err := exec.Command("open", openArgs...).Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "govi:", err)
-		return 1
-	}
-
-	if wait {
-		waitForFifo(fifo)
-		os.Remove(fifo)
-		os.Remove(filepath.Join(supportDir, "launch-wait"))
-	}
-	return 0
+	return paths, nil
 }
 
-// findGoviApp locates GoVi.app via, in order: $GOVI_APP, alongside the running
-// binary (installed layout), the dev build dirs, then /Applications.
-func findGoviApp() (string, error) {
-	if app := os.Getenv("GOVI_APP"); app != "" {
-		if isDir(app) {
-			return app, nil
-		}
-		return "", fmt.Errorf("GOVI_APP=%s is not a directory", app)
-	}
-	exe, err := os.Executable()
-	if err == nil {
-		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-			exe = resolved
-		}
-	}
-	dir := filepath.Dir(exe)
-	for _, cand := range []string{
-		filepath.Join(dir, "GoVi.app"),                 // installed: ~/bin/GoVi.app
-		filepath.Join(dir, "gui", "build", "GoVi.app"), // dev: repo-root binary
-		filepath.Join(dir, "build", "GoVi.app"),
-		"/Applications/GoVi.app",
-	} {
-		if isDir(cand) {
-			return cand, nil
-		}
-	}
-	return "", fmt.Errorf("cannot find GoVi.app; set GOVI_APP to its path")
-}
-
-func isDir(p string) bool {
-	fi, err := os.Stat(p)
-	return err == nil && fi.IsDir()
-}
-
-// goviSupportDir returns (creating if needed) the per-user directory GoVi.app
-// reads its launch context from.
-func goviSupportDir() (string, error) {
-	home, err := os.UserHomeDir()
+// writePayload writes a one-shot launch payload (key=value lines; file= repeats)
+// and returns its token, the base filename the govi:// URL references.
+func writePayload(dir string, silent bool, paths []string, fifo string) (string, error) {
+	f, err := os.CreateTemp(dir, "ctx-")
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(home, "Library", "Application Support", "GoVi")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
-
-// writeLaunchContext records startup information for GoVi.app: cwd, silent flag,
-// the resolved system/home exrc paths, and (when set) the EXINIT/NEXINIT text.
-func writeLaunchContext(dir string, silent bool) error {
-	// Reset the env-init capture files; rewritten below when set.
-	if err := os.WriteFile(filepath.Join(dir, "nexinit"), nil, 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(dir, "exinit"), nil, 0o644); err != nil {
-		return err
-	}
-
+	defer f.Close()
 	var b strings.Builder
-	cwd, _ := os.Getwd()
-	fmt.Fprintf(&b, "cwd=%s\n", cwd)
-	silentN := 0
+	if cwd, err := os.Getwd(); err == nil {
+		fmt.Fprintf(&b, "cwd=%s\n", cwd)
+	}
 	if silent {
-		silentN = 1
+		b.WriteString("silent=1\n")
 	}
-	fmt.Fprintf(&b, "silent=%d\n", silentN)
-	if sys := findSysExrc(); sys != "" {
-		fmt.Fprintf(&b, "sys_exrc=%s\n", sys)
+	for _, p := range paths {
+		fmt.Fprintf(&b, "file=%s\n", p)
 	}
-
-	if !silent {
-		switch {
-		case os.Getenv("NEXINIT") != "":
-			if err := os.WriteFile(filepath.Join(dir, "nexinit"), []byte(os.Getenv("NEXINIT")), 0o644); err != nil {
-				return err
-			}
-			b.WriteString("has_nexinit=1\n")
-		case os.Getenv("EXINIT") != "":
-			if err := os.WriteFile(filepath.Join(dir, "exinit"), []byte(os.Getenv("EXINIT")), 0o644); err != nil {
-				return err
-			}
-			b.WriteString("has_exinit=1\n")
-		default:
-			if home := findHomeExrc(); home != "" {
-				fmt.Fprintf(&b, "home_exrc=%s\n", home)
-			}
-		}
+	if fifo != "" {
+		fmt.Fprintf(&b, "fifo=%s\n", fifo)
 	}
-
-	return os.WriteFile(filepath.Join(dir, "launch-context"), []byte(b.String()), 0o644)
+	if _, err := f.WriteString(b.String()); err != nil {
+		return "", err
+	}
+	return filepath.Base(f.Name()), nil
 }
 
-func findSysExrc() string {
-	if exrcAllowed("/etc/vi.exrc", true) {
-		return "/etc/vi.exrc"
-	}
-	return ""
-}
-
-func findHomeExrc() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	if p := filepath.Join(home, ".nexrc"); exrcAllowed(p, false) {
-		return p
-	}
-	if p := filepath.Join(home, ".exrc"); exrcAllowed(p, false) {
-		return p
-	}
-	return ""
-}
-
-// exrcAllowed reports whether path may be sourced, mirroring nvi exrc_isok: the
-// file must exist, must not be group- or world-writable, and must be owned by
-// the user (or the user must be root). rootOwn additionally lets a root-owned
-// file pass, as for /etc/vi.exrc.
-func exrcAllowed(path string, rootOwn bool) bool {
-	fi, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	if fi.Mode().Perm()&0o022 != 0 {
-		return false
-	}
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		return false
-	}
-	uid := int(st.Uid)
-	euid := os.Geteuid()
-	if rootOwn {
-		return uid == 0 || euid == 0 || uid == euid
-	}
-	return euid == 0 || uid == euid
-}
-
-func writeLines(path string, lines []string) error {
-	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
-}
-
-// makeWaitFifo creates a FIFO for -w and records its path in launch-wait for
-// GoVi.app to signal when the opened tabs/windows have closed.
-func makeWaitFifo(supportDir string) (string, error) {
+// makeWaitFifo creates a FIFO for -w; its path travels in the payload.
+func makeWaitFifo() (string, error) {
 	f, err := os.CreateTemp("", "govwait.*")
 	if err != nil {
 		return "", err
@@ -276,10 +180,6 @@ func makeWaitFifo(supportDir string) (string, error) {
 	f.Close()
 	os.Remove(path)
 	if err := syscall.Mkfifo(path, 0o600); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(filepath.Join(supportDir, "launch-wait"), []byte("fifo="+path+"\n"), 0o644); err != nil {
-		os.Remove(path)
 		return "", err
 	}
 	return path, nil

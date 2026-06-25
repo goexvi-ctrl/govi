@@ -39,43 +39,6 @@ func TestLoadStartupLaunchCwd(t *testing.T) {
 	}
 }
 
-func TestReadLaunchContext(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-	ctxDir := filepath.Join(dir, "Library", "Application Support", "GoVi")
-	if err := os.MkdirAll(ctxDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(ctxDir, "launch-context"), []byte(
-		"cwd=/tmp/proj\n"+
-			"has_nexinit=1\n"+
-			"home_exrc=/home/me/.nexrc\n"+
-			"sys_exrc=/etc/vi.exrc\n",
-	), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(ctxDir, "nexinit"), []byte("set ai\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	ctx, err := ReadLaunchContext()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ctx.Cwd != "/tmp/proj" {
-		t.Fatalf("cwd = %q", ctx.Cwd)
-	}
-	if ctx.Nexinit != "set ai\n" {
-		t.Fatalf("nexinit = %q", ctx.Nexinit)
-	}
-	if ctx.HomeExrc != "/home/me/.nexrc" {
-		t.Fatalf("home_exrc = %q", ctx.HomeExrc)
-	}
-	if ctx.SysExrc != "/etc/vi.exrc" {
-		t.Fatalf("sys_exrc = %q", ctx.SysExrc)
-	}
-}
-
 func TestLoadStartupLaunchSilent(t *testing.T) {
 	home := t.TempDir()
 	exrc := filepath.Join(home, ".nexrc")

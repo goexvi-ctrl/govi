@@ -75,28 +75,23 @@ func main() {} // required for c-archive builds
 // :set may override them per tab. Returns a handle, or 0 on error.
 //
 //export GoviStart
-func GoviStart(path, foreground, background *C.char) C.longlong {
+func GoviStart(path, foreground, background *C.char, silent C.int) C.longlong {
 	in := &instance{fe: &host{}}
 	in.eng = engine.New(in.fe, engine.Options{})
 	_ = in.eng.SetStrOption("foreground", cString(foreground))
 	_ = in.eng.SetStrOption("background", cString(background))
 	p := C.GoString(path)
-	// The launcher's context (shell cwd, EXINIT, exrc snapshot) applies only to
-	// files opened by a `govi -g` invocation. Empty windows (Cmd-N, cold-launch
-	// fallback) must not inherit it, or a stale context sets a surprising cwd.
-	if p != "" {
-		if ctx, err := engine.ReadLaunchContext(); err == nil {
-			in.eng.SetLaunchContext(ctx)
-			if ctx.Cwd != "" {
-				in.eng.SetCwd(ctx.Cwd)
-			}
+	// cwd (and the rest of the launch context) is no longer read from a shared
+	// file here; the host sets it per editor via GoviSetCwd from the validated
+	// govi:// launch payload, so empty/new windows never inherit a stale cwd.
+	// silent (-s) skips startup files / EXINIT, matching the terminal frontend.
+	if silent == 0 {
+		if err := in.eng.LoadStartup(); err != nil {
+			return 0
 		}
-	}
-	if err := in.eng.LoadStartup(); err != nil {
-		return 0
-	}
-	if in.eng.ShouldQuit() {
-		return 0
+		if in.eng.ShouldQuit() {
+			return 0
+		}
 	}
 	in.eng.InitCwd()
 	if p != "" {
@@ -107,6 +102,17 @@ func GoviStart(path, foreground, background *C.char) C.longlong {
 	nextHandle++
 	insts[nextHandle] = in
 	return C.longlong(nextHandle)
+}
+
+// GoviSetCwd sets the editor's working directory (per tab), used for relative
+// :e/:r/:w and :!cmd. The host passes the cwd from a validated govi:// launch
+// payload; empty editors are left at the engine's default cwd.
+//
+//export GoviSetCwd
+func GoviSetCwd(h C.longlong, cwd *C.char) {
+	if in := get(h); in != nil {
+		in.eng.SetCwd(C.GoString(cwd))
+	}
 }
 
 // GoviSetTemporary marks the editor's buffer as backed by a throwaway temp file

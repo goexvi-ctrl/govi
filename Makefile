@@ -25,9 +25,11 @@ $(IDIR)/govi: govi
 
 # ditto after rm -rf: cp -r into an existing .app nest a second bundle
 # (~/bin/GoVi.app/GoVi.app) and leave the outer app without Resources/.
+LSREGISTER = /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 $(IDIR)/GoVi.app: gui/build/GoVi.app $(GOVI_ICNS)
 	rm -rf $@
 	ditto gui/build/GoVi.app $@
+	$(LSREGISTER) -f $@   # register file types + the govi:// URL scheme
 
 clean:
 	rm -rf govi gui/build cmd/govi/govi

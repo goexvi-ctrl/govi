@@ -1,3 +1,4 @@
+import Carbon
 import Cocoa
 import Darwin
 
@@ -31,7 +32,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
 
     // make creates an editor for path (empty path = an empty buffer) without
     // presenting it. Returns nil if the file could not be opened.
-    private static func make(path: String) -> EditorWindow? {
+    private static func make(path: String, cwd: String = "", silent: Bool = false) -> EditorWindow? {
         let fg = Settings.defaultForegroundColorSpec
         let bg = Settings.defaultBackgroundColorSpec
         let handle = path.withCString { pathPtr in
@@ -39,7 +40,8 @@ final class EditorWindow: NSObject, NSWindowDelegate {
                 bg.withCString { bgPtr in
                     GoviStart(UnsafeMutablePointer(mutating: pathPtr),
                               UnsafeMutablePointer(mutating: fgPtr),
-                              UnsafeMutablePointer(mutating: bgPtr))
+                              UnsafeMutablePointer(mutating: bgPtr),
+                              silent ? 1 : 0)
                 }
             }
         }
@@ -48,6 +50,9 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             alert.messageText = "Could not open “\(path)”."
             alert.runModal()
             return nil
+        }
+        if !cwd.isEmpty {
+            cwd.withCString { GoviSetCwd(handle, UnsafeMutablePointer(mutating: $0)) }
         }
         if LaunchPath.isGoviTempFile(LaunchPath.normalize(path)) {
             GoviSetTemporary(handle)
@@ -59,8 +64,8 @@ final class EditorWindow: NSObject, NSWindowDelegate {
 
     // open presents path in a new standalone window.
     @discardableResult
-    static func open(path: String) -> EditorWindow? {
-        guard let w = make(path: path) else { return nil }
+    static func open(path: String, cwd: String = "", silent: Bool = false) -> EditorWindow? {
+        guard let w = make(path: path, cwd: cwd, silent: silent) else { return nil }
         w.showStandalone()
         return w
     }
@@ -74,10 +79,10 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     // mode, files join the frontmost window's tab group (or start a new window
     // when none exists). In new-window mode, each file gets its own window.
     // Already-open files are focused in place rather than duplicated.
-    static func openPaths(_ paths: [String]) {
+    static func openPaths(_ paths: [String], cwd: String = "", fifo: String? = nil, silent: Bool = false) {
         let normalized = paths.map { LaunchPath.normalize($0) }
         guard !normalized.isEmpty else { return }
-        WaitCoordinator.shared.registerWait(paths: normalized)
+        WaitCoordinator.shared.registerWait(paths: normalized, fifo: fifo)
 
         // With tabbing off, force separate windows regardless of the popup.
         let mode: Settings.OpenFilesIn = Settings.useTabs ? Settings.openFilesIn : .newWindow
@@ -87,18 +92,18 @@ final class EditorWindow: NSObject, NSWindowDelegate {
                 if let w = existing(path: p) {
                     w.window.makeKeyAndOrderFront(nil)
                 } else {
-                    _ = open(path: p)
+                    _ = open(path: p, cwd: cwd, silent: silent)
                 }
             }
         case .tab:
-            openAsTabs(normalized)
+            openAsTabs(normalized, cwd: cwd, silent: silent)
         }
         WaitCoordinator.shared.checkComplete()
     }
 
     // openAsTabs opens paths in the frontmost window's tab group. The first file
     // starts a new window when no anchor exists yet.
-    private static func openAsTabs(_ paths: [String]) {
+    private static func openAsTabs(_ paths: [String], cwd: String = "", silent: Bool = false) {
         var anchor = NSApp.keyWindow ?? windows.first?.window
         for p in paths {
             if let w = existing(path: p) {
@@ -107,8 +112,8 @@ final class EditorWindow: NSObject, NSWindowDelegate {
                 continue
             }
             if let a = anchor {
-                openTab(in: a, path: p)
-            } else if let w = open(path: p) {
+                openTab(in: a, path: p, cwd: cwd, silent: silent)
+            } else if let w = open(path: p, cwd: cwd, silent: silent) {
                 anchor = w.window
             }
         }
@@ -116,8 +121,8 @@ final class EditorWindow: NSObject, NSWindowDelegate {
 
     // openTab presents path as a new tab in keyWindow's tab group, or as a
     // standalone window if there is no key window to tab into.
-    static func openTab(in keyWindow: NSWindow?, path: String) {
-        guard let w = make(path: path) else { return }
+    static func openTab(in keyWindow: NSWindow?, path: String, cwd: String = "", silent: Bool = false) {
+        guard let w = make(path: path, cwd: cwd, silent: silent) else { return }
         if let key = keyWindow, key !== w.window {
             key.addTabbedWindow(w.window, ordered: .above)
             w.window.makeKeyAndOrderFront(nil)
@@ -276,63 +281,68 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     }
 }
 
-// LaunchPath normalizes paths from the govi launcher, launch-files, and macOS
-// open-documents events. Non-GUI parents often deliver
-// basename-only Apple Events on a cold launch; launch-files carries the absolute
-// paths the govi shell script resolved.
+// LaunchPath reads the validated, one-shot govi:// launch payload and normalizes
+// file paths from it and from macOS open-documents (Finder) events.
 enum LaunchPath {
     private static var supportDir: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("GoVi", isDirectory: true)
     }
 
-    static var launchFilesURL: URL {
-        supportDir.appendingPathComponent("launch-files", isDirectory: false)
+    // launchDir is the fixed directory the launcher drops govi:// payloads in.
+    // The app only ever reads payloads from here, so a crafted govi:// URL can't
+    // make it read an arbitrary file.
+    static var launchDirURL: URL {
+        supportDir.appendingPathComponent("launch", isDirectory: true)
     }
 
-    static var launchContextURL: URL {
-        supportDir.appendingPathComponent("launch-context", isDirectory: false)
+    struct LaunchPayload {
+        var cwd = ""
+        var silent = false
+        var files: [String] = []
+        var fifo: String?
     }
 
-    static var launchWaitURL: URL {
-        supportDir.appendingPathComponent("launch-wait", isDirectory: false)
+    // consumePayload validates a govi:// token, reads the one-shot payload from
+    // the fixed launch dir, deletes it, and returns its data. The token must be a
+    // bare "ctx-..." name (no path separators) resolving to a regular file
+    // directly inside launchDir; anything else is rejected. The payload is pure
+    // data -- the app only opens the listed files and never writes or executes
+    // anything from it.
+    // pendingPayloadTokens lists payloads the launcher left in the fixed dir.
+    // Used on cold launch, where the open/URL Apple Event is unreliable but the
+    // payload is already on disk (the launcher writes it before `open`).
+    static func pendingPayloadTokens() -> [String] {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: launchDirURL.path)
+        else { return [] }
+        return names.filter { $0.hasPrefix("ctx-") }
     }
 
-    static func readLaunchWaitFifo() -> String? {
-        guard let text = try? String(contentsOf: launchWaitURL, encoding: .utf8) else { return nil }
+    static func consumePayload(token: String) -> LaunchPayload? {
+        guard token.range(of: "^ctx-[A-Za-z0-9]+$", options: .regularExpression) != nil else {
+            return nil
+        }
+        let url = launchDirURL.appendingPathComponent(token, isDirectory: false)
+        guard url.deletingLastPathComponent().standardizedFileURL.path
+                == launchDirURL.standardizedFileURL.path,
+              let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return nil
+        }
+        try? FileManager.default.removeItem(at: url) // one-shot
+        var p = LaunchPayload()
         for line in text.split(whereSeparator: \.isNewline) {
-            if line.hasPrefix("fifo=") {
-                let fifo = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
-                if !fifo.isEmpty { return fifo }
+            guard let eq = line.firstIndex(of: "=") else { continue }
+            let key = String(line[..<eq])
+            let val = String(line[line.index(after: eq)...])
+            switch key {
+            case "cwd": p.cwd = val
+            case "silent": p.silent = (val == "1")
+            case "file": p.files.append(normalize(val))
+            case "fifo": p.fifo = val
+            default: break
             }
         }
-        return nil
-    }
-
-    static func clearLaunchWait() {
-        try? FileManager.default.removeItem(at: launchWaitURL)
-    }
-
-    static func readLaunchFiles() -> [String] {
-        guard let text = try? String(contentsOf: launchFilesURL, encoding: .utf8) else { return [] }
-        return text.split(whereSeparator: \.isNewline)
-            .map { String($0).trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-            .map { normalize($0) }
-    }
-
-    static func clearLaunchFiles() {
-        try? FileManager.default.removeItem(at: launchFilesURL)
-    }
-
-    // clearLaunchContext removes the launcher's one-shot context (and its EXINIT
-    // companions) after it has been consumed, so a later Finder launch or new
-    // window doesn't inherit a stale cwd/startup snapshot.
-    static func clearLaunchContext() {
-        let fm = FileManager.default
-        try? fm.removeItem(at: launchContextURL)
-        try? fm.removeItem(at: supportDir.appendingPathComponent("nexinit", isDirectory: false))
-        try? fm.removeItem(at: supportDir.appendingPathComponent("exinit", isDirectory: false))
+        return p
     }
 
     // isGoviTempFile reports whether path is a temp file `govi -g` (no files)
@@ -344,23 +354,9 @@ enum LaunchPath {
         return parent == URL(fileURLWithPath: NSTemporaryDirectory()).standardizedFileURL.path
     }
 
-    static func readLaunchCwd() -> String? {
-        guard let text = try? String(contentsOf: launchContextURL, encoding: .utf8) else { return nil }
-        for line in text.split(whereSeparator: \.isNewline) {
-            if line.hasPrefix("cwd=") {
-                let cwd = String(line.dropFirst(4)).trimmingCharacters(in: .whitespaces)
-                if !cwd.isEmpty { return (cwd as NSString).standardizingPath }
-            }
-        }
-        return nil
-    }
-
     static func normalize(_ path: String) -> String {
         let p = (path as NSString).standardizingPath
         if (p as NSString).isAbsolutePath { return p }
-        if let cwd = readLaunchCwd(), !cwd.isEmpty {
-            return (cwd as NSString).appendingPathComponent(p)
-        }
         let procCwd = FileManager.default.currentDirectoryPath
         if !procCwd.isEmpty {
             return (procCwd as NSString).appendingPathComponent(p)
@@ -394,11 +390,10 @@ final class WaitCoordinator {
     // without -w leave no launch-wait and add no session. It is called before the
     // windows exist, so completion is first evaluated by the checkComplete() that
     // openPaths runs after opening them.
-    func registerWait(paths: [String]) {
+    func registerWait(paths: [String], fifo: String?) {
         lock.lock()
         defer { lock.unlock() }
-        guard let fifo = LaunchPath.readLaunchWaitFifo() else { return }
-        LaunchPath.clearLaunchWait()
+        guard let fifo = fifo, !fifo.isEmpty else { return }
         sessions.append(Session(fifo: fifo, paths: Set(paths)))
     }
 
@@ -427,6 +422,10 @@ final class WaitCoordinator {
 
     private func signal(fifo: String) {
         DispatchQueue.global(qos: .utility).async {
+            // Only ever signal a real FIFO: never open/write/truncate a regular
+            // file, even though the path comes from a fixed-location payload.
+            var st = stat()
+            guard stat(fifo, &st) == 0, (st.st_mode & S_IFMT) == S_IFIFO else { return }
             let fd = open(fifo, O_WRONLY)
             if fd >= 0 {
                 var byte: UInt8 = 0
@@ -439,9 +438,44 @@ final class WaitCoordinator {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    // Queued open-documents paths during a cold launch (handled in finishColdLaunch).
+    // Queued during a cold launch (handled in finishColdLaunch): file URLs from
+    // Finder, and govi:// launch tokens from the `govi -g` launcher.
     private var pendingOpenPaths: [String] = []
+    private var pendingLaunchTokens: [String] = []
     private var coldLaunchComplete = false
+
+    // launchToken extracts the ctx token from a govi://open?ctx=... URL.
+    private func launchToken(from url: URL) -> String {
+        guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let val = comps.queryItems?.first(where: { $0.name == "ctx" })?.value
+        else { return "" }
+        return val
+    }
+
+    // handleLaunch reads a validated one-shot payload and opens its files with the
+    // launcher's cwd (and -w FIFO). Data only: it never writes or runs anything.
+    private func handleLaunch(_ token: String) {
+        guard let p = LaunchPath.consumePayload(token: token), !p.files.isEmpty else { return }
+        EditorWindow.openPaths(p.files, cwd: p.cwd, fifo: p.fifo, silent: p.silent)
+    }
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Custom URL schemes (govi://) are delivered as a kAEGetURL Apple Event,
+        // not via application(_:open:). Register early so a cold-launch URL is
+        // caught.
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleGetURL(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL))
+    }
+
+    @objc func handleGetURL(_ event: NSAppleEventDescriptor, withReplyEvent: NSAppleEventDescriptor) {
+        guard let s = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
+              let url = URL(string: s), url.scheme == "govi" else { return }
+        let token = launchToken(from: url)
+        if coldLaunchComplete { handleLaunch(token) } else { pendingLaunchTokens.append(token) }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Files passed by direct exec (GoVi.app/Contents/MacOS/GoVi file ...).
@@ -463,18 +497,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func finishColdLaunch() {
-        // launch-files (from govi -g) wins over Apple Events: cold launches from
-        // background helpers often deliver basename-only paths and would otherwise
-        // erase launch-files before we read it.
-        let fromLauncher = LaunchPath.readLaunchFiles()
-        if !fromLauncher.isEmpty {
-            EditorWindow.openPaths(fromLauncher)
-        } else if !pendingOpenPaths.isEmpty {
+        // Cold-launch open/URL Apple Events are unreliable, so besides any token
+        // delivered via application(_:open:), pick up the payload the launcher
+        // already wrote to disk. consumePayload is one-shot, so a token seen both
+        // ways still opens exactly once.
+        var tokens = pendingLaunchTokens
+        pendingLaunchTokens.removeAll()
+        tokens.append(contentsOf: LaunchPath.pendingPayloadTokens())
+        for token in tokens { handleLaunch(token) }
+        if !pendingOpenPaths.isEmpty {
             EditorWindow.openPaths(pendingOpenPaths)
         }
         pendingOpenPaths.removeAll()
-        LaunchPath.clearLaunchFiles()
-        LaunchPath.clearLaunchContext() // one-shot: consumed by the opens above
         coldLaunchComplete = true
         if !EditorWindow.anyOpen {
             EditorWindow.open(path: "")
@@ -492,18 +526,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
-    // application(_:open:) is the open-documents Apple Event. macOS routes
-    // `open -a GoVi.app file ...` (and Finder double-clicks / drags) here --
-    // delivering to the *running* instance when one exists, which is what makes
-    // the command-line `govi` tool reuse a running app.
+    // application(_:open:) receives both govi://open?ctx=... launch URLs (from the
+    // `govi -g` launcher; routed here by LaunchServices, cold or already running)
+    // and plain file URLs (Finder double-clicks / drags). Launch URLs carry their
+    // context in a validated one-shot payload; file URLs open with the default cwd.
     func application(_ application: NSApplication, open urls: [URL]) {
-        let paths = urls.filter { $0.isFileURL }.map { LaunchPath.pathFromOpenURL($0) }
-        if coldLaunchComplete {
-            LaunchPath.clearLaunchFiles()
-            EditorWindow.openPaths(paths)
-            LaunchPath.clearLaunchContext() // consumed by the opens above
-        } else {
-            pendingOpenPaths.append(contentsOf: paths)
+        var filePaths: [String] = []
+        for url in urls {
+            if url.scheme == "govi" {
+                let token = launchToken(from: url)
+                if coldLaunchComplete { handleLaunch(token) } else { pendingLaunchTokens.append(token) }
+            } else if url.isFileURL {
+                filePaths.append(LaunchPath.pathFromOpenURL(url))
+            }
+        }
+        if !filePaths.isEmpty {
+            if coldLaunchComplete { EditorWindow.openPaths(filePaths) } else { pendingOpenPaths.append(contentsOf: filePaths) }
         }
         NSApp.activate(ignoringOtherApps: true)
     }
