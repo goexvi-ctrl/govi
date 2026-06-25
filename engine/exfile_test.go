@@ -19,6 +19,18 @@ func TestNewFileMessage(t *testing.T) {
 	}
 }
 
+func TestExistingFileMessage(t *testing.T) {
+	e, _, _ := newTestEngine(t, "")
+	p := writeTemp(t, t.TempDir(), "have", "ab\ncd\n") // 2 lines, 6 bytes
+	if err := e.Open(p); err != nil {
+		t.Fatal(err)
+	}
+	want := p + ": 2 lines, 6 characters"
+	if e.scr.msg != want {
+		t.Fatalf("existing-file message = %q, want %q", e.scr.msg, want)
+	}
+}
+
 func writeTemp(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	p := filepath.Join(dir, name)

@@ -129,10 +129,14 @@ func (e *Engine) Open(path string) error {
 	if len(e.argv) > 1 {
 		e.showFileCount = true
 	}
-	e.scr.msg = fmt.Sprintf("%q: %d lines", filepath.Base(path), store.Lines())
+	chars := int64(0)
+	if fi, err := os.Stat(path); err == nil {
+		chars = fi.Size()
+	}
+	e.scr.msg = fmt.Sprintf("%s: %d lines, %d characters", e.scr.name, store.Lines(), chars)
 	e.scr.msgKind = MsgInfo
 	if e.hasRecovery(path) {
-		e.scr.msg = fmt.Sprintf("%q: recovery file exists; use :recover to restore it", filepath.Base(path))
+		e.scr.msg = fmt.Sprintf("%s: recovery file exists; use :recover to restore it", e.scr.name)
 		e.scr.msgKind = MsgInfo
 	}
 	return nil
