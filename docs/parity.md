@@ -98,7 +98,7 @@ parity row can be checked against the source description quickly.
 | `:[line]=` | yes | ✅ | |
 | `:[range]p[rint]`/`nu[mber]`/`l[ist]` | yes | ✅ | output via overlay/transcript |
 | `:w[rite]` `:wq` `:x[it]` `:q[uit]` | yes | ✅✔ | `!`, `:[range]w !cmd`, dirty guard (incl. insert-mode pending edits) |
-| `:r[ead] file` | yes | ✅ | `:r !cmd` ❌ |
+| `:r[ead] file` `:r !cmd` | yes | ✅✔ | |
 | `:[range]!cmd` / `:!cmd` | yes | ✅✔ | |
 | `:set` / `:set all` / `:set opt` | yes | ✅✔ | full option registry, grid display |
 | `:map` `:map!` `:unmap` | yes | ✅✔ | non-recursive |

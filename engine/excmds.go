@@ -349,13 +349,28 @@ func (e *Engine) exQuit(c *exCmd) error {
 }
 
 func (e *Engine) exRead(c *exCmd) error {
-	path := strings.TrimSpace(c.arg)
-	if path == "" {
+	arg := strings.TrimSpace(c.arg)
+	if arg == "" {
 		return fmt.Errorf("Filename required")
 	}
-	data, err := readFileLines(e.resolvePath(path))
-	if err != nil {
-		return err
+	// :[line]r !cmd inserts a shell command's output instead of a file.
+	var data [][]rune
+	if strings.HasPrefix(arg, "!") {
+		cmd := strings.TrimSpace(arg[1:])
+		if cmd == "" {
+			return fmt.Errorf("Usage: [line]r !command")
+		}
+		lines, err := e.readFromCommand(cmd)
+		if err != nil {
+			return err
+		}
+		data = lines
+	} else {
+		lines, err := readFileLines(e.resolvePath(arg))
+		if err != nil {
+			return err
+		}
+		data = lines
 	}
 	s := e.scr
 	at := c.addr2

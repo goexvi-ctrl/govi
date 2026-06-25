@@ -2,6 +2,7 @@ package engine
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -160,6 +161,35 @@ func TestExWriteToCommandSecure(t *testing.T) {
 	e.exExecute("set secure")
 	if err := e.exExecute("w !cat"); err == nil {
 		t.Fatal("expected secure error for :w !cmd")
+	}
+}
+
+func TestExReadFromCommand(t *testing.T) {
+	e, _, _ := newTestEngine(t, "one\ntwo\n")
+	e.Resize(10, 40)
+
+	// :1r !cmd inserts the command's output after line 1.
+	if err := e.exExecute("1r !printf 'A\\nB\\n'"); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for i := int64(1); i <= e.scr.lineCount(); i++ {
+		got = append(got, string(e.scr.lineRunes(i)))
+	}
+	if strings.Join(got, " ") != "one A B two" {
+		t.Fatalf("buffer = %q, want \"one A B two\"", strings.Join(got, " "))
+	}
+}
+
+func TestExReadFromCommandSecure(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	e.Resize(10, 40)
+	e.exExecute("set secure")
+	if err := e.exExecute("r !echo nope"); err == nil {
+		t.Fatal("expected secure error for :r !cmd")
+	}
+	if e.scr.lineCount() != 1 {
+		t.Fatalf("buffer modified despite secure: %d lines", e.scr.lineCount())
 	}
 }
 

@@ -167,6 +167,22 @@ func (e *Engine) writeToCommand(c *exCmd, cmd string) error {
 	return nil
 }
 
+// readFromCommand implements :[line]r !cmd -- run cmd via the shell and return
+// its output as lines to insert into the buffer (nvi ex/ex_read.c).
+func (e *Engine) readFromCommand(cmd string) ([][]rune, error) {
+	if e.scr.opts.Bool("secure") {
+		return nil, fmt.Errorf("The ! command is not supported when the secure edit option is set")
+	}
+	out, err := e.runShellCmd(cmd, "", e.bangCols(), e.bangRows())
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			return nil, fmt.Errorf("%s: %v", cmd, err)
+		}
+	}
+	return splitOutputLines(out), nil
+}
+
 // startFilter implements the vi ! operator: prompt with "!" on the status line
 // while the filter command is entered (nvi's v_filter / v_tcmd).
 func (e *Engine) startFilter(l1, l2 int64) {

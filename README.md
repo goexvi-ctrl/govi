@@ -262,6 +262,7 @@ ambiguous prefix rings the bell so you can type more.
 | **`:xit`** | Write if modified and quit |
 | **`:quit`** **`[:range] q[uit][!]`** | Quit |
 | **`:read`** **`:[line] r[ead] file`** | Read file after line |
+| **`:read !cmd`** **`:[line] r[ead] !cmd`** | Insert a shell command's output after the line |
 | **`:edit`** **`:e[dit][!] [file]`** | Edit a file |
 | **`:file`** **`:f[ile] [name]`** | Show or set the buffer name |
 | **`:args`** | Display the argument list |
