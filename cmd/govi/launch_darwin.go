@@ -49,12 +49,11 @@ func runGUI(silent, wait bool, files []string) int {
 	// opens an empty buffer, and deletes it. The unique name keeps macOS from
 	// skipping it as an already-open path.
 	if len(files) == 0 {
-		newDir := filepath.Join(supportDir, "new")
-		if err := os.MkdirAll(newDir, 0o755); err != nil {
-			fmt.Fprintln(os.Stderr, "govi:", err)
-			return 1
-		}
-		sentinel := filepath.Join(newDir, fmt.Sprintf("%d-%d", os.Getpid(), time.Now().UnixNano()))
+		// The sentinel must live where LaunchServices will open a document:
+		// ~/Library is rejected (error -5000), so use the temp dir. The app
+		// recognizes the "govi-new-" name, opens an empty buffer, and deletes it;
+		// the unique name keeps macOS from skipping it as an already-open doc.
+		sentinel := filepath.Join(os.TempDir(), fmt.Sprintf("govi-new-%d-%d", os.Getpid(), time.Now().UnixNano()))
 		if f, err := os.Create(sentinel); err == nil {
 			f.Close()
 		}

@@ -330,16 +330,13 @@ enum LaunchPath {
         try? FileManager.default.removeItem(at: launchFilesURL)
     }
 
-    static var newDirURL: URL {
-        supportDir.appendingPathComponent("new", isDirectory: true)
-    }
-
     // isNewEditorSentinel reports whether path is one of `govi -g`'s "open a new
-    // empty editor" marker files: a unique file the launcher drops in the support
-    // "new" dir and opens, so the request rides the reliable open-documents event.
+    // empty editor" marker files: a uniquely-named temp file (govi-new-*) the
+    // launcher opens so the request rides the reliable open-documents event. It
+    // lives in the temp dir because LaunchServices rejects opening files under
+    // ~/Library, so it is recognized by name, not location.
     static func isNewEditorSentinel(_ path: String) -> Bool {
-        let parent = URL(fileURLWithPath: (path as NSString).deletingLastPathComponent)
-        return parent.standardizedFileURL.path == newDirURL.standardizedFileURL.path
+        (path as NSString).lastPathComponent.hasPrefix("govi-new-")
     }
 
     static func removeSentinel(_ path: String) {
