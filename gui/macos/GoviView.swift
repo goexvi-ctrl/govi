@@ -155,9 +155,11 @@ final class GoviView: NSView, NSTextInputClient {
         let lm = NSLayoutManager()
         let cellH = lm.defaultLineHeight(for: font)
         let screenRows = textRows + 1
+        // Round up: AppKit rounds the content rect to whole points, and rounding
+        // down would shave a partial cell and lose a row/column.
         return NSSize(
-            width: padding * 2 + CGFloat(cols) * cellW,
-            height: padding * 2 + CGFloat(screenRows) * cellH
+            width: ceil(padding * 2 + CGFloat(cols) * cellW),
+            height: ceil(padding * 2 + CGFloat(screenRows) * cellH)
         )
     }
 
@@ -210,8 +212,10 @@ final class GoviView: NSView, NSTextInputClient {
     // updateGeometry recomputes the cell rows/cols for the current bounds and
     // tells the engine, then recomposes and repaints.
     func updateGeometry() {
-        let w = max(1, Int((bounds.width - 2 * padding) / cellW))
-        let h = max(1, Int((bounds.height - 2 * padding) / cellH))
+        // Add a small epsilon so an exact fit isn't lost to sub-pixel rounding
+        // (e.g. 80*cellW coming back as 79.9999.../cellW).
+        let w = max(1, Int((bounds.width - 2 * padding) / cellW + 1e-6))
+        let h = max(1, Int((bounds.height - 2 * padding) / cellH + 1e-6))
         if w == cols && h == rows { return }
         cols = w
         rows = h
