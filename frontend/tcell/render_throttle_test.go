@@ -28,7 +28,7 @@ func TestRenderUrgent(t *testing.T) {
 	}
 }
 
-func TestPaintDueRespectsRefreshMs(t *testing.T) {
+func TestPaintDueRespectsRefresh(t *testing.T) {
 	sim := tc.NewSimulationScreen("")
 	fe, err := NewWithScreen(sim)
 	if err != nil {
@@ -48,9 +48,9 @@ func TestPaintDueRespectsRefreshMs(t *testing.T) {
 	}
 }
 
-func TestRefreshMsDisablesThrottle(t *testing.T) {
+func TestRefreshDisablesThrottle(t *testing.T) {
 	eng, _ := setup(t, "x\n", 20, 4)
-	eng.RunEx("set refreshms=0")
+	eng.RunEx("set refresh=0")
 	sim := tc.NewSimulationScreen("")
 	fe, err := NewWithScreen(sim)
 	if err != nil {
@@ -61,13 +61,13 @@ func TestRefreshMsDisablesThrottle(t *testing.T) {
 		t.Fatalf("minRenderPeriod = %v, want 0", got)
 	}
 	if !fe.paintDue(fe.minRenderPeriod()) {
-		t.Fatal("refreshms=0 should always paint when pending")
+		t.Fatal("refresh=0 should always paint when pending")
 	}
 }
 
-func TestRefreshMsSetsInterval(t *testing.T) {
+func TestRefreshSetsInterval(t *testing.T) {
 	eng, _ := setup(t, "x\n", 20, 4)
-	eng.RunEx("set refreshms=100")
+	eng.RunEx("set refresh=100ms")
 	sim := tc.NewSimulationScreen("")
 	fe, err := NewWithScreen(sim)
 	if err != nil {

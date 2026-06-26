@@ -9,20 +9,16 @@ import (
 )
 
 // During fast input (paste or autorepeat) coalesce repaints in processEvents on
-// the main goroutine. Semantic handling stays per-key. refreshms sets the
-// minimum interval between paints during a burst; refreshms=0 repaints after
+// the main goroutine. Semantic handling stays per-key. The refresh option sets
+// the minimum interval between paints during a burst; refresh=0 repaints after
 // every event.
 const burstRelayWait = 3 * time.Millisecond
 
 func (f *Frontend) minRenderPeriod() time.Duration {
 	if f.eng == nil {
-		return 50 * time.Millisecond
+		return 20 * time.Millisecond
 	}
-	ms := f.eng.RefreshMs()
-	if ms <= 0 {
-		return 0
-	}
-	return time.Duration(ms) * time.Millisecond
+	return f.eng.RefreshInterval()
 }
 
 func renderUrgent(v engine.View, cs engine.ChangeSet) bool {
@@ -91,6 +87,20 @@ func (f *Frontend) processEvents(events <-chan tc.Event, first tc.Event) (closed
 	for {
 		if f.paintPending && f.paintDue(period) {
 			f.ensurePainted()
+		}
+
+		if f.paintPending && period > 0 && !f.scr.HasPendingEvent() {
+			select {
+			case ev := <-events:
+				if ev == nil {
+					return true
+				}
+				handle(ev)
+				continue
+			default:
+				f.ensurePainted()
+				return false
+			}
 		}
 
 		if f.paintPending && period > 0 {
