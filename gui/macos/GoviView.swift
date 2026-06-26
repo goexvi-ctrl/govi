@@ -77,14 +77,6 @@ final class GoviView: NSView, NSTextInputClient {
     private var bufB: Caret = (1, 0)
     private var dragging = false
 
-    // shiftKeyDown tracks the physical shift key via flagsChanged. mouseDown's
-    // modifierFlags often omits shift even when the key is held (especially on
-    // the second click in a shift-click sequence within the double-click window).
-    private var shiftKeyDown = false
-    // True while shift is physically held (latched on press, cleared on release).
-    // mouseDown often omits shift from modifierFlags even when this is true.
-    private var shiftKeyEngaged = false
-
     // selGranularity records how the selection was started; shift-extend and
     // drag-extend snap to word or line boundaries after double/triple-click.
     private enum SelGranularity { case character, word, line }
@@ -223,41 +215,19 @@ final class GoviView: NSView, NSTextInputClient {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
-        syncShiftKeyState()
         updateGeometry()
     }
 
-    override func flagsChanged(with event: NSEvent) {
-        syncShiftKeyState()
+    // shiftDown reports whether Shift is held for a mouse event. AppKit
+    // occasionally drops .shift from a mouseDown's own modifierFlags (notably the
+    // synthesized second click of a double-click-then-shift-click), so fall back
+    // to the current global modifier state and then the HID hardware state. This
+    // is a live query each time -- no latched flags or flagsChanged tracking.
+    private func shiftDown(_ event: NSEvent) -> Bool {
         let mask = NSEvent.ModifierFlags.deviceIndependentFlagsMask
-        if !shiftPhysicallyDown()
-            && !event.modifierFlags.intersection(mask).contains(.shift) {
-            shiftKeyEngaged = false
-        }
-    }
-
-    private func syncShiftKeyState() {
-        let mask = NSEvent.ModifierFlags.deviceIndependentFlagsMask
-        let physical = shiftPhysicallyDown()
-        shiftKeyDown = NSEvent.modifierFlags.intersection(mask).contains(.shift) || physical
-        if physical || shiftKeyDown {
-            shiftKeyEngaged = true
-        }
-    }
-
-    private func shiftPhysicallyDown() -> Bool {
-        CGEventSource.flagsState(.hidSystemState).contains(.maskShift)
-    }
-
-    private func shiftHeld(_ event: NSEvent) -> Bool {
-        if shiftKeyDown || shiftPhysicallyDown() { return true }
-        let mask = NSEvent.ModifierFlags.deviceIndependentFlagsMask
-        return event.modifierFlags.intersection(mask).contains(.shift)
-            || NSEvent.modifierFlags.intersection(mask).contains(.shift)
-    }
-
-    private func shouldShiftExtend(_ event: NSEvent) -> Bool {
-        shiftHeld(event) || (selActive && shiftKeyEngaged)
+        if event.modifierFlags.intersection(mask).contains(.shift) { return true }
+        if NSEvent.modifierFlags.intersection(mask).contains(.shift) { return true }
+        return CGEventSource.flagsState(.hidSystemState).contains(.maskShift)
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -553,7 +523,9 @@ final class GoviView: NSView, NSTextInputClient {
 
     // handleShiftExtendMouseDown extends the selection to a shift-click. With no
     // selection (or after Select All) it anchors a fresh one at the cursor;
-    // otherwise it pins the existing selection's far end and extends to the click.
+    // otherwise it keeps the original anchor (screenDragAnchor / granLo / granHi)
+    // so the point where the selection began always stays in the selection across
+    // repeated shift-clicks -- only the moving end follows the click.
     private func handleShiftExtendMouseDown(_ event: NSEvent) {
         dragBlock = optionRectSelect(event)
         if !selActive || selWholeBuffer {
@@ -571,13 +543,6 @@ final class GoviView: NSView, NSTextInputClient {
                 granLo = cur
                 granHi = cur
             }
-        } else {
-            let c = cellAt(event)
-            let lo = cellBefore(screenSelStart, screenSelEnd) ? screenSelStart : screenSelEnd
-            let hi = cellBefore(screenSelStart, screenSelEnd) ? screenSelEnd : screenSelStart
-            granLo = lo
-            granHi = hi
-            screenDragAnchor = cellBefore(c, lo) ? hi : lo
         }
         dragging = true
         extendSelection(to: event)
@@ -585,14 +550,13 @@ final class GoviView: NSView, NSTextInputClient {
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
-        syncShiftKeyState()
         dragBlock = optionRectSelect(event)
 
         // Shift-click (or shift-click-drag) extends the selection. This must run
         // before the clickCount==2/3 handler: within the system double-click
         // interval AppKit often delivers clickCount=2 on the shift-click even at
         // a different location, which would otherwise replace the selection.
-        if shouldShiftExtend(event) {
+        if shiftDown(event) {
             handleShiftExtendMouseDown(event)
             return
         }
