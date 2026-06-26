@@ -17,6 +17,9 @@ func TestRenderUrgent(t *testing.T) {
 	if renderUrgent(v, engine.ChangeSet{CursorMoved: true}) {
 		t.Fatal("cursor-only change should not be urgent")
 	}
+	if renderUrgent(v, engine.ChangeSet{Scrolled: true}) {
+		t.Fatal("scroll should not bypass burst throttle")
+	}
 	if !renderUrgent(v, engine.ChangeSet{ModeChanged: true}) {
 		t.Fatal("mode change should be urgent")
 	}
@@ -25,23 +28,23 @@ func TestRenderUrgent(t *testing.T) {
 	}
 }
 
-func TestShouldPaintNowDuringFlood(t *testing.T) {
+func TestPaintDueRespectsRefreshMs(t *testing.T) {
 	sim := tc.NewSimulationScreen("")
 	fe, err := NewWithScreen(sim)
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now()
-	fe.lastPaintAt = now
+	fe.lastPaintAt = time.Now()
 
-	if fe.shouldPaintNow(now.Add(5*time.Millisecond), true) {
-		t.Fatal("expected defer while interval not elapsed and input pending")
+	if !fe.paintDue(0) {
+		t.Fatal("zero period should always be due")
 	}
-	if !fe.shouldPaintNow(now.Add(55*time.Millisecond), true) {
-		t.Fatal("expected paint once refreshms elapsed even with pending input")
+	if fe.paintDue(1 * time.Second) {
+		t.Fatal("expected paint not due immediately after last paint")
 	}
-	if !fe.shouldPaintNow(now.Add(5*time.Millisecond), false) {
-		t.Fatal("expected paint when input queue is empty")
+	fe.lastPaintAt = time.Now().Add(-2 * time.Second)
+	if !fe.paintDue(1 * time.Second) {
+		t.Fatal("expected paint due after interval elapsed")
 	}
 }
 
@@ -54,10 +57,11 @@ func TestRefreshMsDisablesThrottle(t *testing.T) {
 		t.Fatal(err)
 	}
 	fe.Attach(eng)
-	now := time.Now()
-	fe.lastPaintAt = now
-	if !fe.shouldPaintNow(now.Add(5*time.Millisecond), true) {
-		t.Fatal("refreshms=0 should always paint")
+	if got := fe.minRenderPeriod(); got != 0 {
+		t.Fatalf("minRenderPeriod = %v, want 0", got)
+	}
+	if !fe.paintDue(fe.minRenderPeriod()) {
+		t.Fatal("refreshms=0 should always paint when pending")
 	}
 }
 
@@ -75,23 +79,22 @@ func TestRefreshMsSetsInterval(t *testing.T) {
 	}
 }
 
-func TestSchedulePaintDoesNotResetTimer(t *testing.T) {
+func TestRenderDefersDuringBurst(t *testing.T) {
 	sim := tc.NewSimulationScreen("")
 	fe, err := NewWithScreen(sim)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fe.lastPaintAt = time.Now()
-	fe.schedulePaint(50 * time.Millisecond)
-	first := fe.paintTimer
-	if first == nil {
-		t.Fatal("expected timer after first schedule")
+	eng, _ := setup(t, "hi\n", 20, 4)
+	fe.Attach(eng)
+	fe.inEventBurst = true
+
+	var v engine.View
+	eng.WithView(func(view engine.View) { v = view })
+	fe.Render(v, engine.ChangeSet{Scrolled: true})
+	if !fe.paintPending {
+		t.Fatal("Render during burst should defer paint")
 	}
-	fe.schedulePaint(10 * time.Millisecond)
-	if fe.paintTimer != first {
-		t.Fatal("second schedulePaint should not replace an armed timer")
-	}
-	fe.stopPaintTimer()
 }
 
 func TestFastInsertCompletesQuickly(t *testing.T) {

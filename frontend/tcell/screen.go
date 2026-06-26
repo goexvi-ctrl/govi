@@ -11,7 +11,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	tc "github.com/gdamore/tcell/v2"
@@ -25,10 +24,9 @@ type Frontend struct {
 	eng   *engine.Engine
 	title string
 
-	paintMu       sync.Mutex
-	lastPaintAt   time.Time
-	paintDeferred bool
-	paintTimer    *time.Timer
+	inEventBurst bool
+	paintPending bool
+	lastPaintAt  time.Time
 }
 
 // New initializes a terminal screen and returns a Frontend. Call Attach with
@@ -63,7 +61,6 @@ func (f *Frontend) Attach(e *engine.Engine) { f.eng = e }
 
 // Close restores the terminal.
 func (f *Frontend) Close() {
-	f.stopPaintTimer()
 	if f.scr != nil {
 		f.scr.Fini()
 	}
@@ -250,28 +247,18 @@ func (f *Frontend) Bell() { f.scr.Beep() }
 // in a later phase; stored here so the behavior is observable.)
 func (f *Frontend) SetTitle(title string) { f.title = title }
 
-// Render paints the current View. During fast input repaints are capped (see
-// render_throttle.go); urgent changes (mode, scroll, message, resize) paint
-// immediately.
+// Render paints the current View. During an input burst processEvents schedules
+// repaints on the main goroutine; otherwise urgent changes paint immediately.
 func (f *Frontend) Render(v engine.View, cs engine.ChangeSet) {
+	if f.inEventBurst {
+		f.paintPending = true
+		return
+	}
 	if renderUrgent(v, cs) {
 		f.ensurePainted()
 		return
 	}
-	period := f.minRenderPeriod()
-	if period <= 0 {
-		f.ensurePainted()
-		return
-	}
-	now := time.Now()
-	if f.shouldPaintNow(now, f.scr.HasPendingEvent()) {
-		f.ensurePainted()
-		return
-	}
-	f.paintMu.Lock()
-	wait := period - now.Sub(f.lastPaintAt)
-	f.paintMu.Unlock()
-	f.schedulePaint(wait)
+	f.ensurePainted()
 }
 
 // paintNow performs a full-screen repaint. Phase 2 always clears and redraws;

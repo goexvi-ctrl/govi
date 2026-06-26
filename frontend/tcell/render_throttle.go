@@ -8,13 +8,10 @@ import (
 	"govi/engine"
 )
 
-// During fast input (paste or autorepeat) coalesce repaints in the event loop.
-// Semantic handling stays per-key. The minimum interval comes from the refreshms
-// option (default 50ms ≈ 20 Hz); refreshms=0 disables throttling.
-//
-// Repaint when elapsed >= refreshms (even mid-flood), when the event queue is
-// empty, or once at the end of a burst. A single timer is armed for the
-// remaining interval and is not reset on every key.
+// During fast input (paste or autorepeat) coalesce repaints in processEvents on
+// the main goroutine. Semantic handling stays per-key. refreshms sets the
+// minimum interval between paints during a burst; refreshms=0 repaints after
+// every event.
 const burstRelayWait = 3 * time.Millisecond
 
 func (f *Frontend) minRenderPeriod() time.Duration {
@@ -29,7 +26,7 @@ func (f *Frontend) minRenderPeriod() time.Duration {
 }
 
 func renderUrgent(v engine.View, cs engine.ChangeSet) bool {
-	if cs.Full || cs.ModeChanged || cs.Scrolled || cs.MessageChanged {
+	if cs.Full || cs.ModeChanged || cs.MessageChanged {
 		return true
 	}
 	if v.PendingOutput() != nil {
@@ -38,108 +35,99 @@ func renderUrgent(v engine.View, cs engine.ChangeSet) bool {
 	return false
 }
 
-// shouldPaintNow reports whether a non-urgent repaint should happen now.
-// pending is true when tcell still has parsed events queued.
-func (f *Frontend) shouldPaintNow(now time.Time, pending bool) bool {
-	period := f.minRenderPeriod()
+func (f *Frontend) paintDue(period time.Duration) bool {
 	if period <= 0 {
 		return true
 	}
-	f.paintMu.Lock()
-	elapsed := now.Sub(f.lastPaintAt)
-	f.paintMu.Unlock()
-	if elapsed >= period {
-		return true
-	}
-	return !pending
+	return time.Since(f.lastPaintAt) >= period
 }
 
-func (f *Frontend) schedulePaint(wait time.Duration) {
+func (f *Frontend) paintWait(period time.Duration) time.Duration {
+	if period <= 0 {
+		return 0
+	}
+	wait := period - time.Since(f.lastPaintAt)
 	if wait < 0 {
-		wait = 0
+		return 0
 	}
-	f.paintMu.Lock()
-	defer f.paintMu.Unlock()
-	if f.paintTimer != nil {
-		return
-	}
-	f.paintDeferred = true
-	f.paintTimer = time.AfterFunc(wait, func() { f.flushDeferredPaint() })
-}
-
-func (f *Frontend) stopPaintTimer() {
-	f.paintMu.Lock()
-	defer f.paintMu.Unlock()
-	if f.paintTimer != nil {
-		f.paintTimer.Stop()
-		f.paintTimer = nil
-	}
-	f.paintDeferred = false
+	return wait
 }
 
 func (f *Frontend) markPainted() {
-	f.paintMu.Lock()
 	f.lastPaintAt = time.Now()
-	f.paintDeferred = false
-	f.paintMu.Unlock()
+	f.paintPending = false
 }
 
 func (f *Frontend) ensurePainted() {
-	f.stopPaintTimer()
 	f.eng.WithView(func(v engine.View) {
 		f.paintNow(v)
 	})
 	f.markPainted()
 }
 
-func (f *Frontend) flushDeferredPaint() {
-	f.paintMu.Lock()
-	deferred := f.paintDeferred
-	f.paintDeferred = false
-	if f.paintTimer != nil {
-		f.paintTimer.Stop()
-		f.paintTimer = nil
-	}
-	f.paintMu.Unlock()
-	if !deferred {
-		return
-	}
-	f.eng.WithView(func(v engine.View) {
-		f.paintNow(v)
-	})
-	f.markPainted()
-}
-
-// processEvents handles one or more tcell events from a burst, then ensures the
-// screen reflects the final state once the queue has gone quiet. closed is true
-// when the events channel has shut down.
+// processEvents handles one or more tcell events from a burst. Repaints are
+// driven here (not from background timers) so tcell stays on one goroutine.
+// closed is true when the events channel has shut down.
 func (f *Frontend) processEvents(events <-chan tc.Event, first tc.Event) (closed bool) {
 	if first == nil {
 		return true
 	}
-	f.handleEvent(first)
+
+	f.inEventBurst = true
+	defer func() {
+		f.inEventBurst = false
+		f.ensurePainted()
+	}()
+
+	period := f.minRenderPeriod()
+
+	handle := func(ev tc.Event) {
+		f.handleEvent(ev)
+		f.paintPending = true
+	}
+
+	handle(first)
+
 	for {
+		if f.paintPending && f.paintDue(period) {
+			f.ensurePainted()
+		}
+
+		if f.paintPending && period > 0 {
+			wait := f.paintWait(period)
+			select {
+			case ev := <-events:
+				if ev == nil {
+					return true
+				}
+				handle(ev)
+				continue
+			case <-time.After(wait):
+				continue
+			}
+		}
+
 		select {
 		case ev := <-events:
 			if ev == nil {
-				f.ensurePainted()
 				return true
 			}
-			f.handleEvent(ev)
+			handle(ev)
 		default:
 			if f.scr.HasPendingEvent() {
 				select {
 				case ev := <-events:
 					if ev == nil {
-						f.ensurePainted()
 						return true
 					}
-					f.handleEvent(ev)
-					continue
+					handle(ev)
 				case <-time.After(burstRelayWait):
+					if !f.scr.HasPendingEvent() {
+						return false
+					}
 				}
+				continue
 			}
-			f.ensurePainted()
 			return false
 		}
 	}
