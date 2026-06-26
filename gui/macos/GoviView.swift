@@ -45,7 +45,7 @@ final class GoviView: NSView, NSTextInputClient {
 
     private var bgColor = NSColor.textBackgroundColor
     private var fgColor = NSColor.textColor
-    private let cursorColor = NSColor.systemBlue
+    private var cursorColor: NSColor { Settings.cursorColor }
 
     // Inset (pixels) between the window edge and the text grid, from Settings.
     private var padding: CGFloat = Settings.padding
@@ -1254,12 +1254,32 @@ final class GoviView: NSView, NSTextInputClient {
                 (String(ch) as NSString).draw(at: r.origin, withAttributes: attrs)
             }
         } else if GoviCursorVisible(handle) != 0 {
-            let cx = Int(GoviCursorX(handle))
-            let cy = Int(GoviCursorY(handle))
-            cursorColor.setFill()
-            cellRect(cx, cy).fill()
-            if let ch = charAt(cx, cy), ch != " " {
-                drawChar(ch, col: cx, row: cy, color: bgColor)
+            drawCursor(col: Int(GoviCursorX(handle)), row: Int(GoviCursorY(handle)))
+        }
+    }
+
+    // drawCursor renders the editor cursor per Settings.cursorStyle. A box is a
+    // filled cell (with the glyph inverted) when the window is focused, and a
+    // hollow outline when it is not; a bar is a thin rule at the insertion point.
+    private func drawCursor(col: Int, row: Int) {
+        let rect = cellRect(col, row)
+        let focused = window?.isKeyWindow ?? false
+        cursorColor.set()
+        switch Settings.cursorStyle {
+        case .bar:
+            var bar = rect
+            bar.size.width = max(1, min(2, cellW))
+            bar.fill()
+        case .box:
+            if focused {
+                rect.fill()
+                if let ch = charAt(col, row), ch != " " {
+                    drawChar(ch, col: col, row: row, color: bgColor)
+                }
+            } else {
+                let outline = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
+                outline.lineWidth = 1
+                outline.stroke()
             }
         }
     }

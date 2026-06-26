@@ -280,6 +280,49 @@ enum Settings {
             : (initialDirectory as NSString).expandingTildeInPath
     }
 
+    private static let cursorStyleKey = "cursorStyle"
+    private static let cursorColorKey = "cursorColor"
+
+    enum CursorStyle: String, CaseIterable {
+        case box
+        case bar
+
+        var label: String {
+            switch self {
+            case .box: return "Box"
+            case .bar: return "Vertical bar"
+            }
+        }
+    }
+
+    // cursorStyle selects how the editor cursor is drawn: a filled box (the
+    // classic vi block) or a thin vertical bar at the insertion point.
+    static var cursorStyle: CursorStyle {
+        get {
+            let d = UserDefaults.standard
+            guard let raw = d.string(forKey: cursorStyleKey),
+                  let s = CursorStyle(rawValue: raw) else { return .box }
+            return s
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: cursorStyleKey)
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
+
+    // cursorColorSpec is the cursor color (empty = system accent blue).
+    static var cursorColorSpec: String {
+        get { UserDefaults.standard.string(forKey: cursorColorKey) ?? "" }
+        set {
+            UserDefaults.standard.set(newValue, forKey: cursorColorKey)
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
+
+    static var cursorColor: NSColor {
+        ColorParser.parse(cursorColorSpec) ?? .systemBlue
+    }
+
     private static func clampWindow(_ value: CGFloat, min: CGFloat, max: CGFloat) -> CGFloat {
         Swift.min(Swift.max(value, min), max)
     }
@@ -330,11 +373,14 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
     private let fgColorSwatch = NSView()
     private let bgColorSwatch = NSView()
     private let initialDirField = NSTextField()
+    private let cursorStylePopup = NSPopUpButton()
+    private let cursorColorField = NSTextField()
+    private let cursorColorSwatch = NSView()
     private static let maxPadding: Double = 64
 
     private init() {
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 560),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         win.title = "Settings"
         super.init(window: win)
@@ -423,9 +469,25 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         dirRow.alignment = .centerY
         dirRow.spacing = 8
 
+        let cursorLabel = NSTextField(labelWithString: "Cursor:")
+        cursorLabel.translatesAutoresizingMaskIntoConstraints = false
+        cursorStylePopup.translatesAutoresizingMaskIntoConstraints = false
+        cursorStylePopup.addItems(withTitles: Settings.CursorStyle.allCases.map(\.label))
+        cursorStylePopup.target = self
+        cursorStylePopup.action = #selector(cursorStyleChanged)
+        let cursorStyleRow = NSStackView(views: [cursorLabel, cursorStylePopup])
+        cursorStyleRow.translatesAutoresizingMaskIntoConstraints = false
+        cursorStyleRow.alignment = .centerY
+        cursorStyleRow.spacing = 8
+
+        let cursorColorRow = makeColorRow(label: "Cursor color:", field: cursorColorField,
+                                          swatch: cursorColorSwatch,
+                                          placeholder: "#RRGGBB or color name (empty = blue)")
+
         let stack = NSStackView(views: [
             paddingRow, rowsRow, colsRow, fontRow, fontSizeRow, fgRow, bgRow, dirRow, openRow,
-            selModeRow, useTabsCheckbox, showDimensionsCheckbox, warnCloseCheckbox,
+            selModeRow, cursorStyleRow, cursorColorRow,
+            useTabsCheckbox, showDimensionsCheckbox, warnCloseCheckbox,
         ])
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.orientation = .vertical
@@ -440,7 +502,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
             stack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -20),
         ])
 
-        [paddingField, rowsField, colsField, fontSizeField, fgColorField, bgColorField]
+        [paddingField, rowsField, colsField, fontSizeField, fgColorField, bgColorField, cursorColorField]
             .forEach { $0.delegate = self }
         syncFromSettings()
     }
@@ -511,6 +573,11 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         updateSwatch(bgColorSwatch, spec: Settings.defaultBackgroundColorSpec,
                      fallback: Settings.defaultBackgroundColor)
         initialDirField.stringValue = Settings.initialDirectory
+        if let idx = Settings.CursorStyle.allCases.firstIndex(of: Settings.cursorStyle) {
+            cursorStylePopup.selectItem(at: idx)
+        }
+        cursorColorField.stringValue = Settings.cursorColorSpec
+        updateSwatch(cursorColorSwatch, spec: Settings.cursorColorSpec, fallback: Settings.cursorColor)
     }
 
     private func updateSwatch(_ swatch: NSView, spec: String, fallback: NSColor) {
@@ -597,6 +664,12 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         Settings.selMode = Settings.SelMode.allCases[idx]
     }
 
+    @objc private func cursorStyleChanged() {
+        let idx = cursorStylePopup.indexOfSelectedItem
+        guard idx >= 0, idx < Settings.CursorStyle.allCases.count else { return }
+        Settings.cursorStyle = Settings.CursorStyle.allCases[idx]
+    }
+
     @objc private func useTabsChanged() {
         Settings.useTabs = useTabsCheckbox.state == .on
     }
@@ -645,6 +718,9 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         case bgColorField:
             commitColor(bgColorField, bgColorSwatch, fallback: NSColor.textBackgroundColor,
                         assign: { Settings.defaultBackgroundColorSpec = $0 })
+        case cursorColorField:
+            commitColor(cursorColorField, cursorColorSwatch, fallback: NSColor.systemBlue,
+                        assign: { Settings.cursorColorSpec = $0 })
         default:
             break
         }

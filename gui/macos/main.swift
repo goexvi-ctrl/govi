@@ -214,6 +214,11 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     func windowDidBecomeKey(_ notification: Notification) {
         view.syncWorkingDirectory()
         view.updateTitle()
+        view.needsDisplay = true // refill the cursor (hollow box -> filled)
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        view.needsDisplay = true // hollow the box cursor while unfocused
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
