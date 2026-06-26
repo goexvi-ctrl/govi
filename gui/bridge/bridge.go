@@ -55,9 +55,14 @@ type instance struct {
 	rows   int
 	cols   int
 
-	selActive bool
-	selA      engine.Pos
-	selB      engine.Pos
+	bufSelActive bool
+	bufSelA      engine.Pos
+	bufSelB      engine.Pos
+
+	screenSelActive bool
+	screenSelLinear bool // false = axis-aligned rectangle; true = reading-order
+	screenSelA      grid.Cell
+	screenSelB      grid.Cell
 }
 
 var (
@@ -361,12 +366,20 @@ func GoviCompose(h C.longlong, rows, cols C.int) {
 	}
 	in.rows, in.cols = int(rows), int(cols)
 	var sel *grid.Selection
-	if in.selActive {
-		sel = &grid.Selection{A: in.selA, B: in.selB}
+	if in.bufSelActive {
+		sel = &grid.Selection{A: in.bufSelA, B: in.bufSelB}
 	}
 	in.eng.WithView(func(v engine.View) {
 		in.gr = grid.ComposeSel(v, int(rows), int(cols), sel)
 	})
+	if in.screenSelActive {
+		ss := &grid.ScreenSelection{A: in.screenSelA, B: in.screenSelB}
+		if in.screenSelLinear {
+			grid.ApplyScreenLinearSel(&in.gr, ss)
+		} else {
+			grid.ApplyScreenSel(&in.gr, ss)
+		}
+	}
 	in.gridOK = true
 }
 
@@ -483,8 +496,8 @@ func GoviLineRange(h C.longlong, x, y C.int, l1 *C.longlong, c1 *C.int, l2 *C.lo
 	})
 }
 
-// GoviSetSelection sets (active != 0) or clears the highlighted caret range
-// [a, b). The range is redrawn on the next GoviCompose.
+// GoviSetSelection sets (active != 0) or clears the buffer caret range [a, b)
+// drawn highlighted on the next GoviCompose. Clears any screen selection.
 //
 //export GoviSetSelection
 func GoviSetSelection(h C.longlong, active C.int, l1 C.longlong, c1 C.int, l2 C.longlong, c2 C.int) {
@@ -492,9 +505,108 @@ func GoviSetSelection(h C.longlong, active C.int, l1 C.longlong, c1 C.int, l2 C.
 	if in == nil {
 		return
 	}
-	in.selActive = active != 0
-	in.selA = engine.Pos{Line: int64(l1), Col: int(c1)}
-	in.selB = engine.Pos{Line: int64(l2), Col: int(c2)}
+	in.bufSelActive = active != 0
+	in.bufSelA = engine.Pos{Line: int64(l1), Col: int(c1)}
+	in.bufSelB = engine.Pos{Line: int64(l2), Col: int(c2)}
+	if active != 0 {
+		in.screenSelActive = false
+	}
+}
+
+// GoviSetScreenSelection sets or clears a screen-cell selection. active: 0=none,
+// 1=axis-aligned rectangle (Option-drag), 2=reading-order (overlay/ex drag).
+// Corners may be given in either order. Clears any buffer selection.
+//
+//export GoviSetScreenSelection
+func GoviSetScreenSelection(h C.longlong, active, linear C.int, ax, ay, bx, by C.int) {
+	in := get(h)
+	if in == nil {
+		return
+	}
+	in.screenSelActive = active != 0
+	in.screenSelLinear = linear != 0
+	in.screenSelA = grid.Cell{X: int(ax), Y: int(ay)}
+	in.screenSelB = grid.Cell{X: int(bx), Y: int(by)}
+	if active != 0 {
+		in.bufSelActive = false
+	}
+}
+
+// GoviScreenRangeText returns rectangular screen selection text (malloc'd;
+// caller frees).
+//
+//export GoviScreenRangeText
+func GoviScreenRangeText(h C.longlong, ax, ay, bx, by C.int) *C.char {
+	in := get(h)
+	if in == nil || !in.gridOK {
+		return C.CString("")
+	}
+	sel := grid.ScreenSelection{
+		A: grid.Cell{X: int(ax), Y: int(ay)},
+		B: grid.Cell{X: int(bx), Y: int(by)},
+	}
+	return C.CString(grid.ScreenRangeText(in.gr, sel))
+}
+
+// GoviScreenLinearRangeText returns reading-order screen selection text
+// (malloc'd; caller frees).
+//
+//export GoviScreenLinearRangeText
+func GoviScreenLinearRangeText(h C.longlong, ax, ay, bx, by C.int) *C.char {
+	in := get(h)
+	if in == nil || !in.gridOK {
+		return C.CString("")
+	}
+	sel := grid.ScreenSelection{
+		A: grid.Cell{X: int(ax), Y: int(ay)},
+		B: grid.Cell{X: int(bx), Y: int(by)},
+	}
+	return C.CString(grid.ScreenLinearRangeText(in.gr, sel))
+}
+
+// GoviScreenToBuffer maps screen cell (x, y) to a buffer caret. Returns 1 and
+// writes *line/*col when the cell is editable buffer text; 0 otherwise.
+//
+//export GoviScreenToBuffer
+func GoviScreenToBuffer(h C.longlong, x, y C.int, line *C.longlong, col *C.int) C.int {
+	in := get(h)
+	if in == nil {
+		return 0
+	}
+	var p engine.Pos
+	var ok bool
+	in.eng.WithView(func(v engine.View) {
+		p, ok = grid.ScreenToBuffer(v, in.rows, in.cols, int(x), int(y))
+	})
+	if !ok {
+		return 0
+	}
+	*line, *col = C.longlong(p.Line), C.int(p.Col)
+	return 1
+}
+
+// GoviSelectionBufferRange writes the buffer caret range [a, b) for the current
+// screen selection when every selected cell is editable buffer text. Returns 1
+// on success, 0 when any cell is non-editable (status, gutter, ~, overlay, ex).
+//
+//export GoviSelectionBufferRange
+func GoviSelectionBufferRange(h C.longlong, l1 *C.longlong, c1 *C.int, l2 *C.longlong, c2 *C.int) C.int {
+	in := get(h)
+	if in == nil || !in.screenSelActive {
+		return 0
+	}
+	sel := grid.ScreenSelection{A: in.screenSelA, B: in.screenSelB}
+	var a, b engine.Pos
+	var ok bool
+	in.eng.WithView(func(v engine.View) {
+		a, b, ok = grid.SelectionBufferRange(v, in.rows, in.cols, sel)
+	})
+	if !ok {
+		return 0
+	}
+	*l1, *c1 = C.longlong(a.Line), C.int(a.Col)
+	*l2, *c2 = C.longlong(b.Line), C.int(b.Col)
+	return 1
 }
 
 // GoviScroll scrolls the viewport by delta lines (positive = toward the end of
@@ -588,6 +700,22 @@ func GoviEndPos(h C.longlong, line *C.longlong, col *C.int) {
 func GoviExActive(h C.longlong) C.int {
 	in := get(h)
 	return boolToC(in != nil && in.eng.ExActive())
+}
+
+// GoviOverlayActive reports whether command output (:!, :viusage, etc.) is shown
+// as a full-window overlay.
+//
+//export GoviOverlayActive
+func GoviOverlayActive(h C.longlong) C.int {
+	in := get(h)
+	if in == nil {
+		return 0
+	}
+	var active bool
+	in.eng.WithView(func(v engine.View) {
+		active = v.PendingOutput() != nil
+	})
+	return boolToC(active)
 }
 
 // GoviTopLine returns the first visible buffer line (the viewport top).
