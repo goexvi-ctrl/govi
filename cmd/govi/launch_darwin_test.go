@@ -70,7 +70,8 @@ func TestRunGUI_wrongConsoleUser(t *testing.T) {
 	guiHome(t)
 	stubConsoleOwner(t, uint32(os.Getuid())+1)
 
-	code := runGUI(false, false, []string{"file.txt"})
+	file := filepath.Join(t.TempDir(), "file.txt")
+	code := runGUI(false, false, []string{file})
 	if code != 1 {
 		t.Fatalf("runGUI() = %d, want 1", code)
 	}
@@ -84,7 +85,8 @@ func TestRunGUI_openCommandFails(t *testing.T) {
 		return errors.New("open failed")
 	}
 
-	code := runGUI(false, false, []string{"file.txt"})
+	file := filepath.Join(t.TempDir(), "file.txt")
+	code := runGUI(false, false, []string{file})
 	if code != 1 {
 		t.Fatalf("runGUI() = %d, want 1", code)
 	}

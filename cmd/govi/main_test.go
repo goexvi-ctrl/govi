@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
 )
 
 func TestRun_help(t *testing.T) {
@@ -227,4 +226,3 @@ func captureRun(t *testing.T, args []string, setup func()) (int, string, string)
 	code := runIO(args, &stdout, &stderr)
 	return code, stdout.String(), stderr.String()
 }
-
