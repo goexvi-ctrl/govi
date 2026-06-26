@@ -370,6 +370,15 @@ final class GoviView: NSView, NSTextInputClient {
     private func selectionStyle(for event: NSEvent) -> SelStyle {
         if optionRectSelect(event) { return .rectangular }
         if GoviOverlayActive(handle) != 0 || GoviExActive(handle) != 0 { return .linearScreen }
+        // In the editor, a click that lands off buffer text -- the status/command
+        // row, ~ filler, or the line-number gutter -- selects displayed screen
+        // text (copy-only). Otherwise GoviCellToPos clamps to the buffer line
+        // above and the wrong text is selected.
+        let c = cellAt(event)
+        var line: Int64 = 0, col: Int32 = 0
+        if GoviScreenToBuffer(handle, c.x, c.y, &line, &col) == 0 {
+            return .linearScreen
+        }
         return .buffer
     }
 
@@ -451,17 +460,6 @@ final class GoviView: NSView, NSTextInputClient {
 
     private func moveCursorToCaret(_ caret: Caret) {
         GoviMoveCursor(handle, caret.line, Int32(caret.col))
-    }
-
-    private func moveCursorToScreenCell(_ cell: ScreenCell) {
-        var line: Int64 = 0, col: Int32 = 0
-        if GoviScreenToBuffer(handle, cell.x, cell.y, &line, &col) != 0 {
-            GoviMoveCursor(handle, line, col)
-        } else {
-            var l: Int64 = 0, c: Int32 = 0
-            GoviCellToPos(handle, cell.x, cell.y, &l, &c)
-            GoviMoveCursor(handle, l, c)
-        }
     }
 
     private func screenWordRange(at cell: ScreenCell) -> (ScreenCell, ScreenCell) {
@@ -586,6 +584,8 @@ final class GoviView: NSView, NSTextInputClient {
                 moveCursorToCaret(snapped)
             }
         case .linearScreen, .rectangular:
+            // Screen selections are copy-only; never move the cursor, even when
+            // the drag extends over buffer cells.
             let anchor = screenDragAnchor
             let snapped = extendScreenEndpoint(at: event, fixedAnchor: anchor, extending: extending)
             if extending {
@@ -593,14 +593,11 @@ final class GoviView: NSView, NSTextInputClient {
                 let cell = cellAt(event)
                 if cellBefore((cell.x, cell.y), anchor) {
                     setScreenSelection(selStyle, snapped, bounds.hi)
-                    moveCursorToScreenCell(snapped)
                 } else {
                     setScreenSelection(selStyle, bounds.lo, snapped)
-                    moveCursorToScreenCell(snapped)
                 }
             } else {
                 setScreenSelection(selStyle, anchor, snapped)
-                moveCursorToScreenCell(snapped)
             }
         }
         step()
@@ -667,7 +664,6 @@ final class GoviView: NSView, NSTextInputClient {
                     selGranularity = .line
                 }
                 setScreenSelection(style, start, end)
-                moveCursorToScreenCell(end)
             }
             step()
             return
@@ -684,7 +680,6 @@ final class GoviView: NSView, NSTextInputClient {
             moveCursorToCaret(caret)
         } else {
             screenDragAnchor = (cell.x, cell.y)
-            moveCursorToScreenCell((cell.x, cell.y))
         }
         step()
     }
