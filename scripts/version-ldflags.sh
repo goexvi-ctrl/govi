@@ -8,8 +8,10 @@ cd "$root"
 date=$(git log -1 --format=%cs 2>/dev/null || echo unknown)
 hash=$(git rev-parse --short HEAD 2>/dev/null || echo "")
 state=""
+buildTime=""
 if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
 	state=modified
+	buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 fi
 
-printf '%s' "-X govi/engine.versionName=govi-0.1 -X govi/engine.commitDate=${date} -X govi/engine.commitHash=${hash} -X govi/engine.treeState=${state}"
+printf '%s' "-X govi/engine.versionName=govi-0.1 -X govi/engine.commitDate=${date} -X govi/engine.commitHash=${hash} -X govi/engine.treeState=${state} -X govi/engine.buildTime=${buildTime}"

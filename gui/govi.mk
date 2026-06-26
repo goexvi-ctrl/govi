@@ -34,8 +34,15 @@ GOVI_MOD     := $(GOVI_ROOT)/go.mod $(GOVI_ROOT)/go.sum
 GOVI_VERSION := $(GOVI_ROOT)/scripts/version-ldflags.sh
 GOVI_GIT     := $(wildcard $(GOVI_ROOT)/.git/HEAD $(GOVI_ROOT)/.git/index)
 
-# Recomputed when HEAD/index or sources change so :version metadata stays current.
+# Written before each libgovi build so a dirty tree gets a fresh build timestamp.
 GOVI_VERSION_FLAGS := $(GOVI_BUILD)/version.flags
+
+# Rebuild libgovi on every make when the tree is dirty so :version's build
+# timestamp reflects this build, not an earlier cached artifact.
+GOVI_TREE_DIRTY := $(shell cd $(GOVI_ROOT) && git status --porcelain 2>/dev/null | head -1)
+ifneq ($(GOVI_TREE_DIRTY),)
+.PHONY: $(GOVI_LIB) $(GOVI_LIB_HDR)
+endif
 
 .DEFAULT_GOAL := govi-app
 
@@ -43,12 +50,9 @@ GOVI_VERSION_FLAGS := $(GOVI_BUILD)/version.flags
 
 govi-app: $(GOVI_APP)
 
-$(GOVI_VERSION_FLAGS): $(GOVI_VERSION) $(GOVI_GO_SRC) $(GOVI_BRIDGE_GO) $(GOVI_MOD) $(GOVI_GIT)
+$(GOVI_LIB) $(GOVI_LIB_HDR): $(GOVI_VERSION) $(GOVI_GO_SRC) $(GOVI_BRIDGE_GO) $(GOVI_MOD) $(GOVI_GIT)
 	@mkdir -p $(GOVI_BUILD)
-	$(GOVI_VERSION) > $@
-
-$(GOVI_LIB) $(GOVI_LIB_HDR): $(GOVI_GO_SRC) $(GOVI_BRIDGE_GO) $(GOVI_MOD) $(GOVI_VERSION_FLAGS)
-	@mkdir -p $(GOVI_BUILD)
+	@$(GOVI_VERSION) > $(GOVI_VERSION_FLAGS)
 	cd $(GOVI_ROOT) && go build -ldflags "$$(cat $(GOVI_VERSION_FLAGS))" \
 		-buildmode=c-archive -o $(GOVI_LIB) ./gui/bridge
 

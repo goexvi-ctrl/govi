@@ -9,6 +9,7 @@ var (
 	commitDate  = "unknown"
 	commitHash  = ""
 	treeState   = "" // "" when clean; "modified" when the tree has local changes
+	buildTime   = "" // UTC timestamp when built from a dirty tree
 )
 
 // VersionString returns the :version message shown to the user.
@@ -26,6 +27,10 @@ func VersionString() string {
 	if treeState != "" {
 		b.WriteByte(' ')
 		b.WriteString(treeState)
+		if buildTime != "" {
+			b.WriteByte(' ')
+			b.WriteString(buildTime)
+		}
 	}
 	return b.String()
 }

@@ -15,6 +15,23 @@ func TestVersionString(t *testing.T) {
 	}
 }
 
+func TestVersionStringDirtyBuildTime(t *testing.T) {
+	oldState, oldTime := treeState, buildTime
+	defer func() {
+		treeState = oldState
+		buildTime = oldTime
+	}()
+	treeState = "modified"
+	buildTime = "2026-06-26T12:00:00Z"
+	got := VersionString()
+	if !strings.Contains(got, "modified") {
+		t.Fatalf("VersionString = %q, want modified", got)
+	}
+	if !strings.Contains(got, buildTime) {
+		t.Fatalf("VersionString = %q, want build timestamp", got)
+	}
+}
+
 func TestExVersion(t *testing.T) {
 	e, _, _ := newTestEngine(t, "x\n")
 	if err := e.exExecute("version"); err != nil {
