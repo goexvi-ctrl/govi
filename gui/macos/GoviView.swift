@@ -659,13 +659,25 @@ final class GoviView: NSView, NSTextInputClient {
 
     // MARK: - Clipboard (Edit menu / standard shortcuts)
 
+    // bufferCopyRange is editRange, but for a whole-line (triple-click) buffer
+    // selection it extends the end to the next line's start so copy/cut include
+    // the trailing newline and a full line round-trips. The last line, which has
+    // no following newline, is left as-is.
+    private func bufferCopyRange() -> (Int64, Int, Int64, Int)? {
+        guard let r = editRange() else { return nil }
+        if selGranularity == .line && r.2 < GoviLineCount(handle) {
+            return (r.0, r.1, r.2 + 1, 0)
+        }
+        return r
+    }
+
     @objc func copy(_ sender: Any?) {
         guard selActive else { return }
         let s: String
         if selBlock {
             s = bridgeString(GoviScreenRangeText(handle, screenSelStart.x, screenSelStart.y,
                                                  screenSelEnd.x, screenSelEnd.y))
-        } else if let r = editRange() {
+        } else if let r = bufferCopyRange() {
             // Editable buffer selection: copy buffer text (no line-number gutter).
             s = bridgeString(GoviRangeText(handle, r.0, Int32(r.1), r.2, Int32(r.3)))
         } else {
@@ -680,7 +692,7 @@ final class GoviView: NSView, NSTextInputClient {
 
     @objc func cut(_ sender: Any?) {
         guard selActive, selectionCapturesInput() else { editBeep(); return }
-        guard let r = editRange() else { editBeep(); return }
+        guard let r = bufferCopyRange() else { editBeep(); return }
         copy(sender)
         GoviDeleteRange(handle, r.0, Int32(r.1), r.2, Int32(r.3))
         clearSelection()
