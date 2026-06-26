@@ -379,6 +379,7 @@ enum LaunchPath {
     }
 
     static func normalize(_ path: String) -> String {
+        if path.isEmpty { return "" } // no file: stay empty, don't become the cwd
         let p = (path as NSString).standardizingPath
         if (p as NSString).isAbsolutePath { return p }
         let procCwd = FileManager.default.currentDirectoryPath
