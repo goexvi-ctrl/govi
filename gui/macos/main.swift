@@ -30,6 +30,12 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         return windows.contains { LaunchPath.normalize($0.path) == p }
     }
 
+    // keyEditor returns the editor owning the key window, if any.
+    static func keyEditor() -> EditorWindow? {
+        guard let view = NSApp.keyWindow?.contentView as? GoviView else { return nil }
+        return windows.first { $0.view === view }
+    }
+
     // make creates an editor for path (empty path = an empty buffer) without
     // presenting it. Returns nil if the file could not be opened.
     private static func make(path: String, cwd: String = "", silent: Bool = false) -> EditorWindow? {
@@ -313,6 +319,25 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             GoviClearQuit(view.handle)
             return false
         }
+    }
+
+    // save writes the buffer with :w (current file). Returns false on error.
+    @discardableResult
+    func save() -> Bool {
+        if GoviSave(view.handle, nil) != 0 {
+            let alert = NSAlert()
+            alert.messageText = "The document could not be saved."
+            if path.isEmpty {
+                alert.informativeText = "No file name."
+            } else {
+                alert.informativeText = "“\(path)” could not be written."
+            }
+            alert.alertStyle = .warning
+            alert.runModal()
+            return false
+        }
+        view.updateTitle()
+        return true
     }
 
     private func saveForClose() -> Bool {
@@ -674,6 +699,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    // File > Save (Cmd-S): same as :w.
+    @objc func saveDocument(_ sender: Any?) {
+        EditorWindow.keyEditor()?.save()
+    }
+
     // File > Open…: choose one or more files (placement follows Settings).
     @objc func openWindow(_ sender: Any?) {
         let panel = NSOpenPanel()
@@ -718,6 +748,8 @@ func makeMenu(target: AppDelegate) -> NSMenu {
     tabItem.target = target
     let openItem = fileMenu.addItem(withTitle: "Open…", action: #selector(AppDelegate.openWindow(_:)), keyEquivalent: "o")
     openItem.target = target
+    let saveItem = fileMenu.addItem(withTitle: "Save", action: #selector(AppDelegate.saveDocument(_:)), keyEquivalent: "s")
+    saveItem.target = target
     fileMenu.addItem(NSMenuItem.separator())
     fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 
