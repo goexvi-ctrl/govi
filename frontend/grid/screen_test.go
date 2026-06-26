@@ -1,7 +1,6 @@
 package grid
 
 import (
-	"strings"
 	"testing"
 
 	"govi/engine"
@@ -63,35 +62,6 @@ func TestScreenToBuffer(t *testing.T) {
 	// Tilde row (row 2: one buffer line + tilde on row 2).
 	if _, ok := ScreenToBuffer(v, rows, cols, 8, 2); ok {
 		t.Error("tilde row should not map")
-	}
-}
-
-func TestSelectionBufferRange(t *testing.T) {
-	v := &fakeView{
-		lines: []string{"hello", "world"},
-		top:   1,
-		msg:   "status",
-	}
-	rows, cols := 5, 20
-	// Pure buffer selection.
-	sel := ScreenSelection{A: Cell{0, 0}, B: Cell{2, 0}}
-	a, b, ok := SelectionBufferRange(v, rows, cols, sel)
-	if !ok || a.Line != 1 || a.Col != 0 || b.Col != 2 {
-		t.Errorf("buffer range = %+v-%+v,%v", a, b, ok)
-	}
-	// Spanning into status fails.
-	sel = ScreenSelection{A: Cell{0, 0}, B: Cell{5, 4}}
-	if _, _, ok := SelectionBufferRange(v, rows, cols, sel); ok {
-		t.Error("buffer+status should fail")
-	}
-	// Gutter cell fails (line numbers on).
-	vNum := &fakeView{
-		lines:  []string{"hello"},
-		top:    1,
-		number: true,
-	}
-	if _, _, ok := SelectionBufferRange(vNum, 4, 20, ScreenSelection{A: Cell{2, 0}, B: Cell{8, 0}}); ok {
-		t.Error("selection including gutter should fail")
 	}
 }
 
@@ -172,41 +142,4 @@ func TestComposeExModeScreenText(t *testing.T) {
 	if _, ok := ScreenToBuffer(v, 4, 20, 0, 0); ok {
 		t.Error("ex transcript should not map to buffer")
 	}
-}
-
-func TestSelectionBufferRangeMultiline(t *testing.T) {
-	v := &fakeView{
-		lines: []string{"hello", "world"},
-		top:   1,
-	}
-	rows, cols := 5, 20
-	sel := ScreenSelection{A: Cell{2, 0}, B: Cell{2, 1}}
-	a, b, ok := SelectionBufferRange(v, rows, cols, sel)
-	if !ok {
-		t.Fatal("multiline buffer selection should succeed")
-	}
-	txt := engineRangeText(v, a, b)
-	if txt != "llo\nwo" {
-		t.Errorf("range text = %q, want %q", txt, "llo\nwo")
-	}
-}
-
-// engineRangeText is a test helper mirroring engine.RangeText for fakeView.
-func engineRangeText(v *fakeView, a, b engine.Pos) string {
-	if a.Line > b.Line || (a.Line == b.Line && a.Col > b.Col) {
-		a, b = b, a
-	}
-	var parts []string
-	for ln := a.Line; ln <= b.Line; ln++ {
-		line := string(v.lines[ln-1])
-		start, end := 0, len(line)
-		if ln == a.Line {
-			start = a.Col
-		}
-		if ln == b.Line {
-			end = b.Col
-		}
-		parts = append(parts, line[start:end])
-	}
-	return strings.Join(parts, "\n")
 }

@@ -201,33 +201,6 @@ func ScreenToBuffer(v engine.View, rows, cols, x, y int) (engine.Pos, bool) {
 	}
 }
 
-// SelectionBufferRange returns the buffer caret range [a, b) for sel when every
-// cell in the normalized screen rectangle maps to buffer text. The endpoints are
-// the buffer carets at sel.A and sel.B (drag anchor and moving end), ordered.
-func SelectionBufferRange(v engine.View, rows, cols int, sel ScreenSelection) (a, b engine.Pos, ok bool) {
-	x1, y1, x2, y2 := sel.norm()
-	for y := y1; y <= y2; y++ {
-		for x := x1; x <= x2; x++ {
-			if _, okCell := ScreenToBuffer(v, rows, cols, x, y); !okCell {
-				return engine.Pos{}, engine.Pos{}, false
-			}
-		}
-	}
-	pa, oka := ScreenToBuffer(v, rows, cols, sel.A.X, sel.A.Y)
-	pb, okb := ScreenToBuffer(v, rows, cols, sel.B.X, sel.B.Y)
-	if !oka || !okb {
-		return engine.Pos{}, engine.Pos{}, false
-	}
-	if posBefore(pb, pa) {
-		pa, pb = pb, pa
-	}
-	return pa, pb, true
-}
-
-func posBefore(a, b engine.Pos) bool {
-	return a.Line < b.Line || (a.Line == b.Line && a.Col < b.Col)
-}
-
 func editorRowKindAt(v engine.View, rows, cols, y int) editorRowKind {
 	tr := textRows(rows)
 	if y >= tr {

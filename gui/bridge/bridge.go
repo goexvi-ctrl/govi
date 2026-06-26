@@ -585,30 +585,6 @@ func GoviScreenToBuffer(h C.longlong, x, y C.int, line *C.longlong, col *C.int) 
 	return 1
 }
 
-// GoviSelectionBufferRange writes the buffer caret range [a, b) for the current
-// screen selection when every selected cell is editable buffer text. Returns 1
-// on success, 0 when any cell is non-editable (status, gutter, ~, overlay, ex).
-//
-//export GoviSelectionBufferRange
-func GoviSelectionBufferRange(h C.longlong, l1 *C.longlong, c1 *C.int, l2 *C.longlong, c2 *C.int) C.int {
-	in := get(h)
-	if in == nil || !in.screenSelActive {
-		return 0
-	}
-	sel := grid.ScreenSelection{A: in.screenSelA, B: in.screenSelB}
-	var a, b engine.Pos
-	var ok bool
-	in.eng.WithView(func(v engine.View) {
-		a, b, ok = grid.SelectionBufferRange(v, in.rows, in.cols, sel)
-	})
-	if !ok {
-		return 0
-	}
-	*l1, *c1 = C.longlong(a.Line), C.int(a.Col)
-	*l2, *c2 = C.longlong(b.Line), C.int(b.Col)
-	return 1
-}
-
 // GoviScroll scrolls the viewport by delta lines (positive = toward the end of
 // the file) for wheel/trackpad scrolling, without moving the cursor.
 //
