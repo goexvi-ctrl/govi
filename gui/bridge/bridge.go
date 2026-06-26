@@ -210,6 +210,15 @@ func GoviSetTemporary(h C.longlong) {
 	}
 }
 
+// GoviIsTemporary reports whether this editor's buffer is a throwaway temp file
+// (govi -g with no file), so the host can warn that closing discards it.
+//
+//export GoviIsTemporary
+func GoviIsTemporary(h C.longlong) C.int {
+	in := get(h)
+	return boolToC(in != nil && in.eng.IsTemporary())
+}
+
 // GoviCwd returns this editor's working directory (malloc'd; caller frees).
 //
 //export GoviCwd

@@ -254,14 +254,25 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             return true
         }
 
-        let displayName = path.isEmpty ? "Untitled" : (path as NSString).lastPathComponent
         let alert = NSAlert()
-        alert.messageText = "Do you want to save the changes made to “\(displayName)”?"
-        alert.informativeText = "Your changes will be lost if you don't save them."
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Don't Save")
-        alert.addButton(withTitle: "Cancel")
+        if GoviIsTemporary(view.handle) != 0 {
+            // A govi -g temp buffer has no real file name; writing it is pointless
+            // (it is deleted on close), so make the discard explicit and offer
+            // Save As rather than a misleading plain Save.
+            alert.messageText = "This is a temporary buffer with no file name."
+            alert.informativeText = "Its contents will be discarded when it closes. Save them to a file?"
+            alert.addButton(withTitle: "Save As…")
+            alert.addButton(withTitle: "Discard")
+            alert.addButton(withTitle: "Cancel")
+        } else {
+            let displayName = path.isEmpty ? "Untitled" : (path as NSString).lastPathComponent
+            alert.messageText = "Do you want to save the changes made to “\(displayName)”?"
+            alert.informativeText = "Your changes will be lost if you don't save them."
+            alert.addButton(withTitle: "Save")
+            alert.addButton(withTitle: "Don't Save")
+            alert.addButton(withTitle: "Cancel")
+        }
 
         switch alert.runModal() {
         case .alertFirstButtonReturn:
@@ -276,7 +287,9 @@ final class EditorWindow: NSObject, NSWindowDelegate {
 
     private func saveForClose() -> Bool {
         var target = path
-        if target.isEmpty {
+        // A temp buffer's path is the throwaway temp file; force a Save As so the
+        // user picks a real destination instead of writing the soon-deleted temp.
+        if target.isEmpty || GoviIsTemporary(view.handle) != 0 {
             let panel = NSSavePanel()
             panel.canCreateDirectories = true
             panel.nameFieldStringValue = "Untitled"

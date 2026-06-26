@@ -301,6 +301,10 @@ func (e *Engine) exWrite(c *exCmd) error {
 // the GUI host for `govi -g` with no file (see GoviSetTemporary).
 func (e *Engine) SetTemporary() { e.scr.tempFile = true }
 
+// IsTemporary reports whether the active buffer is a throwaway temp file, so the
+// GUI host can warn that closing discards it (it has no real file name).
+func (e *Engine) IsTemporary() bool { return e.scr.tempFile }
+
 // tempExitWarning returns nvi's warning when an unforced exit would discard a
 // temporary buffer's edits. The temp file is removed when its window closes, so
 // writing it is pointless: the user must :w a real file, or :q!/ZQ to discard.
