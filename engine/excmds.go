@@ -328,6 +328,33 @@ func (e *Engine) tempExitWarning(force bool) error {
 	return nil
 }
 
+// SaveAs renames the buffer to path and writes it there, like :f path followed
+// by :w. A temp buffer becomes an ordinary file at the new path; the throwaway
+// vi.XXXXXX on disk is left for the host to remove when the tab closes.
+func (e *Engine) SaveAs(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("No filename")
+	}
+	path = e.resolvePath(path)
+	old := e.scr.name
+	if old != "" && old != path {
+		e.altFile = old
+		e.scr.nameChanged = true
+	}
+	e.scr.name = path
+	e.fe.SetTitle(filepath.Base(path))
+	if err := e.Save(path); err != nil {
+		return err
+	}
+	if e.scr.tempFile {
+		e.scr.tempFile = false
+		e.scr.modified = false
+		e.scr.nameChanged = false
+	}
+	return nil
+}
+
 // Save writes the buffer to path (or the current file when path is empty).
 // An untitled buffer adopts path as its name on the first successful save.
 func (e *Engine) Save(path string) error {

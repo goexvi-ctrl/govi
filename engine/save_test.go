@@ -45,6 +45,42 @@ func TestSavePreservesFileMode(t *testing.T) {
 	}
 }
 
+func TestSaveAsFromTemp(t *testing.T) {
+	e, _, _ := newTestEngine(t, "hello\n")
+	dir := t.TempDir()
+	tempPath := filepath.Join(dir, "vi.abc123")
+	if err := os.WriteFile(tempPath, []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.scr.name = tempPath
+	e.SetTemporary()
+	outPath := filepath.Join(dir, "saved.txt")
+	if err := e.SaveAs(outPath); err != nil {
+		t.Fatal(err)
+	}
+	if e.scr.name != outPath {
+		t.Fatalf("name = %q, want %q", e.scr.name, outPath)
+	}
+	if e.IsTemporary() {
+		t.Fatal("buffer should no longer be temporary after SaveAs")
+	}
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "hello\n" {
+		t.Fatalf("file = %q", data)
+	}
+	// The throwaway temp on disk is left unchanged for the host to delete later.
+	got, err := os.ReadFile(tempPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "old\n" {
+		t.Fatalf("temp file = %q, want unchanged", got)
+	}
+}
+
 func TestSaveUntitledAdoptsName(t *testing.T) {
 	e, _, _ := newTestEngine(t, "hello\n")
 	e.scr.name = ""

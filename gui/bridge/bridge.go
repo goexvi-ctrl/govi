@@ -387,6 +387,21 @@ func GoviSave(h C.longlong, path *C.char) C.int {
 	return 0
 }
 
+// GoviSaveAs renames the buffer to path and writes it there (:f path then :w).
+// Returns 0 on success, 1 on error.
+//
+//export GoviSaveAs
+func GoviSaveAs(h C.longlong, path *C.char) C.int {
+	in := get(h)
+	if in == nil || path == nil {
+		return 1
+	}
+	if err := in.eng.SaveAs(C.GoString(path)); err != nil {
+		return 1
+	}
+	return 0
+}
+
 // GoviMapPending reports whether input is buffered awaiting more keys.
 //
 //export GoviMapPending
