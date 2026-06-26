@@ -222,6 +222,17 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         }
     }
 
+    // confirmQuit prompts for every modified window before the app terminates
+    // (Cmd-Q), returning false if the user cancels any prompt. Mirrors :q's
+    // unsaved-changes check, which Cmd-Q would otherwise bypass.
+    static func confirmQuit() -> Bool {
+        for w in windows where GoviModified(w.view.handle) != 0 {
+            w.window.makeKeyAndOrderFront(nil) // show which document is prompting
+            if !w.confirmClose() { return false }
+        }
+        return true
+    }
+
     // confirmClose returns true when the window/tab may close. When
     // Settings.warnOnUnsavedClose is set and the buffer is modified, the user
     // is prompted to save, discard, or cancel.
@@ -548,6 +559,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    // applicationShouldTerminate gives Cmd-Q the same unsaved-changes check as
+    // :q / closing a window, instead of quitting and losing modified buffers.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        EditorWindow.confirmQuit() ? .terminateNow : .terminateCancel
     }
 
     // File > New: an empty window.
