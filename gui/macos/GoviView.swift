@@ -146,6 +146,7 @@ final class GoviView: NSView, NSTextInputClient {
     @objc private func settingsChanged() {
         padding = Settings.padding
         spellEnabled = Settings.spellChecking
+        GoviSetSelMode(handle, Settings.selMode.code) // live-update this tab's selmode
         font = Settings.editorFont
         measureFont()
         resizeWindowToCells() // keep the same rows x cols; grow/shrink the window to fit
@@ -427,6 +428,22 @@ final class GoviView: NSView, NSTextInputClient {
         return nil
     }
 
+    private enum SelMode: Int32 { case traditional = 0, wysiwyg = 1, combined = 2 }
+
+    private func selMode() -> SelMode { SelMode(rawValue: GoviSelMode(handle)) ?? .combined }
+
+    // selectionCapturesInput reports whether an editing input (a typed rune,
+    // paste, Cut, or Backspace/Delete) should act on the current selection rather
+    // than pass through to the engine, per selmode and the current editor mode.
+    private func selectionCapturesInput() -> Bool {
+        guard selActive else { return false }
+        switch selMode() {
+        case .traditional: return false
+        case .wysiwyg: return true
+        case .combined: return GoviInsertActive(handle) != 0
+        }
+    }
+
     // posCell maps a buffer caret to the screen cell it occupies.
     private func posCell(_ line: Int64, _ col: Int) -> ScreenCell {
         var x: Int32 = 0, y: Int32 = 0, vis: Int32 = 0
@@ -591,13 +608,18 @@ final class GoviView: NSView, NSTextInputClient {
         }
 
         // Single click: position the caret on buffer text, no selection yet.
+        // Exception: in traditional mode while inserting, the mouse is only for
+        // copying, so it must not move the insertion point -- e.g. select+copy
+        // elsewhere and paste lands where you were typing, not where you clicked.
         dragging = true
         selGranularity = .character
         clearSelection()
         screenDragAnchor = c
         granLo = c
         granHi = c
-        moveCursorToCell(c)
+        if !(selMode() == .traditional && GoviInsertActive(handle) != 0) {
+            moveCursorToCell(c)
+        }
         step()
     }
 
@@ -657,7 +679,7 @@ final class GoviView: NSView, NSTextInputClient {
     }
 
     @objc func cut(_ sender: Any?) {
-        guard selActive else { return }
+        guard selActive, selectionCapturesInput() else { editBeep(); return }
         guard let r = editRange() else { editBeep(); return }
         copy(sender)
         GoviDeleteRange(handle, r.0, Int32(r.1), r.2, Int32(r.3))
@@ -668,14 +690,19 @@ final class GoviView: NSView, NSTextInputClient {
     @objc func paste(_ sender: Any?) {
         guard let s = NSPasteboard.general.string(forType: .string) else { return }
         var buf = Array(s.utf8CString)
-        if selActive {
+        if selActive && selectionCapturesInput() {
+            // Replace the selection (wysiwyg, or combined while in insert mode).
             guard let r = editRange() else { editBeep(); return }
             buf.withUnsafeMutableBufferPointer {
                 GoviReplaceText(handle, r.0, Int32(r.1), r.2, Int32(r.3), $0.baseAddress)
             }
             clearSelection()
         } else {
-            buf.withUnsafeMutableBufferPointer { GoviInsertText(handle, $0.baseAddress) }
+            // Selection is copy-only (or none): drop any highlight and feed the
+            // text in the current mode, so a colon-line paste runs as a command,
+            // insert mode inserts literally, normal mode interprets it.
+            if selActive { clearSelection() }
+            buf.withUnsafeMutableBufferPointer { GoviText(handle, $0.baseAddress) }
         }
         step()
     }
@@ -735,6 +762,7 @@ final class GoviView: NSView, NSTextInputClient {
         }
         guard let chars = event.characters, !chars.isEmpty else { return }
         if replaceWithText(chars) { return }
+        if selActive { clearSelection() } // copy-only selection: drop it, type normally
         for scalar in chars.unicodeScalars {
             GoviKeyRune(handle, Int32(scalar.value), 0)
         }
@@ -767,8 +795,15 @@ final class GoviView: NSView, NSTextInputClient {
             if replaceWithText("\n") { return }
             sendSpecial(SK.enter)
         case SK.backspace, SK.delete:
-            if selActive { deleteSelection(); return }
-            sendSpecial(key)
+            if selActive {
+                // A selection that captures input is deleted; otherwise the key
+                // just clears the highlight (it does not edit or move the cursor).
+                if selectionCapturesInput() { deleteSelection() } else { clearSelection(); step() }
+                return
+            }
+            // No selection: the Backspace key is ^? (DEL) -- erases in insert mode,
+            // "^? isn't a vi command" in command mode. Forward Delete stays KeyDelete.
+            if key == SK.backspace { sendDEL() } else { sendSpecial(key) }
         case SK.escape:
             if selActive { clearSelection() }
             sendSpecial(SK.escape)
@@ -819,8 +854,12 @@ final class GoviView: NSView, NSTextInputClient {
 
     // replaceWithText replaces the active selection with s and returns true, or
     // returns false if there was no selection (GUI replace-on-type / paste).
+    // replaceWithText replaces the selection with s and returns true when the
+    // selection captures the input (wysiwyg, or combined while in insert mode);
+    // a captured but non-editable selection beeps and is consumed. Returns false
+    // when the selection does not capture input, so the caller passes it through.
     private func replaceWithText(_ s: String) -> Bool {
-        guard selActive else { return false }
+        guard selActive, selectionCapturesInput() else { return false }
         guard let r = editRange() else { editBeep(); return true }
         var buf = Array(s.utf8CString)
         buf.withUnsafeMutableBufferPointer {
@@ -845,6 +884,7 @@ final class GoviView: NSView, NSTextInputClient {
         let s = Self.asString(string)
         if s.isEmpty { return }
         if replaceWithText(s) { return } // typed over a selection
+        if selActive { clearSelection() } // copy-only selection: drop it, type normally
         for scalar in s.unicodeScalars {
             GoviKeyRune(handle, Int32(scalar.value), 0)
         }
@@ -889,6 +929,13 @@ final class GoviView: NSView, NSTextInputClient {
     private func sendSpecial(_ key: Int32) {
         if selActive { clearSelection() }
         GoviKeySpecial(handle, key, 0)
+        step()
+    }
+
+    // sendDEL feeds ^? (the Backspace key) as a rune so the engine erases in
+    // insert/ex mode but reports "^? isn't a vi command" in command mode.
+    private func sendDEL() {
+        GoviKeyRune(handle, 0x7f, 0)
         step()
     }
 
