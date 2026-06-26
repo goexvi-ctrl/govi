@@ -47,46 +47,47 @@ enum Settings {
         }
     }
 
-    private static let selModeKey = "selectionMode"
+    private static let selectionModeKey = "selectionMode"
 
-    // SelMode controls whether a mouse selection captures typed/pasted input.
-    // Mirrors the engine's selmode option (and its 0/1/2 bridge codes).
-    enum SelMode: String, CaseIterable {
-        case traditional
-        case wysiwyg
-        case combined
+    // SelectionMode controls whether a mouse selection captures typed/pasted
+    // input. Mirrors the engine's mode option (and its 0/1/2 bridge codes).
+    enum SelectionMode: String, CaseIterable {
+        case terminal
+        case gui
+        case contextual
 
         var label: String {
             switch self {
-            case .traditional: return "Traditional (selection is copy-only)"
-            case .wysiwyg: return "WYSIWYG (typing replaces the selection)"
-            case .combined: return "Combined (replace only while inserting)"
+            case .terminal: return "Terminal (selection is copy-only)"
+            case .gui: return "GUI (typing replaces the selection)"
+            case .contextual: return "Contextual (replace only while inserting)"
             }
         }
 
-        // code is the 0/1/2 value the bridge (GoviSetSelMode/GoviSelMode) uses.
+        // code is the 0/1/2 value the bridge (GoviSetMode/GoviMode) uses.
         var code: Int32 {
             switch self {
-            case .traditional: return 0
-            case .wysiwyg: return 1
-            case .combined: return 2
+            case .terminal: return 0
+            case .gui: return 1
+            case .contextual: return 2
             }
         }
     }
 
-    // selMode is the GUI default for the engine's selmode option, applied to new
-    // windows before LoadStartup (so .exrc can override) and live to open windows.
-    static var selMode: SelMode {
+    // selectionMode is the GUI default for the engine's mode option, applied to
+    // new windows before LoadStartup (so .exrc can override) and live to open
+    // windows.
+    static var selectionMode: SelectionMode {
         get {
             let d = UserDefaults.standard
-            guard let raw = d.string(forKey: selModeKey),
-                  let mode = SelMode(rawValue: raw) else {
-                return .combined
+            guard let raw = d.string(forKey: selectionModeKey),
+                  let mode = SelectionMode(rawValue: raw) else {
+                return .contextual
             }
             return mode
         }
         set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: selModeKey)
+            UserDefaults.standard.set(newValue.rawValue, forKey: selectionModeKey)
             NotificationCenter.default.post(name: changed, object: nil)
         }
     }
@@ -364,7 +365,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
     private let fontSizeField = NSTextField()
     private let fontSizeStepper = NSStepper()
     private let openFilesPopup = NSPopUpButton()
-    private let selModePopup = NSPopUpButton()
+    private let selectionModePopup = NSPopUpButton()
     private let useTabsCheckbox = NSButton(checkboxWithTitle: "Use window tabs (show the tab bar)", target: nil, action: nil)
     private let warnCloseCheckbox = NSButton(checkboxWithTitle: "Warn before closing unsaved files", target: nil, action: nil)
     private let showDimensionsCheckbox = NSButton(checkboxWithTitle: "Show rows×columns in title bar (not tabs)", target: nil, action: nil)
@@ -430,16 +431,16 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         openRow.alignment = .centerY
         openRow.spacing = 8
 
-        let selModeLabel = NSTextField(labelWithString: "Selection editing:")
-        selModeLabel.translatesAutoresizingMaskIntoConstraints = false
-        selModePopup.translatesAutoresizingMaskIntoConstraints = false
-        selModePopup.addItems(withTitles: Settings.SelMode.allCases.map(\.label))
-        selModePopup.target = self
-        selModePopup.action = #selector(selModeChanged)
-        let selModeRow = NSStackView(views: [selModeLabel, selModePopup])
-        selModeRow.translatesAutoresizingMaskIntoConstraints = false
-        selModeRow.alignment = .centerY
-        selModeRow.spacing = 8
+        let selectionModeLabel = NSTextField(labelWithString: "Selection mode:")
+        selectionModeLabel.translatesAutoresizingMaskIntoConstraints = false
+        selectionModePopup.translatesAutoresizingMaskIntoConstraints = false
+        selectionModePopup.addItems(withTitles: Settings.SelectionMode.allCases.map(\.label))
+        selectionModePopup.target = self
+        selectionModePopup.action = #selector(selectionModeChanged)
+        let selectionModeRow = NSStackView(views: [selectionModeLabel, selectionModePopup])
+        selectionModeRow.translatesAutoresizingMaskIntoConstraints = false
+        selectionModeRow.alignment = .centerY
+        selectionModeRow.spacing = 8
 
         useTabsCheckbox.translatesAutoresizingMaskIntoConstraints = false
         useTabsCheckbox.target = self
@@ -486,7 +487,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
 
         let stack = NSStackView(views: [
             paddingRow, rowsRow, colsRow, fontRow, fontSizeRow, fgRow, bgRow, dirRow, openRow,
-            selModeRow, cursorStyleRow, cursorColorRow,
+            selectionModeRow, cursorStyleRow, cursorColorRow,
             useTabsCheckbox, showDimensionsCheckbox, warnCloseCheckbox,
         ])
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -560,8 +561,8 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
             fontPopup.selectItem(at: idx)
         }
         openFilesPopup.selectItem(at: Settings.openFilesIn == .tab ? 1 : 0)
-        if let idx = Settings.SelMode.allCases.firstIndex(of: Settings.selMode) {
-            selModePopup.selectItem(at: idx)
+        if let idx = Settings.SelectionMode.allCases.firstIndex(of: Settings.selectionMode) {
+            selectionModePopup.selectItem(at: idx)
         }
         useTabsCheckbox.state = Settings.useTabs ? .on : .off
         warnCloseCheckbox.state = Settings.warnOnUnsavedClose ? .on : .off
@@ -658,10 +659,10 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         Settings.openFilesIn = openFilesPopup.indexOfSelectedItem == 1 ? .tab : .newWindow
     }
 
-    @objc private func selModeChanged() {
-        let idx = selModePopup.indexOfSelectedItem
-        guard idx >= 0, idx < Settings.SelMode.allCases.count else { return }
-        Settings.selMode = Settings.SelMode.allCases[idx]
+    @objc private func selectionModeChanged() {
+        let idx = selectionModePopup.indexOfSelectedItem
+        guard idx >= 0, idx < Settings.SelectionMode.allCases.count else { return }
+        Settings.selectionMode = Settings.SelectionMode.allCases[idx]
     }
 
     @objc private func cursorStyleChanged() {

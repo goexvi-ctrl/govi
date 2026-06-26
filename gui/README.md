@@ -144,7 +144,7 @@ In addition to vi keys, the window supports the usual GUI text affordances:
 
 - **Wheel / two-finger scroll** moves the viewport like any windowed app; the
   cursor stays put (and may scroll off-screen) until the next edit or motion.
-- **Click** moves the cursor when it lands on buffer text. (In `traditional`
+- **Click** moves the cursor when it lands on buffer text. (In `terminal`
   selection mode, below, a click while inserting does not move the insertion
   point — the mouse is purely a copy tool there.)
 - **Click-drag** makes one screen-cell selection that can span anything visible —
@@ -164,16 +164,19 @@ In addition to vi keys, the window supports the usual GUI text affordances:
   `^? isn't a vi command` in command mode (matching nvi). With a selection it
   clears (or, when the selection captures input, deletes) it.
 
-#### Selection editing (`:set selmode=…`)
+#### Selection mode (`:set mode=…`)
 
-Whether typed or pasted input acts on a selection is set by the `selmode` option
-(default **combined**; also in Settings ▸ Selection editing):
+Whether typed or pasted input acts on a selection is set by the `mode` option
+(default **contextual**; also in Settings ▸ Selection mode):
 
-- **traditional** — the selection is copy-only; input is always handled as if
+- **terminal** — the selection is copy-only; input is always handled as if
   nothing were selected (keystrokes stay vi commands / insert-mode text).
-- **wysiwyg** — typing or pasting replaces the selection (entering insert mode);
+- **gui** — typing or pasting replaces the selection (entering insert mode);
   Cmd-X cuts it.
-- **combined** — wysiwyg while in insert mode, traditional in command mode.
+- **contextual** — gui while in insert mode, terminal in command mode.
+
+Prefixes and aliases (`t`, `passive`, `active`, `hybrid`, …) are accepted when
+setting; display always shows the canonical name (`terminal`, `gui`, `contextual`).
 
 An edit only ever applies when the selection lies wholly on editable buffer text;
 a selection touching the status line, gutter, `~` filler, or an overlay/ex
@@ -196,12 +199,12 @@ These are GUI-layer features (vi has no selection concept). One screen-cell
 selection model drives highlight and copy for every mode, in `frontend/grid`
 (`ScreenRangeText`, `ScreenLinearRangeText`, `ApplyScreenSel`, `ScreenToBuffer`,
 `SelectionEditRange`) and the bridge (`GoviSetScreenSelection`,
-`GoviScreenRangeText`, `GoviSelectionEditRange`, `GoviSelMode`, …). An edit
+`GoviScreenRangeText`, `GoviSelectionEditRange`, `GoviMode`, …). An edit
 derives a buffer caret range from the selection and uses engine primitives in
 `engine/gui.go` (`MoveCursorTo`, `RangeText`, `DeleteRange`, `ReplaceSelection*`);
 no-selection paste feeds text as a mode-aware `StringEvent`. `grid.Locate` backs
 click-to-position. The engine core stays free of any selection or clipboard
-concept; `selmode` is its only selection-related option (GUI-only, like the
+concept; `mode` is its only selection-related option (GUI-only, like the
 terminal-only `refresh`).
 
 ## Tested

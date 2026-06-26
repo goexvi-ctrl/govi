@@ -86,10 +86,10 @@ var optDefs = []optDef{
 	{name: "searchincr", typ: optBool},
 	{name: "secure", typ: optBool},
 	{name: "sections", abbr: "sect", typ: optStr, dS: "NHSHH HUnhsh"},
-	// selmode (GoVi GUI only) controls whether a mouse selection captures typed/
-	// pasted input: traditional (copy-only), wysiwyg (always replaces), or
-	// combined (replaces only while in insert mode). Inert in terminal govi.
-	{name: "selmode", typ: optStr, dS: "combined"},
+	// mode (GoVi GUI only) is the selection mode: whether a mouse selection
+	// captures typed/pasted input — terminal (copy-only), gui (always replaces),
+	// or contextual (replaces only while in insert mode). Inert in terminal govi.
+	{name: "mode", typ: optStr, dS: "contextual"},
 	{name: "shell", abbr: "sh", typ: optStr, dS: "/bin/sh"},
 	{name: "shellmeta", typ: optStr, dS: "~{[*?$`'\"\\"},
 	{name: "shiftwidth", abbr: "sw", typ: optNum, dN: 8, noZero: true},
@@ -228,8 +228,12 @@ func (e *Engine) setOne(tok string) error {
 					return err
 				}
 				val = canon
-			} else if err := validateStrOpt(d.name, val); err != nil {
-				return err
+			} else if d.name == "mode" {
+				canon, err := canonSelectionMode(val)
+				if err != nil {
+					return err
+				}
+				val = canon
 			}
 			o.s[d.name] = val
 		case optNum:
@@ -312,23 +316,14 @@ func (e *Engine) SetStrOption(name, value string) error {
 			return err
 		}
 		value = canon
-	} else if err := validateStrOpt(d.name, value); err != nil {
-		return err
+	} else if d.name == "mode" {
+		canon, err := canonSelectionMode(value)
+		if err != nil {
+			return err
+		}
+		value = canon
 	}
 	e.scr.opts.s[d.name] = value
-	return nil
-}
-
-// validateStrOpt rejects illegal values for string options that take a fixed
-// set (currently only selmode).
-func validateStrOpt(name, val string) error {
-	if name == "selmode" {
-		switch val {
-		case "traditional", "wysiwyg", "combined":
-		default:
-			return fmt.Errorf("set: selmode: must be traditional, wysiwyg, or combined")
-		}
-	}
 	return nil
 }
 
@@ -351,6 +346,8 @@ func (e *Engine) optDisplay(d *optDef) string {
 		val := o.s[d.name]
 		if d.name == "refresh" {
 			val = formatRefresh(val)
+		} else if d.name == "mode" {
+			val = formatSelectionMode(val)
 		}
 		return fmt.Sprintf("%s=%q", d.name, val)
 	}
