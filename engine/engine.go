@@ -194,6 +194,10 @@ func (e *Engine) MatchPending() bool { return e.scr.matchActive }
 // MatchTime returns the showmatch flash duration in tenths of a second.
 func (e *Engine) MatchTime() int { return e.scr.opts.Int("matchtime") }
 
+// RefreshMs returns the minimum milliseconds between screen repaints during
+// fast terminal input (govi extension). Zero disables throttling.
+func (e *Engine) RefreshMs() int { return e.scr.opts.Int("refreshms") }
+
 // Resize sets the viewport geometry (text rows and columns) and repaints fully.
 func (e *Engine) Resize(rows, cols int) {
 	e.scr.rows = rows

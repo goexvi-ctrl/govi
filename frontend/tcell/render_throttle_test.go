@@ -43,6 +43,37 @@ func TestShouldThrottlePaintDuringBurst(t *testing.T) {
 	}
 }
 
+func TestRefreshMsDisablesThrottle(t *testing.T) {
+	eng, _ := setup(t, "x\n", 20, 4)
+	eng.RunEx("set refreshms=0")
+	sim := tc.NewSimulationScreen("")
+	fe, err := NewWithScreen(sim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fe.Attach(eng)
+	now := time.Now()
+	fe.lastPaintAt = now
+	fe.lastEventAt = now
+	if fe.shouldThrottlePaint(now.Add(5 * time.Millisecond)) {
+		t.Fatal("refreshms=0 should disable throttling")
+	}
+}
+
+func TestRefreshMsSetsInterval(t *testing.T) {
+	eng, _ := setup(t, "x\n", 20, 4)
+	eng.RunEx("set refreshms=100")
+	sim := tc.NewSimulationScreen("")
+	fe, err := NewWithScreen(sim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fe.Attach(eng)
+	if got := fe.minRenderPeriod(); got != 100*time.Millisecond {
+		t.Fatalf("minRenderPeriod = %v, want 100ms", got)
+	}
+}
+
 func TestFastInsertCompletesQuickly(t *testing.T) {
 	eng, _ := setup(t, "hello\n", 80, 4)
 	eng.Input(engine.KeyEvent{Rune: 'i'})

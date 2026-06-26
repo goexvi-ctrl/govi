@@ -8,13 +8,24 @@ import (
 	"govi/engine"
 )
 
-// During fast input (paste or autorepeat) repaint at most maxRenderHz and
-// coalesce bursts in the event loop. Semantic handling stays per-key.
+// During fast input (paste or autorepeat) coalesce repaints in the event loop.
+// Semantic handling stays per-key. The minimum interval comes from the refreshms
+// option (default 50ms ≈ 20 Hz); refreshms=0 disables throttling.
 const (
-	burstEventGap   = 15 * time.Millisecond
-	minRenderPeriod = time.Second / 20 // 20 Hz while input is arriving fast
-	burstRelayWait  = 3 * time.Millisecond
+	burstEventGap  = 15 * time.Millisecond
+	burstRelayWait = 3 * time.Millisecond
 )
+
+func (f *Frontend) minRenderPeriod() time.Duration {
+	if f.eng == nil {
+		return 50 * time.Millisecond
+	}
+	ms := f.eng.RefreshMs()
+	if ms <= 0 {
+		return 0
+	}
+	return time.Duration(ms) * time.Millisecond
+}
 
 func renderUrgent(v engine.View, cs engine.ChangeSet) bool {
 	if cs.Full || cs.ModeChanged || cs.Scrolled || cs.MessageChanged {
@@ -33,6 +44,10 @@ func (f *Frontend) noteInputEvent() {
 }
 
 func (f *Frontend) shouldThrottlePaint(now time.Time) bool {
+	period := f.minRenderPeriod()
+	if period <= 0 {
+		return false
+	}
 	if f.scr.HasPendingEvent() {
 		return true
 	}
@@ -44,14 +59,18 @@ func (f *Frontend) shouldThrottlePaint(now time.Time) bool {
 	if now.Sub(f.lastEventAt) >= burstEventGap {
 		return false
 	}
-	return now.Sub(f.lastPaintAt) < minRenderPeriod
+	return now.Sub(f.lastPaintAt) < period
 }
 
 func (f *Frontend) deferPaint(now time.Time) {
+	period := f.minRenderPeriod()
+	if period <= 0 {
+		return
+	}
 	f.paintMu.Lock()
 	defer f.paintMu.Unlock()
 	f.paintDeferred = true
-	wait := minRenderPeriod - now.Sub(f.lastPaintAt)
+	wait := period - now.Sub(f.lastPaintAt)
 	if wait < 0 {
 		wait = 0
 	}
