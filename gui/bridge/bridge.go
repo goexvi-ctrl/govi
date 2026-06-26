@@ -70,64 +70,64 @@ var (
 	nextHandle int64
 )
 
-// defaultSelMode is the GUI's selmode default applied to each new engine before
-// LoadStartup, so an .exrc :set selmode can still override it. The host sets it
-// from its Settings via GoviSetDefaultSelMode.
-var defaultSelMode = "combined"
+// defaultMode is the GUI's selection-mode default applied to each new engine
+// before LoadStartup, so an .exrc :set mode can still override it. The host sets
+// it from its Settings via GoviSetDefaultMode.
+var defaultMode = "contextual"
 
-// GoviSetDefaultSelMode sets the selmode applied to engines created afterward.
+// GoviSetDefaultMode sets the selection mode applied to engines created afterward.
 //
-//export GoviSetDefaultSelMode
-func GoviSetDefaultSelMode(mode *C.char) { defaultSelMode = C.GoString(mode) }
+//export GoviSetDefaultMode
+func GoviSetDefaultMode(mode *C.char) { defaultMode = C.GoString(mode) }
 
-// selModeCode maps a selmode name to the GUI's 0/1/2 code.
-func selModeCode(name string) C.int {
+// modeCode maps a selection-mode name to the GUI's 0/1/2 code.
+func modeCode(name string) C.int {
 	switch name {
-	case "traditional":
+	case "terminal":
 		return 0
-	case "wysiwyg":
+	case "gui":
 		return 1
 	default:
-		return 2 // combined
+		return 2 // contextual
 	}
 }
 
-// selModeName maps a 0/1/2 code back to a selmode name.
-func selModeName(code C.int) string {
+// modeName maps a 0/1/2 code back to a selection-mode name.
+func modeName(code C.int) string {
 	switch code {
 	case 0:
-		return "traditional"
+		return "terminal"
 	case 1:
-		return "wysiwyg"
+		return "gui"
 	default:
-		return "combined"
+		return "contextual"
 	}
 }
 
-// GoviSelMode returns this editor's selmode as 0=traditional, 1=wysiwyg,
-// 2=combined.
+// GoviMode returns this editor's selection mode as 0=terminal, 1=gui,
+// 2=contextual.
 //
-//export GoviSelMode
-func GoviSelMode(h C.longlong) C.int {
+//export GoviMode
+func GoviMode(h C.longlong) C.int {
 	in := get(h)
 	if in == nil {
 		return 2
 	}
-	return selModeCode(in.eng.StrOption("selmode"))
+	return modeCode(in.eng.StrOption("mode"))
 }
 
-// GoviSetSelMode sets this editor's selmode (0/1/2), e.g. when the Settings
+// GoviSetMode sets this editor's selection mode (0/1/2), e.g. when the Settings
 // dialog changes while the window is open.
 //
-//export GoviSetSelMode
-func GoviSetSelMode(h C.longlong, mode C.int) {
+//export GoviSetMode
+func GoviSetMode(h C.longlong, mode C.int) {
 	if in := get(h); in != nil {
-		_ = in.eng.SetStrOption("selmode", selModeName(mode))
+		_ = in.eng.SetStrOption("mode", modeName(mode))
 	}
 }
 
 // GoviInsertActive reports whether the editor is in insert (or replace) mode,
-// which selmode=combined uses to decide if a selection captures input.
+// which mode=contextual uses to decide if a selection captures input.
 //
 //export GoviInsertActive
 func GoviInsertActive(h C.longlong) C.int {
@@ -157,9 +157,9 @@ func GoviStart(path, foreground, background, cwd *C.char, silent C.int) C.longlo
 	in.eng = engine.New(in.fe, engine.Options{})
 	_ = in.eng.SetStrOption("foreground", cString(foreground))
 	_ = in.eng.SetStrOption("background", cString(background))
-	// Apply the GUI's selmode default before LoadStartup so an .exrc :set selmode
-	// can still override it.
-	_ = in.eng.SetStrOption("selmode", defaultSelMode)
+	// Apply the GUI's selection-mode default before LoadStartup so an .exrc :set
+	// mode can still override it.
+	_ = in.eng.SetStrOption("mode", defaultMode)
 	// Set the working directory before LoadStartup so a project-local ./.nexrc or
 	// .exrc (e.g. one that sets background) is read from the directory govi -g was
 	// run in, not the app's launch cwd ("/"). The host passes cwd from the

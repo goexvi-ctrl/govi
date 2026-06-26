@@ -843,11 +843,11 @@ func makeMenu(target: AppDelegate) -> NSMenu {
     return mainMenu
 }
 
-// applySelModeDefault pushes the Settings selmode to the bridge so engines
+// applyModeDefault pushes the Settings selection mode to the bridge so engines
 // created next (new windows) start with it, before their LoadStartup.
-func applySelModeDefault() {
-    Settings.selMode.rawValue.withCString {
-        GoviSetDefaultSelMode(UnsafeMutablePointer(mutating: $0))
+func applyModeDefault() {
+    Settings.selectionMode.rawValue.withCString {
+        GoviSetDefaultMode(UnsafeMutablePointer(mutating: $0))
     }
 }
 
@@ -856,7 +856,7 @@ app.setActivationPolicy(.regular)
 let delegate = AppDelegate()
 app.delegate = delegate
 app.mainMenu = makeMenu(target: delegate)
-applySelModeDefault()
+applyModeDefault()
 NotificationCenter.default.addObserver(
-    forName: Settings.changed, object: nil, queue: .main) { _ in applySelModeDefault() }
+    forName: Settings.changed, object: nil, queue: .main) { _ in applyModeDefault() }
 app.run()

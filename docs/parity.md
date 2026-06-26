@@ -219,7 +219,7 @@ the shared editor, not nvi-parity items:
 |---|---|
 | Native app embedding | engine runs in-process behind a C archive (`gui/bridge`); no terminal, no exec of `govi` |
 | Multiple windows / native tabs | Cmd-N, Cmd-T, drag/merge tabs; `Use window tabs` setting |
-| Mouse + system clipboard | select & copy any on-screen text (buffer, status line, overlay, ex transcript, gutter); click to position; double/triple-click word/line; shift-click extend; Option-drag rectangle; Cmd-C/X/V, Cmd-A. `:set selmode` (traditional/wysiwyg/combined) controls whether typing/paste replaces a selection |
+| Mouse + system clipboard | select & copy any on-screen text (buffer, status line, overlay, ex transcript, gutter); click to position; double/triple-click word/line; shift-click extend; Option-drag rectangle; Cmd-C/X/V, Cmd-A. `:set mode` (terminal/gui/contextual) controls whether typing/paste replaces a selection |
 | Spell checking | NSSpellChecker underline, suggestions, Ignore/Learn, Look Up |
 | International input | Option/dead keys and IME composition; control keys stay vi commands |
 | Per-tab colors | `:set foreground=`/`background=` and Settings defaults |

@@ -146,7 +146,7 @@ final class GoviView: NSView, NSTextInputClient {
     @objc private func settingsChanged() {
         padding = Settings.padding
         spellEnabled = Settings.spellChecking
-        GoviSetSelMode(handle, Settings.selMode.code) // live-update this tab's selmode
+        GoviSetMode(handle, Settings.selectionMode.code) // live-update this tab's mode
         font = Settings.editorFont
         measureFont()
         resizeWindowToCells() // keep the same rows x cols; grow/shrink the window to fit
@@ -428,19 +428,21 @@ final class GoviView: NSView, NSTextInputClient {
         return nil
     }
 
-    private enum SelMode: Int32 { case traditional = 0, wysiwyg = 1, combined = 2 }
+    private enum SelectionMode: Int32 { case terminal = 0, gui = 1, contextual = 2 }
 
-    private func selMode() -> SelMode { SelMode(rawValue: GoviSelMode(handle)) ?? .combined }
+    private func selectionMode() -> SelectionMode {
+        SelectionMode(rawValue: GoviMode(handle)) ?? .contextual
+    }
 
     // selectionCapturesInput reports whether an editing input (a typed rune,
     // paste, Cut, or Backspace/Delete) should act on the current selection rather
-    // than pass through to the engine, per selmode and the current editor mode.
+    // than pass through to the engine, per selection mode and the editor mode.
     private func selectionCapturesInput() -> Bool {
         guard selActive else { return false }
-        switch selMode() {
-        case .traditional: return false
-        case .wysiwyg: return true
-        case .combined: return GoviInsertActive(handle) != 0
+        switch selectionMode() {
+        case .terminal: return false
+        case .gui: return true
+        case .contextual: return GoviInsertActive(handle) != 0
         }
     }
 
@@ -608,7 +610,7 @@ final class GoviView: NSView, NSTextInputClient {
         }
 
         // Single click: position the caret on buffer text, no selection yet.
-        // Exception: in traditional mode while inserting, the mouse is only for
+        // Exception: in terminal mode while inserting, the mouse is only for
         // copying, so it must not move the insertion point -- e.g. select+copy
         // elsewhere and paste lands where you were typing, not where you clicked.
         dragging = true
@@ -617,7 +619,7 @@ final class GoviView: NSView, NSTextInputClient {
         screenDragAnchor = c
         granLo = c
         granHi = c
-        if !(selMode() == .traditional && GoviInsertActive(handle) != 0) {
+        if !(selectionMode() == .terminal && GoviInsertActive(handle) != 0) {
             moveCursorToCell(c)
         }
         step()
