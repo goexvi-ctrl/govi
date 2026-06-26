@@ -791,7 +791,7 @@ func makeMenu(target: AppDelegate) -> NSMenu {
     let saveItem = fileMenu.addItem(withTitle: "Save", action: #selector(AppDelegate.saveDocument(_:)), keyEquivalent: "s")
     saveItem.target = target
     let saveAsItem = fileMenu.addItem(withTitle: "Save As…", action: #selector(AppDelegate.saveDocumentAs(_:)), keyEquivalent: "S")
-    saveAsItem.keyEquivalentModifierMask = .shift
+    saveAsItem.keyEquivalentModifierMask = [.command, .shift]
     saveAsItem.target = target
     fileMenu.addItem(NSMenuItem.separator())
     fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
