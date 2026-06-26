@@ -77,8 +77,8 @@ var optDefs = []optDef{
 	{name: "print", typ: optStr},
 	{name: "prompt", typ: optBool, dB: true},
 	{name: "readonly", abbr: "ro", typ: optBool},
-	{name: "refresh", typ: optStr, dS: "20ms"}, // govi: min interval between screen updates during fast input; 0 = no limit
 	{name: "recdir", typ: optStr, dS: "/var/tmp/vi.recover"},
+	{name: "refresh", typ: optStr, dS: "20ms"}, // govi/tcell: min interval between screen updates during fast input; 0 = no limit
 	{name: "redraw", abbr: "re", typ: optBool},
 	{name: "remap", typ: optBool, dB: true},
 	{name: "report", typ: optNum, dN: 5},

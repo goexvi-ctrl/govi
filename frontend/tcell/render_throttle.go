@@ -16,7 +16,7 @@ const burstRelayWait = 3 * time.Millisecond
 
 func (f *Frontend) minRenderPeriod() time.Duration {
 	if f.eng == nil {
-		return 20 * time.Millisecond
+		return engine.DefaultRefresh()
 	}
 	return f.eng.RefreshInterval()
 }
@@ -52,6 +52,7 @@ func (f *Frontend) paintWait(period time.Duration) time.Duration {
 func (f *Frontend) markPainted() {
 	f.lastPaintAt = time.Now()
 	f.paintPending = false
+	f.paintUrgent = false
 }
 
 func (f *Frontend) ensurePainted() {
@@ -72,7 +73,9 @@ func (f *Frontend) processEvents(events <-chan tc.Event, first tc.Event) (closed
 	f.inEventBurst = true
 	defer func() {
 		f.inEventBurst = false
-		f.ensurePainted()
+		if f.paintPending {
+			f.ensurePainted()
+		}
 	}()
 
 	period := f.minRenderPeriod()
@@ -85,7 +88,7 @@ func (f *Frontend) processEvents(events <-chan tc.Event, first tc.Event) (closed
 	handle(first)
 
 	for {
-		if f.paintPending && f.paintDue(period) {
+		if f.paintPending && (f.paintUrgent || f.paintDue(period)) {
 			f.ensurePainted()
 		}
 

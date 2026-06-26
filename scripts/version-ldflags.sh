@@ -10,7 +10,12 @@ hash=$(git rev-parse --short HEAD 2>/dev/null || echo "")
 state=""
 buildTime=""
 # Tracked edits only; untracked files do not mark the build modified.
-if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+# diff-index exits 1 when dirty, 0 when clean, 128+ on error (treat as clean).
+rc=0
+if git rev-parse -q --verify HEAD >/dev/null 2>&1; then
+	git diff-index --quiet HEAD -- 2>/dev/null || rc=$?
+fi
+if [ "$rc" -eq 1 ]; then
 	state=modified
 	buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 fi

@@ -95,6 +95,27 @@ func TestRenderDefersDuringBurst(t *testing.T) {
 	if !fe.paintPending {
 		t.Fatal("Render during burst should defer paint")
 	}
+	if fe.paintUrgent {
+		t.Fatal("scroll should not be urgent during burst")
+	}
+}
+
+func TestRenderUrgentDuringBurst(t *testing.T) {
+	sim := tc.NewSimulationScreen("")
+	fe, err := NewWithScreen(sim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng, _ := setup(t, "hi\n", 20, 4)
+	fe.Attach(eng)
+	fe.inEventBurst = true
+
+	var v engine.View
+	eng.WithView(func(view engine.View) { v = view })
+	fe.Render(v, engine.ChangeSet{ModeChanged: true})
+	if !fe.paintPending || !fe.paintUrgent {
+		t.Fatal("urgent change during burst should set paintUrgent")
+	}
 }
 
 func TestFastInsertCompletesQuickly(t *testing.T) {

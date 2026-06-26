@@ -26,6 +26,7 @@ type Frontend struct {
 
 	inEventBurst bool
 	paintPending bool
+	paintUrgent  bool // mode/message/overlay: paint immediately mid-burst
 	lastPaintAt  time.Time
 }
 
@@ -129,6 +130,8 @@ func (f *Frontend) runVisual(sigCh <-chan os.Signal) bool {
 			timer = time.After(recoverFlushDelay)
 			recoverFlush = true
 		}
+		// processEvents drains input bursts without selecting on sigCh; signals
+		// wait until the burst ends (bursts are short in practice).
 		select {
 		case ev := <-events:
 			if f.processEvents(events, ev) {
@@ -247,15 +250,14 @@ func (f *Frontend) Bell() { f.scr.Beep() }
 // in a later phase; stored here so the behavior is observable.)
 func (f *Frontend) SetTitle(title string) { f.title = title }
 
-// Render paints the current View. During an input burst processEvents schedules
-// repaints on the main goroutine; otherwise urgent changes paint immediately.
+// Render paints the current View. During a burst, processEvents schedules
+// repaints; urgent changes (mode, message, overlay) paint on the next loop pass.
 func (f *Frontend) Render(v engine.View, cs engine.ChangeSet) {
 	if f.inEventBurst {
 		f.paintPending = true
-		return
-	}
-	if renderUrgent(v, cs) {
-		f.ensurePainted()
+		if renderUrgent(v, cs) {
+			f.paintUrgent = true
+		}
 		return
 	}
 	f.ensurePainted()

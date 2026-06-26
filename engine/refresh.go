@@ -7,6 +7,10 @@ import (
 
 const defaultRefresh = 20 * time.Millisecond
 
+// DefaultRefresh is the default for the refresh option (honored by the terminal
+// frontend only; inert in GoVi.app).
+func DefaultRefresh() time.Duration { return defaultRefresh }
+
 func parseRefresh(s string) (time.Duration, error) {
 	d, err := time.ParseDuration(s)
 	if err != nil {
