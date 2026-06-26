@@ -144,27 +144,43 @@ In addition to vi keys, the window supports the usual GUI text affordances:
 
 - **Wheel / two-finger scroll** moves the viewport like any windowed app; the
   cursor stays put (and may scroll off-screen) until the next edit or motion.
-- **Click** to move the cursor.
-- **Click-drag** selects a **linear** range in the buffer (character at a time,
-  following the file through line wraps), like a terminal. In ex (Q) mode or
-  during `:!cmd` output, drag selects in reading order through the transcript.
-- **Option-click-drag** selects an **axis-aligned rectangle** of screen cells —
-  useful for copying from the status line, gutter, `~` filler, or any block of
-  on-screen text.
+- **Click** moves the cursor when it lands on buffer text. (In `traditional`
+  selection mode, below, a click while inserting does not move the insertion
+  point — the mouse is purely a copy tool there.)
+- **Click-drag** makes one screen-cell selection that can span anything visible —
+  buffer text, the status/command line, the `~` filler, the line-number gutter,
+  `:!cmd` output, or the ex (Q) transcript — in reading order, like a terminal.
+  **Option-click-drag** selects an axis-aligned rectangle instead.
 - **Double-click** selects the word under the pointer; **triple-click** selects
-  the whole screen row. In the buffer, word boundaries match the engine's default
-  (`DefaultWordBoundary`); on other rows (status, overlay, ex) the same rules are
-  applied to the displayed line text.
-- **Cmd-C** (and Edit ▸ Copy) copies the screen selection via the system
-  pasteboard, regardless of where the text came from.
-- **Cmd-X / Cmd-V**, replace-on-type, and Backspace/Delete over a selection work
-  only when the selection lies wholly on editable buffer text. A selection that
-  includes the status line, line-number gutter, `~` filler, or overlay/ex
-  transcript can still be copied, but cut/paste/delete/type-replace beeps and
-  does nothing.
-- **Cmd-A** selects the whole buffer in normal editing; in overlay or ex (Q)
-  mode it selects all visible screen text.
-- Vi command keys apply only when nothing is selected (or cancel the selection).
+  the row. Word boundaries use the engine's vi rules on buffer rows and the
+  displayed text elsewhere. **Shift-click** extends the selection from where it
+  began.
+- **Cmd-C** (Edit ▸ Copy) copies the selection regardless of origin: buffer text
+  when the selection is wholly editable (so line numbers are excluded), otherwise
+  exactly what is on screen.
+- **Cmd-A** selects the whole buffer when editing (including text scrolled off
+  screen); in overlay or ex (Q) mode it selects the visible screen.
+- The **Delete/Backspace key** sends `^?`: it erases in insert mode but reports
+  `^? isn't a vi command` in command mode (matching nvi). With a selection it
+  clears (or, when the selection captures input, deletes) it.
+
+#### Selection editing (`:set selmode=…`)
+
+Whether typed or pasted input acts on a selection is set by the `selmode` option
+(default **combined**; also in Settings ▸ Selection editing):
+
+- **traditional** — the selection is copy-only; input is always handled as if
+  nothing were selected (keystrokes stay vi commands / insert-mode text).
+- **wysiwyg** — typing or pasting replaces the selection (entering insert mode);
+  Cmd-X cuts it.
+- **combined** — wysiwyg while in insert mode, traditional in command mode.
+
+An edit only ever applies when the selection lies wholly on editable buffer text;
+a selection touching the status line, gutter, `~` filler, or an overlay/ex
+transcript (or an Option-drag rectangle) is copy-only and an edit over it beeps.
+Paste with no selection (or a copy-only one) is fed through the engine in the
+current mode, so pasting on the `:` line runs as an ex command and pasting in
+insert mode inserts literally.
 
 ### International text input
 
@@ -176,14 +192,17 @@ key composes it). IMEs work the same way. Control keys (`^F`, `^D`, `^R`, …) a
 handled directly so they stay vi commands rather than triggering Cocoa's
 built-in Emacs-style key bindings.
 
-These are GUI-layer features (vi has no selection concept). Screen-coordinate
-selection and copy are handled in `frontend/grid` (`ScreenRangeText`,
-`ApplyScreenSel`, `ScreenToBuffer`, `SelectionBufferRange`) and the bridge
-(`GoviSetScreenSelection`, `GoviScreenRangeText`, …). Buffer edits still use
-engine primitives in `engine/gui.go` (`MoveCursorTo`, `RangeText`,
-`DeleteRange`, `ReplaceSelection*`, `InsertText`) and `grid.Locate` for
-click-to-position. The engine core remains free of any selection or clipboard
-concept.
+These are GUI-layer features (vi has no selection concept). One screen-cell
+selection model drives highlight and copy for every mode, in `frontend/grid`
+(`ScreenRangeText`, `ScreenLinearRangeText`, `ApplyScreenSel`, `ScreenToBuffer`,
+`SelectionEditRange`) and the bridge (`GoviSetScreenSelection`,
+`GoviScreenRangeText`, `GoviSelectionEditRange`, `GoviSelMode`, …). An edit
+derives a buffer caret range from the selection and uses engine primitives in
+`engine/gui.go` (`MoveCursorTo`, `RangeText`, `DeleteRange`, `ReplaceSelection*`);
+no-selection paste feeds text as a mode-aware `StringEvent`. `grid.Locate` backs
+click-to-position. The engine core stays free of any selection or clipboard
+concept; `selmode` is its only selection-related option (GUI-only, like the
+terminal-only `refresh`).
 
 ## Tested
 

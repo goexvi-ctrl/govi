@@ -746,15 +746,6 @@ func GoviReplaceText(h C.longlong, l1 C.longlong, c1 C.int, l2 C.longlong, c2 C.
 	}
 }
 
-// GoviInsertText inserts text at the cursor caret (GUI paste, no selection).
-//
-//export GoviInsertText
-func GoviInsertText(h C.longlong, text *C.char) {
-	if in := get(h); in != nil {
-		in.eng.InsertText(C.GoString(text))
-	}
-}
-
 // GoviEndPos writes the caret at the very end of the buffer (last line, past
 // its last rune) into *line/*col. Backs Select All.
 //

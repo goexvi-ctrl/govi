@@ -162,6 +162,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | `shell` | yes | ✅ | ✅ | used by `!` filter and `:shell` |
 | `exrc` | yes | ✅ | ✅ | read `./.nexrc`/`./.exrc` at startup (ownership-checked) |
 | `foreground`/`background` (fg/bg) | — | ⚙️ | ✅ | per-tab text colors in GoVi.app; settable but inert in the terminal |
+| `refresh` | — | ✅ | ⚙️ | govi extension: min interval between repaints during fast input (paste/key-repeat), e.g. `20ms`; `0` = no limit. Terminal only; inert in GoVi.app |
 | `lisp`, `redraw`, `slowopen`/`slow`, `optimize`/`opt` | yes | — | — | non-objectives (see below); settable but never drive behavior |
 | `autowrite` (aw) | yes | ❌ | ❌ | auto-write on file/tag/navigation commands |
 | `backup` | yes | ❌ | ❌ | backup file path and versioning |
@@ -218,7 +219,7 @@ the shared editor, not nvi-parity items:
 |---|---|
 | Native app embedding | engine runs in-process behind a C archive (`gui/bridge`); no terminal, no exec of `govi` |
 | Multiple windows / native tabs | Cmd-N, Cmd-T, drag/merge tabs; `Use window tabs` setting |
-| Mouse + system clipboard | click to position, drag-select, double/triple-click word/line, Cmd-C/X/V, Cmd-A |
+| Mouse + system clipboard | select & copy any on-screen text (buffer, status line, overlay, ex transcript, gutter); click to position; double/triple-click word/line; shift-click extend; Option-drag rectangle; Cmd-C/X/V, Cmd-A. `:set selmode` (traditional/wysiwyg/combined) controls whether typing/paste replaces a selection |
 | Spell checking | NSSpellChecker underline, suggestions, Ignore/Learn, Look Up |
 | International input | Option/dead keys and IME composition; control keys stay vi commands |
 | Per-tab colors | `:set foreground=`/`background=` and Settings defaults |
