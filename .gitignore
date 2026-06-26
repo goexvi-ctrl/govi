@@ -29,4 +29,7 @@
 
 # Ignore docs we don't plan to check in
 /docs/qwen-review
+/docs/issues.md
+/docs/selectable-text-plan.md
+/docs/unified-selection-plan.md
 

@@ -26,6 +26,25 @@ func TestSetBool(t *testing.T) {
 	}
 }
 
+func TestSetSelmode(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	if e.scr.opts.Str("selmode") != "combined" {
+		t.Fatalf("selmode default = %q, want combined", e.scr.opts.Str("selmode"))
+	}
+	if err := e.exExecute("set selmode=traditional"); err != nil {
+		t.Fatal(err)
+	}
+	if e.scr.opts.Str("selmode") != "traditional" {
+		t.Fatalf("selmode = %q, want traditional", e.scr.opts.Str("selmode"))
+	}
+	if err := e.exExecute("set selmode=bogus"); err == nil {
+		t.Fatal("set selmode=bogus should be rejected")
+	}
+	if e.scr.opts.Str("selmode") != "traditional" {
+		t.Fatalf("selmode changed to %q after a rejected set", e.scr.opts.Str("selmode"))
+	}
+}
+
 func TestSetNumeric(t *testing.T) {
 	e, _, _ := newTestEngine(t, "x\n")
 	if err := e.exExecute("set ts=4 sw=2"); err != nil {

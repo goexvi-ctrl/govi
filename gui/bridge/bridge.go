@@ -70,6 +70,78 @@ var (
 	nextHandle int64
 )
 
+// defaultSelMode is the GUI's selmode default applied to each new engine before
+// LoadStartup, so an .exrc :set selmode can still override it. The host sets it
+// from its Settings via GoviSetDefaultSelMode.
+var defaultSelMode = "combined"
+
+// GoviSetDefaultSelMode sets the selmode applied to engines created afterward.
+//
+//export GoviSetDefaultSelMode
+func GoviSetDefaultSelMode(mode *C.char) { defaultSelMode = C.GoString(mode) }
+
+// selModeCode maps a selmode name to the GUI's 0/1/2 code.
+func selModeCode(name string) C.int {
+	switch name {
+	case "traditional":
+		return 0
+	case "wysiwyg":
+		return 1
+	default:
+		return 2 // combined
+	}
+}
+
+// selModeName maps a 0/1/2 code back to a selmode name.
+func selModeName(code C.int) string {
+	switch code {
+	case 0:
+		return "traditional"
+	case 1:
+		return "wysiwyg"
+	default:
+		return "combined"
+	}
+}
+
+// GoviSelMode returns this editor's selmode as 0=traditional, 1=wysiwyg,
+// 2=combined.
+//
+//export GoviSelMode
+func GoviSelMode(h C.longlong) C.int {
+	in := get(h)
+	if in == nil {
+		return 2
+	}
+	return selModeCode(in.eng.StrOption("selmode"))
+}
+
+// GoviSetSelMode sets this editor's selmode (0/1/2), e.g. when the Settings
+// dialog changes while the window is open.
+//
+//export GoviSetSelMode
+func GoviSetSelMode(h C.longlong, mode C.int) {
+	if in := get(h); in != nil {
+		_ = in.eng.SetStrOption("selmode", selModeName(mode))
+	}
+}
+
+// GoviInsertActive reports whether the editor is in insert (or replace) mode,
+// which selmode=combined uses to decide if a selection captures input.
+//
+//export GoviInsertActive
+func GoviInsertActive(h C.longlong) C.int {
+	in := get(h)
+	if in == nil {
+		return 0
+	}
+	var active bool
+	in.eng.WithView(func(v engine.View) {
+		active = v.Mode() == engine.ModeInsert || v.Mode() == engine.ModeReplace
+	})
+	return boolToC(active)
+}
+
 func get(h C.longlong) *instance { return insts[int64(h)] }
 
 func main() {} // required for c-archive builds
@@ -85,6 +157,9 @@ func GoviStart(path, foreground, background *C.char, silent C.int) C.longlong {
 	in.eng = engine.New(in.fe, engine.Options{})
 	_ = in.eng.SetStrOption("foreground", cString(foreground))
 	_ = in.eng.SetStrOption("background", cString(background))
+	// Apply the GUI's selmode default before LoadStartup so an .exrc :set selmode
+	// can still override it.
+	_ = in.eng.SetStrOption("selmode", defaultSelMode)
 	p := C.GoString(path)
 	// cwd (and the rest of the launch context) is no longer read from a shared
 	// file here; the host sets it per editor via GoviSetCwd from the validated
@@ -585,21 +660,23 @@ func GoviScreenToBuffer(h C.longlong, x, y C.int, line *C.longlong, col *C.int) 
 	return 1
 }
 
-// GoviSelectionBufferRange writes the buffer caret range [a, b) for the current
-// screen selection when every selected cell is editable buffer text. Returns 1
-// on success, 0 when any cell is non-editable (status, gutter, ~, overlay, ex).
+// GoviSelectionEditRange writes the buffer caret range [a, b) covering the
+// current screen selection's text, for cut/paste-over/delete/replace-on-type.
+// Returns 1 only when the selection is a reading-order (linear) selection lying
+// entirely on buffer rows; 0 for block selections or any selection touching a
+// non-buffer cell (status, ~, gutter endpoint, overlay, ex transcript).
 //
-//export GoviSelectionBufferRange
-func GoviSelectionBufferRange(h C.longlong, l1 *C.longlong, c1 *C.int, l2 *C.longlong, c2 *C.int) C.int {
+//export GoviSelectionEditRange
+func GoviSelectionEditRange(h C.longlong, l1 *C.longlong, c1 *C.int, l2 *C.longlong, c2 *C.int) C.int {
 	in := get(h)
-	if in == nil || !in.screenSelActive {
+	if in == nil || !in.screenSelActive || !in.screenSelLinear {
 		return 0
 	}
 	sel := grid.ScreenSelection{A: in.screenSelA, B: in.screenSelB}
 	var a, b engine.Pos
 	var ok bool
 	in.eng.WithView(func(v engine.View) {
-		a, b, ok = grid.SelectionBufferRange(v, in.rows, in.cols, sel)
+		a, b, ok = grid.SelectionEditRange(v, in.rows, in.cols, sel)
 	})
 	if !ok {
 		return 0

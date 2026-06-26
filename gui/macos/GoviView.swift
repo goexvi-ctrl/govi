@@ -54,28 +54,28 @@ final class GoviView: NSView, NSTextInputClient {
     private var cols = 1
     private var timer: Timer?
 
-    // Selection: buffer caret range by default; Option+mouse uses a screen
-    // rectangle; overlay/ex without Option uses reading-order screen cells.
+    // One selection model, in screen cells. screenDragAnchor is the fixed origin
+    // of a character drag; granLo/granHi are the originating word/line edges for
+    // word/line drags; screenSelStart/End hold the stored highlighted span.
+    // selBlock is an Option-drag rectangle (copy-only). selWholeBuffer is the
+    // editor Select All, held as buffer carets (bufA/bufB) so it can cover text
+    // scrolled off screen. Highlight and copy read the grid; an edit derives a
+    // buffer range via GoviSelectionEditRange and beeps when the selection is not
+    // wholly buffer text.
     private typealias Caret = (line: Int64, col: Int)
     private typealias ScreenCell = (x: Int32, y: Int32)
-    private enum SelStyle { case buffer, linearScreen, rectangular }
     private var selActive = false
-    private var selStyle: SelStyle = .buffer
-    private var bufSelStart: Caret = (1, 0)
-    private var bufSelEnd: Caret = (1, 0)
-    private var bufDragAnchor: Caret = (1, 0)
+    private var selBlock = false
+    private var selWholeBuffer = false
+    private var dragBlock = false
     private var screenSelStart: ScreenCell = (0, 0)
     private var screenSelEnd: ScreenCell = (0, 0)
     private var screenDragAnchor: ScreenCell = (0, 0)
+    private var granLo: ScreenCell = (0, 0)
+    private var granHi: ScreenCell = (0, 0)
+    private var bufA: Caret = (1, 0)
+    private var bufB: Caret = (1, 0)
     private var dragging = false
-
-    // shiftKeyDown tracks the physical shift key via flagsChanged. mouseDown's
-    // modifierFlags often omits shift even when the key is held (especially on
-    // the second click in a shift-click sequence within the double-click window).
-    private var shiftKeyDown = false
-    // True while shift is physically held (latched on press, cleared on release).
-    // mouseDown often omits shift from modifierFlags even when this is true.
-    private var shiftKeyEngaged = false
 
     // selGranularity records how the selection was started; shift-extend and
     // drag-extend snap to word or line boundaries after double/triple-click.
@@ -146,6 +146,7 @@ final class GoviView: NSView, NSTextInputClient {
     @objc private func settingsChanged() {
         padding = Settings.padding
         spellEnabled = Settings.spellChecking
+        GoviSetSelMode(handle, Settings.selMode.code) // live-update this tab's selmode
         font = Settings.editorFont
         measureFont()
         resizeWindowToCells() // keep the same rows x cols; grow/shrink the window to fit
@@ -215,41 +216,19 @@ final class GoviView: NSView, NSTextInputClient {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         window?.makeFirstResponder(self)
-        syncShiftKeyState()
         updateGeometry()
     }
 
-    override func flagsChanged(with event: NSEvent) {
-        syncShiftKeyState()
+    // shiftDown reports whether Shift is held for a mouse event. AppKit
+    // occasionally drops .shift from a mouseDown's own modifierFlags (notably the
+    // synthesized second click of a double-click-then-shift-click), so fall back
+    // to the current global modifier state and then the HID hardware state. This
+    // is a live query each time -- no latched flags or flagsChanged tracking.
+    private func shiftDown(_ event: NSEvent) -> Bool {
         let mask = NSEvent.ModifierFlags.deviceIndependentFlagsMask
-        if !shiftPhysicallyDown()
-            && !event.modifierFlags.intersection(mask).contains(.shift) {
-            shiftKeyEngaged = false
-        }
-    }
-
-    private func syncShiftKeyState() {
-        let mask = NSEvent.ModifierFlags.deviceIndependentFlagsMask
-        let physical = shiftPhysicallyDown()
-        shiftKeyDown = NSEvent.modifierFlags.intersection(mask).contains(.shift) || physical
-        if physical || shiftKeyDown {
-            shiftKeyEngaged = true
-        }
-    }
-
-    private func shiftPhysicallyDown() -> Bool {
-        CGEventSource.flagsState(.hidSystemState).contains(.maskShift)
-    }
-
-    private func shiftHeld(_ event: NSEvent) -> Bool {
-        if shiftKeyDown || shiftPhysicallyDown() { return true }
-        let mask = NSEvent.ModifierFlags.deviceIndependentFlagsMask
-        return event.modifierFlags.intersection(mask).contains(.shift)
-            || NSEvent.modifierFlags.intersection(mask).contains(.shift)
-    }
-
-    private func shouldShiftExtend(_ event: NSEvent) -> Bool {
-        shiftHeld(event) || (selActive && shiftKeyEngaged)
+        if event.modifierFlags.intersection(mask).contains(.shift) { return true }
+        if NSEvent.modifierFlags.intersection(mask).contains(.shift) { return true }
+        return CGEventSource.flagsState(.hidSystemState).contains(.maskShift)
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -367,112 +346,120 @@ final class GoviView: NSView, NSTextInputClient {
         event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.option)
     }
 
-    private func selectionStyle(for event: NSEvent) -> SelStyle {
-        if optionRectSelect(event) { return .rectangular }
-        if GoviOverlayActive(handle) != 0 || GoviExActive(handle) != 0 { return .linearScreen }
-        return .buffer
-    }
-
-    private func clearSelection() {
-        if !selActive { return }
-        selActive = false
-        GoviSetSelection(handle, 0, 0, 0, 0, 0)
-        GoviSetScreenSelection(handle, 0, 0, 0, 0, 0, 0)
-    }
-
-    private func setBufferSelection(_ a: Caret, _ b: Caret) {
-        if a.line == b.line && a.col == b.col {
-            clearSelection()
-            return
-        }
-        selActive = true
-        selStyle = .buffer
-        bufSelStart = a
-        bufSelEnd = b
-        GoviSetSelection(handle, 1, a.line, Int32(a.col), b.line, Int32(b.col))
-    }
-
-    private func setScreenSelection(_ style: SelStyle, _ a: ScreenCell, _ b: ScreenCell) {
-        if a.x == b.x && a.y == b.y {
-            clearSelection()
-            return
-        }
-        selActive = true
-        selStyle = style
-        screenSelStart = a
-        screenSelEnd = b
-        let linear: Int32 = style == .linearScreen ? 1 : 0
-        GoviSetScreenSelection(handle, 1, linear, a.x, a.y, b.x, b.y)
-    }
-
-    private func caretAt(_ event: NSEvent) -> Caret {
-        let c = cellAt(event)
-        var line: Int64 = 0
-        var col: Int32 = 0
-        GoviCellToPos(handle, c.x, c.y, &line, &col)
-        return (line, Int(col))
-    }
-
-    private func cursorCaret() -> Caret {
-        var line: Int64 = 0
-        var col: Int32 = 0
-        GoviCellToPos(handle, GoviCursorX(handle), GoviCursorY(handle), &line, &col)
-        return (line, Int(col))
+    private func cellBefore(_ a: ScreenCell, _ b: ScreenCell) -> Bool {
+        a.y < b.y || (a.y == b.y && a.x < b.x)
     }
 
     private func caretBefore(_ a: Caret, _ b: Caret) -> Bool {
         a.line < b.line || (a.line == b.line && a.col < b.col)
     }
 
-    private func cellBefore(_ a: ScreenCell, _ b: ScreenCell) -> Bool {
-        a.y < b.y || (a.y == b.y && a.x < b.x)
-    }
-
-    // Buffer caret range for cut/paste/replace/delete. Only linear buffer and
-    // linear screen selections map to a single editable range; rectangular
-    // (Option+drag) and linear screen selections are copy-only.
-    private func bufferRangeForSelection() -> (Int64, Int, Int64, Int)? {
-        guard selActive else { return nil }
-        switch selStyle {
-        case .buffer:
-            let a = bufSelStart, b = bufSelEnd
-            if caretBefore(b, a) {
-                return (b.line, b.col, a.line, a.col)
-            }
-            return (a.line, a.col, b.line, b.col)
-        case .rectangular, .linearScreen:
-            return nil
-        }
-    }
-
-    private func editBeep() {
-        NSSound.beep()
-    }
-
-    private func moveCursorToCaret(_ caret: Caret) {
-        GoviMoveCursor(handle, caret.line, Int32(caret.col))
-    }
-
-    private func moveCursorToScreenCell(_ cell: ScreenCell) {
+    // cellMapsToBuffer reports whether a screen cell sits on editable buffer text.
+    private func cellMapsToBuffer(_ c: ScreenCell) -> Bool {
         var line: Int64 = 0, col: Int32 = 0
-        if GoviScreenToBuffer(handle, cell.x, cell.y, &line, &col) != 0 {
+        return GoviScreenToBuffer(handle, c.x, c.y, &line, &col) != 0
+    }
+
+    private func cursorCell() -> ScreenCell { (GoviCursorX(handle), GoviCursorY(handle)) }
+
+    private func editBeep() { NSSound.beep() }
+
+    // moveCursorToCell moves the caret only when the cell is buffer text; a click
+    // off the buffer (status/command row, ~, gutter, overlay, ex) leaves it put.
+    private func moveCursorToCell(_ c: ScreenCell) {
+        var line: Int64 = 0, col: Int32 = 0
+        if GoviScreenToBuffer(handle, c.x, c.y, &line, &col) != 0 {
             GoviMoveCursor(handle, line, col)
-        } else {
-            var l: Int64 = 0, c: Int32 = 0
-            GoviCellToPos(handle, cell.x, cell.y, &l, &c)
-            GoviMoveCursor(handle, l, c)
         }
     }
 
-    private func screenWordRange(at cell: ScreenCell) -> (ScreenCell, ScreenCell) {
-        guard let row = screenRowText(Int(cell.y)) else { return (cell, cell) }
-        let (start, end) = wordBounds(in: row, at: Int(cell.x))
-        return ((Int32(start), cell.y), (Int32(end), cell.y))
+    private func clearSelection() {
+        if !selActive { return }
+        selActive = false
+        selBlock = false
+        selWholeBuffer = false
+        GoviSetSelection(handle, 0, 0, 0, 0, 0)
+        GoviSetScreenSelection(handle, 0, 0, 0, 0, 0, 0)
     }
 
-    private func screenLineRange(at cell: ScreenCell) -> (ScreenCell, ScreenCell) {
-        let len = screenRowText(Int(cell.y))?.count ?? 0
-        return ((0, cell.y), (Int32(len), cell.y))
+    // setScreenSel stores and highlights a screen selection from a to b (block =
+    // Option-drag rectangle, otherwise reading-order linear). a == b is a valid
+    // one-cell selection (e.g. a single-character word); callers that mean "no
+    // selection" call clearSelection instead.
+    private func setScreenSel(_ a: ScreenCell, _ b: ScreenCell, block: Bool) {
+        selActive = true
+        selBlock = block
+        selWholeBuffer = false
+        screenSelStart = a
+        screenSelEnd = b
+        GoviSetScreenSelection(handle, 1, block ? 0 : 1, a.x, a.y, b.x, b.y)
+    }
+
+    // setBufferAll stores and highlights the editor Select All range in buffer
+    // coordinates so it can cover text scrolled off screen.
+    private func setBufferAll(_ a: Caret, _ b: Caret) {
+        if a.line == b.line && a.col == b.col {
+            clearSelection()
+            return
+        }
+        selActive = true
+        selBlock = false
+        selWholeBuffer = true
+        bufA = a
+        bufB = b
+        GoviSetSelection(handle, 1, a.line, Int32(a.col), b.line, Int32(b.col))
+    }
+
+    // editRange returns the buffer caret range [a, b) for the current selection
+    // when it is editable (cut/paste-over/delete/replace-on-type): the whole-
+    // buffer Select All, or a linear screen selection lying entirely on buffer
+    // text. nil for block selections or any selection touching a non-buffer cell.
+    private func editRange() -> (Int64, Int, Int64, Int)? {
+        guard selActive else { return nil }
+        if selWholeBuffer {
+            if caretBefore(bufB, bufA) { return (bufB.line, bufB.col, bufA.line, bufA.col) }
+            return (bufA.line, bufA.col, bufB.line, bufB.col)
+        }
+        if selBlock { return nil }
+        var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
+        if GoviSelectionEditRange(handle, &l1, &c1, &l2, &c2) != 0 {
+            return (l1, Int(c1), l2, Int(c2))
+        }
+        return nil
+    }
+
+    private enum SelMode: Int32 { case traditional = 0, wysiwyg = 1, combined = 2 }
+
+    private func selMode() -> SelMode { SelMode(rawValue: GoviSelMode(handle)) ?? .combined }
+
+    // selectionCapturesInput reports whether an editing input (a typed rune,
+    // paste, Cut, or Backspace/Delete) should act on the current selection rather
+    // than pass through to the engine, per selmode and the current editor mode.
+    private func selectionCapturesInput() -> Bool {
+        guard selActive else { return false }
+        switch selMode() {
+        case .traditional: return false
+        case .wysiwyg: return true
+        case .combined: return GoviInsertActive(handle) != 0
+        }
+    }
+
+    // posCell maps a buffer caret to the screen cell it occupies.
+    private func posCell(_ line: Int64, _ col: Int) -> ScreenCell {
+        var x: Int32 = 0, y: Int32 = 0, vis: Int32 = 0
+        GoviPosToCell(handle, line, Int32(col), &x, &y, &vis)
+        return (x, y)
+    }
+
+    // firstBufferX is the first column on row y that maps to buffer text (just
+    // past the line-number gutter), or nil if the row has no buffer text.
+    private func firstBufferX(onRow y: Int32) -> Int32? {
+        var x: Int32 = 0
+        while x < Int32(cols) {
+            if cellMapsToBuffer((x, y)) { return x }
+            x += 1
+        }
+        return nil
     }
 
     private enum ClickClass { case blank, word, punct }
@@ -496,128 +483,82 @@ final class GoviView: NSView, NSTextInputClient {
         return (start, end)
     }
 
-    private func orderedBufSelEnds() -> (lo: Caret, hi: Caret) {
-        if caretBefore(bufSelEnd, bufSelStart) {
-            return (bufSelEnd, bufSelStart)
-        }
-        return (bufSelStart, bufSelEnd)
-    }
-
-    private func orderedScreenSelEnds() -> (lo: ScreenCell, hi: ScreenCell) {
-        if cellBefore(screenSelEnd, screenSelStart) {
-            return (screenSelEnd, screenSelStart)
-        }
-        return (screenSelStart, screenSelEnd)
-    }
-
-    private func extendBufferEndpoint(at event: NSEvent, fixedAnchor: Caret, extending: Bool) -> Caret {
-        let click = caretAt(event)
-        let c = cellAt(event)
-        switch selGranularity {
-        case .character:
-            return click
-        case .word:
+    // wordCells returns the inclusive screen-cell span of the word at c: engine
+    // (vi) word boundaries on buffer rows, screen-row boundaries elsewhere. nil
+    // when c is not on a word (e.g. whitespace).
+    private func wordCells(at c: ScreenCell) -> (ScreenCell, ScreenCell)? {
+        if cellMapsToBuffer(c) {
             var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
             GoviWordRange(handle, c.x, c.y, &l1, &c1, &l2, &c2)
-            let wStart: Caret = (l1, Int(c1))
-            let wEnd: Caret = (l2, Int(c2))
-            if extending {
-                let bounds = orderedBufSelEnds()
-                if caretBefore(click, bounds.lo) { return wStart }
-                if caretBefore(bounds.hi, click) { return wEnd }
-            }
-            return caretBefore(wEnd, fixedAnchor) ? wStart : wEnd
-        case .line:
-            var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
-            GoviLineRange(handle, c.x, c.y, &l1, &c1, &l2, &c2)
-            let lStart: Caret = (l1, Int(c1))
-            let lEnd: Caret = (l2, Int(c2))
-            if extending {
-                let bounds = orderedBufSelEnds()
-                if caretBefore(click, bounds.lo) { return lStart }
-                if caretBefore(bounds.hi, click) { return lEnd }
-            }
-            return caretBefore(lEnd, fixedAnchor) ? lStart : lEnd
+            if l1 == l2 && c2 <= c1 { return nil }
+            return (posCell(l1, Int(c1)), posCell(l2, Int(c2) - 1))
         }
+        guard let row = screenRowText(Int(c.y)) else { return nil }
+        let (s, e) = wordBounds(in: row, at: Int(c.x))
+        if e <= s { return nil }
+        return ((Int32(s), c.y), (Int32(e - 1), c.y))
     }
 
-    private func extendScreenEndpoint(at event: NSEvent, fixedAnchor: ScreenCell, extending: Bool) -> ScreenCell {
+    // lineCells returns the inclusive screen-cell span of the visible row at c,
+    // skipping the line-number gutter on buffer rows.
+    private func lineCells(at c: ScreenCell) -> (ScreenCell, ScreenCell) {
+        let len = screenRowText(Int(c.y))?.count ?? 0
+        let startX = firstBufferX(onRow: c.y) ?? 0
+        let endX = Int32(max(Int(startX), len - 1))
+        return ((startX, c.y), (endX, c.y))
+    }
+
+    // extendSelection updates the moving end of the active drag (or shift-extend)
+    // to the cell under event, snapped to whole words/lines for word/line
+    // granularity, growing in either direction from the originating span. Screen
+    // selections never move the cursor.
+    private func extendSelection(to event: NSEvent) {
+        if selWholeBuffer { clearSelection() } // a drag replaces a Select All
         let c = cellAt(event)
         switch selGranularity {
         case .character:
-            return (c.x, c.y)
+            // Ignore sub-cell jitter on what is really a click (no selection yet).
+            if !selActive && c.x == screenDragAnchor.x && c.y == screenDragAnchor.y { return }
+            setScreenSel(screenDragAnchor, c, block: dragBlock)
         case .word:
-            let (wStart, wEnd) = screenWordRange(at: (c.x, c.y))
-            if extending {
-                let bounds = orderedScreenSelEnds()
-                if cellBefore((c.x, c.y), bounds.lo) { return wStart }
-                if cellBefore(bounds.hi, (c.x, c.y)) { return wEnd }
+            let (gs, ge) = wordCells(at: c) ?? (c, c)
+            if cellBefore(c, granLo) {
+                setScreenSel(granHi, gs, block: dragBlock)
+            } else {
+                setScreenSel(granLo, ge, block: dragBlock)
             }
-            return cellBefore(wEnd, fixedAnchor) ? wStart : wEnd
         case .line:
-            let (lStart, lEnd) = screenLineRange(at: (c.x, c.y))
-            if extending {
-                let bounds = orderedScreenSelEnds()
-                if cellBefore((c.x, c.y), bounds.lo) { return lStart }
-                if cellBefore(bounds.hi, (c.x, c.y)) { return lEnd }
-            }
-            return cellBefore(lEnd, fixedAnchor) ? lStart : lEnd
-        }
-    }
-
-    private func extendSelection(to event: NSEvent) {
-        let extending = selActive
-        switch selStyle {
-        case .buffer:
-            let anchor = bufDragAnchor
-            let snapped = extendBufferEndpoint(at: event, fixedAnchor: anchor, extending: extending)
-            if extending {
-                let bounds = orderedBufSelEnds()
-                let click = caretAt(event)
-                if caretBefore(click, anchor) {
-                    setBufferSelection(snapped, bounds.hi)
-                    moveCursorToCaret(snapped)
-                } else {
-                    setBufferSelection(bounds.lo, snapped)
-                    moveCursorToCaret(snapped)
-                }
+            let (gs, ge) = lineCells(at: c)
+            if cellBefore(c, granLo) {
+                setScreenSel(granHi, gs, block: dragBlock)
             } else {
-                setBufferSelection(anchor, snapped)
-                moveCursorToCaret(snapped)
-            }
-        case .linearScreen, .rectangular:
-            let anchor = screenDragAnchor
-            let snapped = extendScreenEndpoint(at: event, fixedAnchor: anchor, extending: extending)
-            if extending {
-                let bounds = orderedScreenSelEnds()
-                let cell = cellAt(event)
-                if cellBefore((cell.x, cell.y), anchor) {
-                    setScreenSelection(selStyle, snapped, bounds.hi)
-                    moveCursorToScreenCell(snapped)
-                } else {
-                    setScreenSelection(selStyle, bounds.lo, snapped)
-                    moveCursorToScreenCell(snapped)
-                }
-            } else {
-                setScreenSelection(selStyle, anchor, snapped)
-                moveCursorToScreenCell(snapped)
+                setScreenSel(granLo, ge, block: dragBlock)
             }
         }
         step()
     }
 
-    private func handleShiftExtendMouseDown(_ event: NSEvent, style: SelStyle) {
-        if !selActive {
-            selStyle = style
-            if style == .buffer {
-                bufDragAnchor = cursorCaret()
-            } else {
-                screenDragAnchor = (GoviCursorX(handle), GoviCursorY(handle))
-            }
+    // handleShiftExtendMouseDown extends the selection to a shift-click. With no
+    // selection (or after Select All) it anchors a fresh one at the cursor;
+    // otherwise it keeps the original anchor (screenDragAnchor / granLo / granHi)
+    // so the point where the selection began always stays in the selection across
+    // repeated shift-clicks -- only the moving end follows the click.
+    private func handleShiftExtendMouseDown(_ event: NSEvent) {
+        dragBlock = optionRectSelect(event)
+        if !selActive || selWholeBuffer {
+            let cur = cursorCell()
+            screenDragAnchor = cur
             switch event.clickCount {
-            case 2: selGranularity = .word
-            case 3: selGranularity = .line
-            default: selGranularity = .character
+            case 2:
+                selGranularity = .word
+                (granLo, granHi) = wordCells(at: cur) ?? (cur, cur)
+            case 3:
+                selGranularity = .line
+                (granLo, granHi) = lineCells(at: cur)
+            default:
+                selGranularity = .character
+                granLo = cur
+                granHi = cur
             }
         }
         dragging = true
@@ -626,65 +567,58 @@ final class GoviView: NSView, NSTextInputClient {
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
-        syncShiftKeyState()
-        let style = selectionStyle(for: event)
+        dragBlock = optionRectSelect(event)
 
         // Shift-click (or shift-click-drag) extends the selection. This must run
         // before the clickCount==2/3 handler: within the system double-click
         // interval AppKit often delivers clickCount=2 on the shift-click even at
         // a different location, which would otherwise replace the selection.
-        if shouldShiftExtend(event) {
-            handleShiftExtendMouseDown(event, style: style)
+        if shiftDown(event) {
+            handleShiftExtendMouseDown(event)
             return
         }
 
+        let c = cellAt(event)
         if event.clickCount == 2 || event.clickCount == 3 {
-            let c = cellAt(event)
             dragging = true
-            if style == .buffer {
-                var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
-                if event.clickCount == 2 {
-                    GoviWordRange(handle, c.x, c.y, &l1, &c1, &l2, &c2)
-                    bufDragAnchor = (l1, Int(c1))
-                    selGranularity = .word
-                } else {
-                    GoviLineRange(handle, c.x, c.y, &l1, &c1, &l2, &c2)
-                    bufDragAnchor = (l1, Int(c1))
-                    selGranularity = .line
+            if event.clickCount == 2 {
+                selGranularity = .word
+                guard let (ws, we) = wordCells(at: c) else {
+                    clearSelection()
+                    screenDragAnchor = c
+                    granLo = c
+                    granHi = c
+                    step()
+                    return
                 }
-                setBufferSelection((l1, Int(c1)), (l2, Int(c2)))
-                moveCursorToCaret((l2, Int(c2)))
+                granLo = ws
+                granHi = we
+                screenDragAnchor = ws
+                setScreenSel(ws, we, block: dragBlock)
             } else {
-                let start: ScreenCell
-                let end: ScreenCell
-                if event.clickCount == 2 {
-                    (start, end) = screenWordRange(at: (c.x, c.y))
-                    screenDragAnchor = start
-                    selGranularity = .word
-                } else {
-                    (start, end) = screenLineRange(at: (c.x, c.y))
-                    screenDragAnchor = start
-                    selGranularity = .line
-                }
-                setScreenSelection(style, start, end)
-                moveCursorToScreenCell(end)
+                selGranularity = .line
+                let (ls, le) = lineCells(at: c)
+                granLo = ls
+                granHi = le
+                screenDragAnchor = ls
+                setScreenSel(ls, le, block: dragBlock)
             }
             step()
             return
         }
 
-        let cell = cellAt(event)
+        // Single click: position the caret on buffer text, no selection yet.
+        // Exception: in traditional mode while inserting, the mouse is only for
+        // copying, so it must not move the insertion point -- e.g. select+copy
+        // elsewhere and paste lands where you were typing, not where you clicked.
         dragging = true
         selGranularity = .character
         clearSelection()
-        selStyle = style
-        if style == .buffer {
-            let caret = caretAt(event)
-            bufDragAnchor = caret
-            moveCursorToCaret(caret)
-        } else {
-            screenDragAnchor = (cell.x, cell.y)
-            moveCursorToScreenCell((cell.x, cell.y))
+        screenDragAnchor = c
+        granLo = c
+        granHi = c
+        if !(selMode() == .traditional && GoviInsertActive(handle) != 0) {
+            moveCursorToCell(c)
         }
         step()
     }
@@ -728,14 +662,14 @@ final class GoviView: NSView, NSTextInputClient {
     @objc func copy(_ sender: Any?) {
         guard selActive else { return }
         let s: String
-        switch selStyle {
-        case .buffer:
-            let a = bufSelStart, b = bufSelEnd
-            s = bridgeString(GoviRangeText(handle, a.line, Int32(a.col), b.line, Int32(b.col)))
-        case .rectangular:
+        if selBlock {
             s = bridgeString(GoviScreenRangeText(handle, screenSelStart.x, screenSelStart.y,
                                                  screenSelEnd.x, screenSelEnd.y))
-        case .linearScreen:
+        } else if let r = editRange() {
+            // Editable buffer selection: copy buffer text (no line-number gutter).
+            s = bridgeString(GoviRangeText(handle, r.0, Int32(r.1), r.2, Int32(r.3)))
+        } else {
+            // Non-buffer selection (status/overlay/ex/~): copy what is on screen.
             s = bridgeString(GoviScreenLinearRangeText(handle, screenSelStart.x, screenSelStart.y,
                                                        screenSelEnd.x, screenSelEnd.y))
         }
@@ -745,8 +679,8 @@ final class GoviView: NSView, NSTextInputClient {
     }
 
     @objc func cut(_ sender: Any?) {
-        guard selActive else { return }
-        guard let r = bufferRangeForSelection() else { editBeep(); return }
+        guard selActive, selectionCapturesInput() else { editBeep(); return }
+        guard let r = editRange() else { editBeep(); return }
         copy(sender)
         GoviDeleteRange(handle, r.0, Int32(r.1), r.2, Int32(r.3))
         clearSelection()
@@ -756,14 +690,19 @@ final class GoviView: NSView, NSTextInputClient {
     @objc func paste(_ sender: Any?) {
         guard let s = NSPasteboard.general.string(forType: .string) else { return }
         var buf = Array(s.utf8CString)
-        if selActive {
-            guard let r = bufferRangeForSelection() else { editBeep(); return }
+        if selActive && selectionCapturesInput() {
+            // Replace the selection (wysiwyg, or combined while in insert mode).
+            guard let r = editRange() else { editBeep(); return }
             buf.withUnsafeMutableBufferPointer {
                 GoviReplaceText(handle, r.0, Int32(r.1), r.2, Int32(r.3), $0.baseAddress)
             }
             clearSelection()
         } else {
-            buf.withUnsafeMutableBufferPointer { GoviInsertText(handle, $0.baseAddress) }
+            // Selection is copy-only (or none): drop any highlight and feed the
+            // text in the current mode, so a colon-line paste runs as a command,
+            // insert mode inserts literally, normal mode interprets it.
+            if selActive { clearSelection() }
+            buf.withUnsafeMutableBufferPointer { GoviText(handle, $0.baseAddress) }
         }
         step()
     }
@@ -772,11 +711,11 @@ final class GoviView: NSView, NSTextInputClient {
         if GoviOverlayActive(handle) != 0 || GoviExActive(handle) != 0 {
             let n = Int(GoviRows(handle))
             let c = Int(GoviCols(handle))
-            setScreenSelection(.linearScreen, (0, 0), (Int32(max(0, c - 1)), Int32(max(0, n - 1))))
+            setScreenSel((0, 0), (Int32(max(0, c - 1)), Int32(max(0, n - 1))), block: false)
         } else {
             var line: Int64 = 0, col: Int32 = 0
             GoviEndPos(handle, &line, &col)
-            setBufferSelection((1, 0), (line, Int(col)))
+            setBufferAll((1, 0), (line, Int(col)))
         }
         step()
     }
@@ -823,6 +762,7 @@ final class GoviView: NSView, NSTextInputClient {
         }
         guard let chars = event.characters, !chars.isEmpty else { return }
         if replaceWithText(chars) { return }
+        if selActive { clearSelection() } // copy-only selection: drop it, type normally
         for scalar in chars.unicodeScalars {
             GoviKeyRune(handle, Int32(scalar.value), 0)
         }
@@ -855,8 +795,15 @@ final class GoviView: NSView, NSTextInputClient {
             if replaceWithText("\n") { return }
             sendSpecial(SK.enter)
         case SK.backspace, SK.delete:
-            if selActive { deleteSelection(); return }
-            sendSpecial(key)
+            if selActive {
+                // A selection that captures input is deleted; otherwise the key
+                // just clears the highlight (it does not edit or move the cursor).
+                if selectionCapturesInput() { deleteSelection() } else { clearSelection(); step() }
+                return
+            }
+            // No selection: the Backspace key is ^? (DEL) -- erases in insert mode,
+            // "^? isn't a vi command" in command mode. Forward Delete stays KeyDelete.
+            if key == SK.backspace { sendDEL() } else { sendSpecial(key) }
         case SK.escape:
             if selActive { clearSelection() }
             sendSpecial(SK.escape)
@@ -907,9 +854,13 @@ final class GoviView: NSView, NSTextInputClient {
 
     // replaceWithText replaces the active selection with s and returns true, or
     // returns false if there was no selection (GUI replace-on-type / paste).
+    // replaceWithText replaces the selection with s and returns true when the
+    // selection captures the input (wysiwyg, or combined while in insert mode);
+    // a captured but non-editable selection beeps and is consumed. Returns false
+    // when the selection does not capture input, so the caller passes it through.
     private func replaceWithText(_ s: String) -> Bool {
-        guard selActive else { return false }
-        guard let r = bufferRangeForSelection() else { editBeep(); return true }
+        guard selActive, selectionCapturesInput() else { return false }
+        guard let r = editRange() else { editBeep(); return true }
         var buf = Array(s.utf8CString)
         buf.withUnsafeMutableBufferPointer {
             GoviReplaceType(handle, r.0, Int32(r.1), r.2, Int32(r.3), $0.baseAddress)
@@ -920,7 +871,7 @@ final class GoviView: NSView, NSTextInputClient {
     }
 
     private func deleteSelection() {
-        guard let r = bufferRangeForSelection() else { editBeep(); return }
+        guard let r = editRange() else { editBeep(); return }
         GoviDeleteRange(handle, r.0, Int32(r.1), r.2, Int32(r.3))
         clearSelection()
         step()
@@ -933,6 +884,7 @@ final class GoviView: NSView, NSTextInputClient {
         let s = Self.asString(string)
         if s.isEmpty { return }
         if replaceWithText(s) { return } // typed over a selection
+        if selActive { clearSelection() } // copy-only selection: drop it, type normally
         for scalar in s.unicodeScalars {
             GoviKeyRune(handle, Int32(scalar.value), 0)
         }
@@ -977,6 +929,13 @@ final class GoviView: NSView, NSTextInputClient {
     private func sendSpecial(_ key: Int32) {
         if selActive { clearSelection() }
         GoviKeySpecial(handle, key, 0)
+        step()
+    }
+
+    // sendDEL feeds ^? (the Backspace key) as a rune so the engine erases in
+    // insert/ex mode but reports "^? isn't a vi command" in command mode.
+    private func sendDEL() {
+        GoviKeyRune(handle, 0x7f, 0)
         step()
     }
 
@@ -1145,26 +1104,18 @@ final class GoviView: NSView, NSTextInputClient {
         var line: Int64 = 0, col: Int32 = 0
         GoviCellToPos(handle, cell.x, cell.y, &line, &col)
 
-        let word = wordAt(cell: cell)
-        if !word.text.isEmpty {
-            if word.buffer {
-                setBufferSelection(word.bufStart, word.bufEnd)
-            } else {
-                setScreenSelection(.linearScreen, word.screenStart, word.screenEnd)
-            }
-            step()
-        }
+        let wordText = selectWordForMenu(at: cell) // right-click selects the word
 
         let menu = NSMenu()
         if let m = misspelling(at: line, col: Int(col)) {
             contextMisspelling = m
             addSuggestions(to: menu, for: m)
         }
-        if !word.text.isEmpty {
-            let look = menu.addItem(withTitle: "Look Up “\(word.text)”",
+        if !wordText.isEmpty {
+            let look = menu.addItem(withTitle: "Look Up “\(wordText)”",
                                     action: #selector(lookUp(_:)), keyEquivalent: "")
             look.target = self
-            look.representedObject = LookUpContext(text: word.text, x: cell.x, y: cell.y)
+            look.representedObject = LookUpContext(text: wordText, x: cell.x, y: cell.y)
             menu.addItem(.separator())
         }
         for (title, sel) in [("Cut", #selector(cut(_:))), ("Copy", #selector(copy(_:))),
@@ -1175,30 +1126,21 @@ final class GoviView: NSView, NSTextInputClient {
         return menu
     }
 
-    // wordAt returns the word at a screen cell. Uses buffer word boundaries in the
-    // editor; screen-row boundaries on overlay/ex or non-buffer rows.
-    private func wordAt(cell c: (x: Int32, y: Int32))
-        -> (buffer: Bool, bufStart: Caret, bufEnd: Caret,
-            screenStart: ScreenCell, screenEnd: ScreenCell, text: String) {
-        var line: Int64 = 0, col: Int32 = 0
-        GoviCellToPos(handle, c.x, c.y, &line, &col)
-        var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
-        GoviWordRange(handle, c.x, c.y, &l1, &c1, &l2, &c2)
-        let bufText = bridgeString(GoviRangeText(handle, l1, c1, l2, c2))
-        if GoviOverlayActive(handle) == 0 && GoviExActive(handle) == 0
-            && GoviScreenToBuffer(handle, c.x, c.y, &line, &col) != 0 && !bufText.isEmpty {
-            return (true, (l1, Int(c1)), (l2, Int(c2)), (0, 0), (0, 0), bufText)
+    // selectWordForMenu selects the word under c (engine word on buffer rows,
+    // screen-row word elsewhere) so Cut/Copy act on it, and returns its text for
+    // the Look Up item. Empty when the click is not on a word.
+    private func selectWordForMenu(at c: ScreenCell) -> String {
+        guard let (a, b) = wordCells(at: c) else { return "" }
+        selGranularity = .word
+        granLo = a
+        granHi = b
+        screenDragAnchor = a
+        setScreenSel(a, b, block: false)
+        step()
+        if let r = editRange() {
+            return bridgeString(GoviRangeText(handle, r.0, Int32(r.1), r.2, Int32(r.3)))
         }
-        let (start, end) = screenWordRange(at: (c.x, c.y))
-        guard let row = screenRowText(Int(c.y)) else {
-            return (false, (1, 0), (1, 0), start, end, "")
-        }
-        let chars = Array(row)
-        let s = Int(start.x), e = Int(end.x)
-        guard s < e, e <= chars.count else {
-            return (false, (1, 0), (1, 0), start, end, "")
-        }
-        return (false, (1, 0), (1, 0), start, end, String(chars[s..<e]))
+        return bridgeString(GoviScreenLinearRangeText(handle, a.x, a.y, b.x, b.y))
     }
 
     private func misspelling(at line: Int64, col: Int) -> Misspelling? {

@@ -215,8 +215,10 @@ func (e *Engine) dispatchRune(r rune) {
 		e.dispatchKey(KeyEvent{Key: KeyEscape})
 	case r == '\r' || r == '\n':
 		e.dispatchKey(KeyEvent{Key: KeyEnter})
-	case r == 0x7f || r == 0x08:
-		e.dispatchKey(KeyEvent{Key: KeyBackspace})
+	case r == 0x08:
+		e.dispatchKey(KeyEvent{Key: KeyBackspace}) // ^H
+	case r == 0x7f:
+		e.dispatchKey(KeyEvent{Rune: 0x7f}) // ^? (DEL): rejected in command mode
 	case r == '\t':
 		e.dispatchKey(KeyEvent{Rune: '\t'})
 	case r < 0x20:
