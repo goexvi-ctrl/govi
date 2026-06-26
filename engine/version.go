@@ -2,14 +2,14 @@ package engine
 
 import "strings"
 
-// Build metadata. Release builds inject commitTime, commitHash, and treeState
+// Build metadata. Release builds inject commitDate, commitHash, and treeState
 // via -ldflags (see scripts/version-ldflags.sh).
 var (
 	versionName = "govi-0.1"
-	commitTime  = "unknown" // ISO timestamp of HEAD (git log -1 --format=%cI)
+	commitDate  = "unknown" // date of HEAD commit (YYYY-MM-DD); hash disambiguates same-day commits
 	commitHash  = ""
 	treeState   = "" // "" when clean; "modified" when the tree has local changes
-	buildTime   = "" // UTC timestamp when built from a dirty tree
+	buildTime   = "" // UTC timestamp when built from a dirty tree (dev builds only)
 )
 
 // VersionString returns the :version message shown to the user.
@@ -18,7 +18,7 @@ func VersionString() string {
 	b.WriteString("Version ")
 	b.WriteString(versionName)
 	b.WriteString(" (")
-	b.WriteString(commitTime)
+	b.WriteString(commitDate)
 	b.WriteByte(')')
 	if commitHash != "" {
 		b.WriteByte(' ')

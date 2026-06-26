@@ -16,27 +16,24 @@ func TestVersionString(t *testing.T) {
 }
 
 func TestVersionStringDirtyBuildTime(t *testing.T) {
-	oldCommit, oldState, oldBuild := commitTime, treeState, buildTime
+	oldDate, oldState, oldBuild := commitDate, treeState, buildTime
 	defer func() {
-		commitTime = oldCommit
+		commitDate = oldDate
 		treeState = oldState
 		buildTime = oldBuild
 	}()
-	commitTime = "2026-06-25T10:00:00-07:00"
+	commitDate = "2026-06-25"
 	treeState = "modified"
 	buildTime = "2026-06-26T12:00:00Z"
 	got := VersionString()
-	if !strings.Contains(got, commitTime) {
-		t.Fatalf("VersionString = %q, want commit timestamp", got)
+	if !strings.Contains(got, "(2026-06-25)") {
+		t.Fatalf("VersionString = %q, want commit date", got)
 	}
 	if !strings.Contains(got, "modified") {
 		t.Fatalf("VersionString = %q, want modified", got)
 	}
 	if !strings.Contains(got, buildTime) {
 		t.Fatalf("VersionString = %q, want build timestamp", got)
-	}
-	if strings.Index(got, commitTime) > strings.Index(got, buildTime) {
-		t.Fatalf("commit time should precede build time in %q", got)
 	}
 }
 
