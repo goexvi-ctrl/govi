@@ -26,7 +26,6 @@ type Frontend struct {
 	title string
 
 	paintMu       sync.Mutex
-	lastEventAt   time.Time
 	lastPaintAt   time.Time
 	paintDeferred bool
 	paintTimer    *time.Timer
@@ -229,10 +228,8 @@ func (f *Frontend) handleEvent(ev tc.Event) {
 		w, h := ev.Size()
 		f.eng.Resize(textRows(h), w)
 	case *tc.EventKey:
-		f.noteInputEvent()
 		f.eng.Input(translateKey(ev))
 	case *tc.EventInterrupt:
-		f.noteInputEvent()
 		f.eng.Input(engine.InterruptEvent{})
 	}
 }
@@ -258,19 +255,23 @@ func (f *Frontend) SetTitle(title string) { f.title = title }
 // immediately.
 func (f *Frontend) Render(v engine.View, cs engine.ChangeSet) {
 	if renderUrgent(v, cs) {
-		f.stopPaintTimer()
-		f.paintNow(v)
-		f.markPainted()
+		f.ensurePainted()
+		return
+	}
+	period := f.minRenderPeriod()
+	if period <= 0 {
+		f.ensurePainted()
 		return
 	}
 	now := time.Now()
-	if f.shouldThrottlePaint(now) {
-		f.deferPaint(now)
+	if f.shouldPaintNow(now, f.scr.HasPendingEvent()) {
+		f.ensurePainted()
 		return
 	}
-	f.stopPaintTimer()
-	f.paintNow(v)
-	f.markPainted()
+	f.paintMu.Lock()
+	wait := period - now.Sub(f.lastPaintAt)
+	f.paintMu.Unlock()
+	f.schedulePaint(wait)
 }
 
 // paintNow performs a full-screen repaint. Phase 2 always clears and redraws;

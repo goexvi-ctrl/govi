@@ -25,7 +25,7 @@ func TestRenderUrgent(t *testing.T) {
 	}
 }
 
-func TestShouldThrottlePaintDuringBurst(t *testing.T) {
+func TestShouldPaintNowDuringFlood(t *testing.T) {
 	sim := tc.NewSimulationScreen("")
 	fe, err := NewWithScreen(sim)
 	if err != nil {
@@ -33,13 +33,15 @@ func TestShouldThrottlePaintDuringBurst(t *testing.T) {
 	}
 	now := time.Now()
 	fe.lastPaintAt = now
-	fe.lastEventAt = now
 
-	if !fe.shouldThrottlePaint(now.Add(5 * time.Millisecond)) {
-		t.Fatal("expected throttle while events are arriving fast")
+	if fe.shouldPaintNow(now.Add(5*time.Millisecond), true) {
+		t.Fatal("expected defer while interval not elapsed and input pending")
 	}
-	if fe.shouldThrottlePaint(now.Add(burstEventGap + time.Millisecond)) {
-		t.Fatal("expected no throttle after burst gap")
+	if !fe.shouldPaintNow(now.Add(55*time.Millisecond), true) {
+		t.Fatal("expected paint once refreshms elapsed even with pending input")
+	}
+	if !fe.shouldPaintNow(now.Add(5*time.Millisecond), false) {
+		t.Fatal("expected paint when input queue is empty")
 	}
 }
 
@@ -54,9 +56,8 @@ func TestRefreshMsDisablesThrottle(t *testing.T) {
 	fe.Attach(eng)
 	now := time.Now()
 	fe.lastPaintAt = now
-	fe.lastEventAt = now
-	if fe.shouldThrottlePaint(now.Add(5 * time.Millisecond)) {
-		t.Fatal("refreshms=0 should disable throttling")
+	if !fe.shouldPaintNow(now.Add(5*time.Millisecond), true) {
+		t.Fatal("refreshms=0 should always paint")
 	}
 }
 
@@ -72,6 +73,25 @@ func TestRefreshMsSetsInterval(t *testing.T) {
 	if got := fe.minRenderPeriod(); got != 100*time.Millisecond {
 		t.Fatalf("minRenderPeriod = %v, want 100ms", got)
 	}
+}
+
+func TestSchedulePaintDoesNotResetTimer(t *testing.T) {
+	sim := tc.NewSimulationScreen("")
+	fe, err := NewWithScreen(sim)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fe.lastPaintAt = time.Now()
+	fe.schedulePaint(50 * time.Millisecond)
+	first := fe.paintTimer
+	if first == nil {
+		t.Fatal("expected timer after first schedule")
+	}
+	fe.schedulePaint(10 * time.Millisecond)
+	if fe.paintTimer != first {
+		t.Fatal("second schedulePaint should not replace an armed timer")
+	}
+	fe.stopPaintTimer()
 }
 
 func TestFastInsertCompletesQuickly(t *testing.T) {
