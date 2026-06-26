@@ -78,6 +78,33 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         return w
     }
 
+    // scratchPath creates an empty $TMPDIR/vi.XXXXXX file and returns its path so
+    // a no-file window edits a throwaway temp like nvi and `govi -g`. make()
+    // detects it (isGoviTempFile), marks it temporary, and deletes it on close.
+    // Returns "" if the temp file cannot be created (open then falls back to an
+    // unnamed buffer).
+    private static func scratchPath() -> String {
+        let template = (NSTemporaryDirectory() as NSString).appendingPathComponent("vi.XXXXXX")
+        var buf = Array(template.utf8CString)
+        let fd = mkstemp(&buf)
+        if fd < 0 { return "" }
+        close(fd)
+        return String(cString: buf)
+    }
+
+    // openScratch opens a new standalone window on a throwaway temp buffer, with
+    // the configured initial directory as its working dir (the temp lives in
+    // $TMPDIR, but :e/:r/:! should resolve from the user's chosen directory).
+    @discardableResult
+    static func openScratch() -> EditorWindow? {
+        open(path: scratchPath(), cwd: Settings.resolvedInitialDirectory)
+    }
+
+    // openScratchTab opens a throwaway temp buffer as a tab in keyWindow's group.
+    static func openScratchTab(in keyWindow: NSWindow?) {
+        openTab(in: keyWindow, path: scratchPath(), cwd: Settings.resolvedInitialDirectory)
+    }
+
     // existing returns the window already editing path, if any.
     private static func existing(path p: String) -> EditorWindow? {
         p.isEmpty ? nil : windows.first(where: { $0.path == p })
@@ -552,7 +579,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pendingOpenPaths.removeAll()
         coldLaunchComplete = true
         if !EditorWindow.anyOpen {
-            EditorWindow.open(path: "")
+            EditorWindow.openScratch()
         }
     }
 
@@ -562,7 +589,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // no windows opens one too.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows {
-            EditorWindow.open(path: "")
+            EditorWindow.openScratch()
         }
         return true
     }
@@ -597,19 +624,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         EditorWindow.confirmQuit() ? .terminateNow : .terminateCancel
     }
 
-    // File > New: an empty window.
+    // File > New: a new window on a throwaway temp buffer (like nvi / govi -g).
     @objc func newWindow(_ sender: Any?) {
-        EditorWindow.open(path: "")
+        EditorWindow.openScratch()
     }
 
-    // File > New Tab: an empty tab in the current window's tab group.
+    // File > New Tab: a throwaway temp buffer as a tab in the current window's group.
     @objc func newTab(_ sender: Any?) {
-        EditorWindow.openTab(in: NSApp.keyWindow, path: "")
+        EditorWindow.openScratchTab(in: NSApp.keyWindow)
     }
 
     // The "+" button in the tab bar routes here through the responder chain.
     @objc func newWindowForTab(_ sender: Any?) {
-        EditorWindow.openTab(in: NSApp.keyWindow, path: "")
+        EditorWindow.openScratchTab(in: NSApp.keyWindow)
     }
 
     // Settings… (Cmd-,)
