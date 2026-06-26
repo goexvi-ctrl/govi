@@ -181,7 +181,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             backing: .buffered, defer: false)
         view = GoviView(frame: frame, handle: handle)
         super.init()
-        view.documentTitle = path.isEmpty ? "Untitled" : (path as NSString).lastPathComponent
+        view.documentTitle = LaunchPath.displayTitle(for: self.path)
         window.contentView = view
         window.delegate = self
         window.isReleasedWhenClosed = false
@@ -419,6 +419,14 @@ enum LaunchPath {
         guard (path as NSString).lastPathComponent.hasPrefix("vi.") else { return false }
         let parent = URL(fileURLWithPath: (path as NSString).deletingLastPathComponent).standardizedFileURL.path
         return parent == URL(fileURLWithPath: NSTemporaryDirectory()).standardizedFileURL.path
+    }
+
+    // displayTitle is the name shown in the window title bar and tab label. Temp
+    // buffers keep their vi.XXXXXX path in the engine (status line, :f) but read
+    // as "Untitled" in chrome.
+    static func displayTitle(for path: String) -> String {
+        if path.isEmpty || isGoviTempFile(normalize(path)) { return "Untitled" }
+        return (path as NSString).lastPathComponent
     }
 
     static func normalize(_ path: String) -> String {
