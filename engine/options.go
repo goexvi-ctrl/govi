@@ -66,7 +66,6 @@ var optDefs = []optDef{
 	{name: "magic", typ: optBool, dB: true},
 	{name: "matchtime", typ: optNum, dN: 7},
 	{name: "mesg", typ: optBool, dB: true},
-	{name: "modeline", typ: optBool},
 	{name: "msgcat", typ: optStr, dS: "./"},
 	{name: "number", abbr: "nu", typ: optBool},
 	{name: "octal", typ: optBool},
