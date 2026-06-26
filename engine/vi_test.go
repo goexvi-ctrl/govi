@@ -42,6 +42,25 @@ func viCase(t *testing.T, name, initial, keys, want string) {
 	}
 }
 
+func TestDelKeyCommandMode(t *testing.T) {
+	// ^? (the DEL/Backspace key) is not a command key: nvi reports it.
+	e, _, _ := newTestEngine(t, "hello\n")
+	e.Input(KeyEvent{Rune: 0x7f})
+	if e.scr.msg != "^? isn't a vi command" || e.scr.msgKind != MsgError {
+		t.Fatalf("msg=%q kind=%v, want %q/MsgError", e.scr.msg, e.scr.msgKind, "^? isn't a vi command")
+	}
+	if e.scr.cursor.Col != 0 {
+		t.Fatalf("^? moved the cursor to col %d; it should be inert", e.scr.cursor.Col)
+	}
+	// In insert mode the same key erases.
+	e2, _, _ := newTestEngine(t, "ab\n")
+	drive(e2, "A")
+	e2.Input(KeyEvent{Rune: 0x7f})
+	if got := bufText(e2); got != "a" {
+		t.Fatalf("insert-mode ^? erase: got %q, want %q", got, "a")
+	}
+}
+
 func TestViMotionsAndDelete(t *testing.T) {
 	viCase(t, "x", "hello\n", "x", "ello")
 	viCase(t, "3x", "hello\n", "3x", "lo")

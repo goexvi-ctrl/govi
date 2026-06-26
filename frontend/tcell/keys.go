@@ -45,8 +45,13 @@ func translateKey(ev *tc.EventKey) engine.Event {
 		return engine.KeyEvent{Rune: '\t', Mods: mods}
 	case tc.KeyEsc:
 		return engine.KeyEvent{Key: engine.KeyEscape, Mods: mods}
-	case tc.KeyBackspace, tc.KeyBackspace2:
+	case tc.KeyBackspace:
+		// ^H (Ctrl-H): cursor-left in command mode, erase in insert.
 		return engine.KeyEvent{Key: engine.KeyBackspace, Mods: mods}
+	case tc.KeyBackspace2:
+		// ^? (DEL, the Backspace key on most keyboards): erases in insert/ex, but
+		// "^? isn't a vi command" in command mode -- delivered as the rune.
+		return engine.KeyEvent{Rune: 0x7f, Mods: mods}
 	case tc.KeyDelete:
 		return engine.KeyEvent{Key: engine.KeyDelete, Mods: mods}
 	case tc.KeyUp:

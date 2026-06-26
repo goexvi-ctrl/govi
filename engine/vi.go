@@ -600,6 +600,23 @@ func (m *vimode) editKey(e *Engine, r rune) {
 		e.openLine(m, false)
 	case 'R':
 		e.enterInsert(m, s.cursor, true, 'R')
+	default:
+		// An unbound command key, e.g. ^? (the DEL/delete key). nvi reports this.
+		s.msg, s.msgKind = keyDisplay(r)+" isn't a vi command", MsgError
+		e.fe.Bell()
+	}
+}
+
+// keyDisplay renders a key in vi's caret notation for messages: ^? for DEL,
+// ^X for other control codes, the character itself otherwise.
+func keyDisplay(r rune) string {
+	switch {
+	case r == 0x7f:
+		return "^?"
+	case r < 0x20:
+		return "^" + string(rune('@'+r))
+	default:
+		return string(r)
 	}
 }
 
