@@ -51,8 +51,15 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             alert.runModal()
             return nil
         }
-        if !cwd.isEmpty {
-            cwd.withCString { GoviSetCwd(handle, UnsafeMutablePointer(mutating: $0)) }
+        // A fileless window (Finder launch, File > New) has no cwd from a launch
+        // payload; start it in the configured initial directory (home by default)
+        // rather than inheriting the process cwd (which is "/" for a Finder launch).
+        var dir = cwd
+        if dir.isEmpty && path.isEmpty {
+            dir = Settings.resolvedInitialDirectory
+        }
+        if !dir.isEmpty {
+            dir.withCString { GoviSetCwd(handle, UnsafeMutablePointer(mutating: $0)) }
         }
         if LaunchPath.isGoviTempFile(LaunchPath.normalize(path)) {
             GoviSetTemporary(handle)

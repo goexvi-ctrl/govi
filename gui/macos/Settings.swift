@@ -264,6 +264,22 @@ enum Settings {
         ColorParser.parse(defaultBackgroundColorSpec) ?? NSColor.textBackgroundColor
     }
 
+    private static let initialDirKey = "initialDirectory"
+
+    // initialDirectory is the working directory for new fileless windows (Finder
+    // launch, File > New). Stored raw; empty means "use the home directory".
+    static var initialDirectory: String {
+        get { UserDefaults.standard.string(forKey: initialDirKey) ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: initialDirKey) }
+    }
+
+    // resolvedInitialDirectory is the absolute directory to apply (home when unset).
+    static var resolvedInitialDirectory: String {
+        initialDirectory.isEmpty
+            ? NSHomeDirectory()
+            : (initialDirectory as NSString).expandingTildeInPath
+    }
+
     private static func clampWindow(_ value: CGFloat, min: CGFloat, max: CGFloat) -> CGFloat {
         Swift.min(Swift.max(value, min), max)
     }
@@ -313,6 +329,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
     private let bgColorField = NSTextField()
     private let fgColorSwatch = NSView()
     private let bgColorSwatch = NSView()
+    private let initialDirField = NSTextField()
     private static let maxPadding: Double = 64
 
     private init() {
@@ -393,8 +410,21 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         let bgRow = makeColorRow(label: "Default background (new tabs):", field: bgColorField, swatch: bgColorSwatch,
                                  placeholder: "#RRGGBB or color name (empty = system)")
 
+        let dirLabel = NSTextField(labelWithString: "Initial directory (new windows):")
+        dirLabel.translatesAutoresizingMaskIntoConstraints = false
+        initialDirField.translatesAutoresizingMaskIntoConstraints = false
+        initialDirField.placeholderString = "empty = home (~)"
+        initialDirField.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        initialDirField.delegate = self
+        let chooseDir = NSButton(title: "Choose…", target: self, action: #selector(chooseInitialDir))
+        chooseDir.translatesAutoresizingMaskIntoConstraints = false
+        let dirRow = NSStackView(views: [dirLabel, initialDirField, chooseDir])
+        dirRow.translatesAutoresizingMaskIntoConstraints = false
+        dirRow.alignment = .centerY
+        dirRow.spacing = 8
+
         let stack = NSStackView(views: [
-            paddingRow, rowsRow, colsRow, fontRow, fontSizeRow, fgRow, bgRow, openRow,
+            paddingRow, rowsRow, colsRow, fontRow, fontSizeRow, fgRow, bgRow, dirRow, openRow,
             selModeRow, useTabsCheckbox, showDimensionsCheckbox, warnCloseCheckbox,
         ])
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -480,6 +510,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
                      fallback: Settings.defaultForegroundColor)
         updateSwatch(bgColorSwatch, spec: Settings.defaultBackgroundColorSpec,
                      fallback: Settings.defaultBackgroundColor)
+        initialDirField.stringValue = Settings.initialDirectory
     }
 
     private func updateSwatch(_ swatch: NSView, spec: String, fallback: NSColor) {
@@ -529,6 +560,31 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         let idx = fontPopup.indexOfSelectedItem
         guard idx >= 0, idx < Settings.EditorFontFamily.allCases.count else { return }
         Settings.fontFamily = Settings.EditorFontFamily.allCases[idx]
+    }
+
+    @objc private func chooseInitialDir() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Settings.initialDirectory = url.path
+        initialDirField.stringValue = url.path
+    }
+
+    // commitInitialDir validates the typed directory (empty = home) and stores it.
+    private func commitInitialDir() {
+        let raw = initialDirField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !raw.isEmpty {
+            var isDir: ObjCBool = false
+            let expanded = (raw as NSString).expandingTildeInPath
+            if !FileManager.default.fileExists(atPath: expanded, isDirectory: &isDir) || !isDir.boolValue {
+                NSSound.beep()
+                initialDirField.stringValue = Settings.initialDirectory
+                return
+            }
+        }
+        Settings.initialDirectory = raw
     }
 
     @objc private func openFilesChanged() {
@@ -581,6 +637,8 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
             commitNumeric(fontSizeField, fontSizeStepper,
                           lo: Double(Settings.minFontSize), hi: Double(Settings.maxFontSize),
                           raw: field.doubleValue, assign: { Settings.fontSize = $0 })
+        case initialDirField:
+            commitInitialDir()
         case fgColorField:
             commitColor(fgColorField, fgColorSwatch, fallback: NSColor.textColor,
                         assign: { Settings.defaultForegroundColorSpec = $0 })
