@@ -67,6 +67,22 @@ func ApplyScreenLinearSel(g *Grid, sel *ScreenSelection) {
 	})
 }
 
+// ApplyScreenLinearSelView is ApplyScreenLinearSel but skips the line-number
+// gutter on buffer rows, so a multi-row selection does not reverse-video the
+// line numbers on its continuation rows (:set number).
+func ApplyScreenLinearSelView(g *Grid, v engine.View, rows, cols int, sel *ScreenSelection) {
+	if sel == nil {
+		return
+	}
+	gutter := engine.GutterWidth(v.LineCount(), v.Number())
+	forEachLinearCell(*g, *sel, func(x, y int) {
+		if x < gutter && editorRowKindAt(v, rows, cols, y) == rowBuffer {
+			return
+		}
+		g.Cells[y*g.Cols+x].Style |= engine.StyleReverse
+	})
+}
+
 // ScreenLinearRangeText returns text from sel.A through sel.B in reading order.
 func ScreenLinearRangeText(g Grid, sel ScreenSelection) string {
 	start, end := sel.ordered()

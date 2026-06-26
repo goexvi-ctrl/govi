@@ -116,6 +116,28 @@ func TestSelectionEditRangeGutter(t *testing.T) {
 	}
 }
 
+func TestApplyScreenLinearSelViewSkipsGutter(t *testing.T) {
+	v := &fakeView{lines: []string{"hello", "world"}, top: 1, number: true,
+		cursor: engine.Pos{Line: 1, Col: 0}}
+	rows, cols := 5, 20
+	g := Compose(v, rows, cols)
+	sel := &ScreenSelection{A: Cell{8, 0}, B: Cell{10, 1}}
+	ApplyScreenLinearSelView(&g, v, rows, cols, sel)
+	gutter := engine.GutterWidth(v.LineCount(), v.Number())
+	if gutter < 1 {
+		t.Fatalf("expected a gutter with :set number, got %d", gutter)
+	}
+	if g.At(0, 1).Style&engine.StyleReverse != 0 {
+		t.Error("gutter cell (0,1) should not be highlighted")
+	}
+	if g.At(gutter, 1).Style&engine.StyleReverse == 0 {
+		t.Errorf("text cell (%d,1) should be highlighted", gutter)
+	}
+	if g.At(8, 0).Style&engine.StyleReverse == 0 {
+		t.Error("first-row text cell (8,0) should be highlighted")
+	}
+}
+
 func TestScreenToBufferOverlay(t *testing.T) {
 	v := &fakeView{
 		lines: []string{"x"},

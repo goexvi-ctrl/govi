@@ -450,15 +450,17 @@ func GoviCompose(h C.longlong, rows, cols C.int) {
 	}
 	in.eng.WithView(func(v engine.View) {
 		in.gr = grid.ComposeSel(v, int(rows), int(cols), sel)
-	})
-	if in.screenSelActive {
-		ss := &grid.ScreenSelection{A: in.screenSelA, B: in.screenSelB}
-		if in.screenSelLinear {
-			grid.ApplyScreenLinearSel(&in.gr, ss)
-		} else {
-			grid.ApplyScreenSel(&in.gr, ss)
+		if in.screenSelActive {
+			ss := &grid.ScreenSelection{A: in.screenSelA, B: in.screenSelB}
+			if in.screenSelLinear {
+				// View-aware so the line-number gutter is not highlighted on a
+				// multi-row selection's continuation rows.
+				grid.ApplyScreenLinearSelView(&in.gr, v, int(rows), int(cols), ss)
+			} else {
+				grid.ApplyScreenSel(&in.gr, ss)
+			}
 		}
-	}
+	})
 	in.gridOK = true
 }
 
