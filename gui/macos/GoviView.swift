@@ -428,6 +428,9 @@ final class GoviView: NSView, NSTextInputClient {
         a.y < b.y || (a.y == b.y && a.x < b.x)
     }
 
+    // Buffer caret range for cut/paste/replace/delete. Only linear buffer and
+    // linear screen selections map to a single editable range; rectangular
+    // (Option+drag) and linear screen selections are copy-only.
     private func bufferRangeForSelection() -> (Int64, Int, Int64, Int)? {
         guard selActive else { return nil }
         switch selStyle {
@@ -437,11 +440,7 @@ final class GoviView: NSView, NSTextInputClient {
                 return (b.line, b.col, a.line, a.col)
             }
             return (a.line, a.col, b.line, b.col)
-        case .rectangular:
-            var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
-            guard GoviSelectionBufferRange(handle, &l1, &c1, &l2, &c2) != 0 else { return nil }
-            return (l1, Int(c1), l2, Int(c2))
-        case .linearScreen:
+        case .rectangular, .linearScreen:
             return nil
         }
     }
