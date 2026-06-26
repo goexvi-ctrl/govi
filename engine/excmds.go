@@ -305,11 +305,24 @@ func (e *Engine) SetTemporary() { e.scr.tempFile = true }
 // GUI host can warn that closing discards it (it has no real file name).
 func (e *Engine) IsTemporary() bool { return e.scr.tempFile }
 
+// TempDiscardPending reports whether an unforced exit would discard a temporary
+// buffer that holds content. Unlike a modified check, this stays true after a
+// plain :w -- writing only updates the throwaway temp, which is still discarded
+// on exit -- matching nvi (which warns after a write too). False for an empty
+// temp buffer (nothing to lose) and for non-temp buffers.
+func (e *Engine) TempDiscardPending() bool {
+	if !e.scr.tempFile {
+		return false
+	}
+	s := e.scr
+	return s.store.Lines() > 1 || len(s.lineRunes(1)) > 0
+}
+
 // tempExitWarning returns nvi's warning when an unforced exit would discard a
-// temporary buffer's edits. The temp file is removed when its window closes, so
-// writing it is pointless: the user must :w a real file, or :q!/ZQ to discard.
+// temporary buffer's content. The temp file is removed when its window closes,
+// so writing it is pointless: the user must :w a real file, or :q!/ZQ to discard.
 func (e *Engine) tempExitWarning(force bool) error {
-	if e.scr.tempFile && !force && e.scr.dirty() {
+	if !force && e.TempDiscardPending() {
 		return fmt.Errorf("File is a temporary; exit will discard modifications")
 	}
 	return nil

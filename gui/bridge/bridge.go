@@ -219,6 +219,16 @@ func GoviIsTemporary(h C.longlong) C.int {
 	return boolToC(in != nil && in.eng.IsTemporary())
 }
 
+// GoviTempPending reports whether closing would discard a temporary buffer that
+// holds content (true even after :w, since the temp is still thrown away). The
+// host warns on close/quit when this or GoviModified is set.
+//
+//export GoviTempPending
+func GoviTempPending(h C.longlong) C.int {
+	in := get(h)
+	return boolToC(in != nil && in.eng.TempDiscardPending())
+}
+
 // GoviCwd returns this editor's working directory (malloc'd; caller frees).
 //
 //export GoviCwd

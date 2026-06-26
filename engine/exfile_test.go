@@ -87,6 +87,31 @@ func TestTemporaryBufferWarnsOnExit(t *testing.T) {
 	}
 }
 
+func TestTemporaryBufferWarnsAfterWrite(t *testing.T) {
+	e, _, _ := newTestEngine(t, "")
+	e.Resize(10, 40)
+	e.SetTemporary()
+	if e.TempDiscardPending() {
+		t.Fatal("an empty temporary buffer should not warn")
+	}
+	drive(e, "iabc\x1b")
+	if !e.TempDiscardPending() {
+		t.Fatal("a temporary buffer with content should warn")
+	}
+	// Simulate :w clearing the modified flag (it only writes the throwaway temp):
+	// the warning must persist because the content is still discarded on exit.
+	e.scr.modified = false
+	if !e.TempDiscardPending() {
+		t.Fatal("temp buffer should still warn after :w (content discarded on exit)")
+	}
+	if err := e.exExecute("q"); err == nil || !strings.Contains(err.Error(), "temporary") {
+		t.Fatalf(":q on a written temp buffer should give the temporary warning, got %v", err)
+	}
+	if e.quit {
+		t.Fatal(":q must not quit a temp buffer that still holds content")
+	}
+}
+
 func TestTemporaryBufferForceQuitDiscards(t *testing.T) {
 	e, _, _ := newTestEngine(t, "")
 	e.SetTemporary()
