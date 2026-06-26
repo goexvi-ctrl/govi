@@ -21,6 +21,10 @@
 /testdata/large/
 /vi.recover
 
+# make coverage / make coverage-html
+/cover.out
+/cover.html
+
 .aider*
 
 # Ignore docs we don't plan to check in

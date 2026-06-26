@@ -3,7 +3,12 @@ VERSION_LDFLAGS := $(shell ./scripts/version-ldflags.sh)
 
 all: build
 
-.PHONY: build govi test
+COVER_PROFILE ?= cover.out
+COVER_HTML ?= cover.html
+# gui/bridge is cgo (//export); its profile breaks go tool cover.
+COVER_PKGS := $(shell go list ./... | grep -v '/gui/bridge$$')
+
+.PHONY: build govi test coverage coverage-report coverage-html
 
 build: govi gui/build/GoVi.app
 
@@ -16,6 +21,22 @@ gui/build/GoVi.app: govi-app
 
 test:
 	go test ./...
+
+# coverage runs all tests and writes $(COVER_PROFILE). coverage-report prints
+# per-function totals; coverage-html writes an interactive report.
+coverage: $(COVER_PROFILE)
+	@go tool cover -func=$(COVER_PROFILE) | tail -1
+
+$(COVER_PROFILE):
+	go test $(COVER_PKGS) -coverprofile=$(COVER_PROFILE) -covermode=atomic
+
+coverage-report: $(COVER_PROFILE)
+	go tool cover -func=$(COVER_PROFILE)
+
+coverage-html: $(COVER_PROFILE)
+	go tool cover -html=$(COVER_PROFILE) -o $(COVER_HTML)
+	./scripts/cover-html-light.sh $(COVER_HTML)
+	@echo "Wrote $(COVER_HTML)"
 
 IDIR=$(HOME)/bin
 install: $(IDIR)/govi $(IDIR)/GoVi.app
@@ -33,3 +54,4 @@ $(IDIR)/GoVi.app: gui/build/GoVi.app $(GOVI_ICNS)
 
 clean:
 	rm -rf govi gui/build cmd/govi/govi
+	rm -f $(COVER_PROFILE) $(COVER_HTML)
