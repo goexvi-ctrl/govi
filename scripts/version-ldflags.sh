@@ -9,7 +9,8 @@ commitDate=$(git log -1 --format=%cs 2>/dev/null || echo unknown)
 hash=$(git rev-parse --short HEAD 2>/dev/null || echo "")
 state=""
 buildTime=""
-if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+# Tracked edits only; untracked files do not mark the build modified.
+if ! git diff-index --quiet HEAD -- 2>/dev/null; then
 	state=modified
 	buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 fi

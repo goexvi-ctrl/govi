@@ -39,7 +39,7 @@ GOVI_VERSION_FLAGS := $(GOVI_BUILD)/version.flags
 
 # Rebuild libgovi on every make when the tree is dirty so :version's build
 # timestamp reflects this build, not an earlier cached artifact.
-GOVI_TREE_DIRTY := $(shell cd $(GOVI_ROOT) && git status --porcelain 2>/dev/null | head -1)
+GOVI_TREE_DIRTY := $(shell cd $(GOVI_ROOT) && ! git diff-index --quiet HEAD -- 2>/dev/null && echo 1)
 ifneq ($(GOVI_TREE_DIRTY),)
 .PHONY: $(GOVI_LIB) $(GOVI_LIB_HDR)
 endif
