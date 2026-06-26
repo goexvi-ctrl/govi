@@ -340,35 +340,70 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         return true
     }
 
+    // saveAs prompts for a destination and saves there (:f name then :w).
+    // Cancel is a no-op. Returns false on error or cancel.
+    @discardableResult
+    func saveAs() -> Bool {
+        let panel = savePanel()
+        guard panel.runModal() == .OK, let url = panel.url else { return false }
+        return writeBuffer(path: url.path)
+    }
+
+    private func savePanel() -> NSSavePanel {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        if let c = GoviCwd(view.handle) {
+            let dir = String(cString: c)
+            GoviFree(c)
+            if !dir.isEmpty {
+                panel.directoryURL = URL(fileURLWithPath: dir)
+            }
+        }
+        panel.nameFieldStringValue = LaunchPath.displayTitle(for: path)
+        return panel
+    }
+
+    // writeBuffer saves to path via GoviSaveAs (:f then :w).
+    @discardableResult
+    private func writeBuffer(path target: String) -> Bool {
+        let std = (target as NSString).standardizingPath
+        let saved = std.withCString { ptr in
+            GoviSaveAs(view.handle, UnsafeMutablePointer(mutating: ptr)) == 0
+        }
+        if !saved {
+            let alert = NSAlert()
+            alert.messageText = "The document could not be saved."
+            if std.isEmpty {
+                alert.informativeText = "No file name."
+            } else {
+                alert.informativeText = "“\(std)” could not be written."
+            }
+            alert.alertStyle = .warning
+            alert.runModal()
+            return false
+        }
+        path = std
+        view.documentTitle = LaunchPath.displayTitle(for: path)
+        view.updateTitle()
+        return true
+    }
+
     private func saveForClose() -> Bool {
         var target = path
-        // A temp buffer's path is the throwaway temp file; force a Save As so the
-        // user picks a real destination instead of writing the soon-deleted temp.
-        if target.isEmpty || GoviIsTemporary(view.handle) != 0 {
-            let panel = NSSavePanel()
-            panel.canCreateDirectories = true
-            panel.nameFieldStringValue = "Untitled"
+        let rename = target.isEmpty || GoviIsTemporary(view.handle) != 0
+        if rename {
+            let panel = savePanel()
             guard panel.runModal() == .OK, let url = panel.url else {
                 GoviClearQuit(view.handle)
                 return false
             }
             target = url.path
         }
-        let saved = target.withCString { ptr in
-            GoviSave(view.handle, UnsafeMutablePointer(mutating: ptr))
-        } == 0
-        if !saved {
-            let alert = NSAlert()
-            alert.messageText = "The document could not be saved."
-            alert.informativeText = "“\(target)” could not be written."
-            alert.alertStyle = .warning
-            alert.runModal()
+        let ok = rename ? writeBuffer(path: target) : save()
+        if !ok {
             GoviClearQuit(view.handle)
             return false
         }
-        path = (target as NSString).standardizingPath
-        view.documentTitle = (path as NSString).lastPathComponent
-        view.updateTitle()
         return true
     }
 }
@@ -704,6 +739,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         EditorWindow.keyEditor()?.save()
     }
 
+    // File > Save As… (Shift-Cmd-S): :f name then :w.
+    @objc func saveDocumentAs(_ sender: Any?) {
+        EditorWindow.keyEditor()?.saveAs()
+    }
+
     // File > Open…: choose one or more files (placement follows Settings).
     @objc func openWindow(_ sender: Any?) {
         let panel = NSOpenPanel()
@@ -750,6 +790,9 @@ func makeMenu(target: AppDelegate) -> NSMenu {
     openItem.target = target
     let saveItem = fileMenu.addItem(withTitle: "Save", action: #selector(AppDelegate.saveDocument(_:)), keyEquivalent: "s")
     saveItem.target = target
+    let saveAsItem = fileMenu.addItem(withTitle: "Save As…", action: #selector(AppDelegate.saveDocumentAs(_:)), keyEquivalent: "S")
+    saveAsItem.keyEquivalentModifierMask = .shift
+    saveAsItem.target = target
     fileMenu.addItem(NSMenuItem.separator())
     fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
 
