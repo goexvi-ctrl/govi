@@ -201,6 +201,47 @@ func ScreenToBuffer(v engine.View, rows, cols, x, y int) (engine.Pos, bool) {
 	}
 }
 
+// SelectionEditRange returns the buffer caret range [a, b) covering exactly the
+// text a reading-order (linear) screen selection highlights, when the selection
+// lies entirely on buffer rows. ok is false when either endpoint is not buffer
+// text (status/overlay/ex/~/blank row, or the line-number gutter) or any row in
+// the span is not a buffer row. The gutter on interior rows is ignored, so a
+// multi-line buffer selection stays editable with ":set number" on.
+//
+// The screen highlight/copy are cell-inclusive, so b is advanced one rune past
+// the end cell to make [a, b) cover the same characters.
+func SelectionEditRange(v engine.View, rows, cols int, sel ScreenSelection) (a, b engine.Pos, ok bool) {
+	start, end := sel.ordered()
+	pa, oka := ScreenToBuffer(v, rows, cols, start.X, start.Y)
+	pb, okb := ScreenToBuffer(v, rows, cols, end.X, end.Y)
+	if !oka || !okb {
+		return engine.Pos{}, engine.Pos{}, false
+	}
+	for y := start.Y; y <= end.Y; y++ {
+		if editorRowKindAt(v, rows, cols, y) != rowBuffer {
+			return engine.Pos{}, engine.Pos{}, false
+		}
+	}
+	pb = advanceRune(v, pb)
+	// ordered() plus the monotonic cell->caret mapping keep pa <= pb; guard anyway.
+	if pb.Line < pa.Line || (pb.Line == pa.Line && pb.Col < pa.Col) {
+		pa, pb = pb, pa
+	}
+	return pa, pb, true
+}
+
+// advanceRune returns the caret one rune after p (the next column, or the start
+// of the next line at end-of-line), clamped at the very end of the buffer.
+func advanceRune(v engine.View, p engine.Pos) engine.Pos {
+	if p.Col < len(v.Line(p.Line).Text) {
+		return engine.Pos{Line: p.Line, Col: p.Col + 1}
+	}
+	if p.Line < v.LineCount() {
+		return engine.Pos{Line: p.Line + 1, Col: 0}
+	}
+	return p
+}
+
 func editorRowKindAt(v engine.View, rows, cols, y int) editorRowKind {
 	tr := textRows(rows)
 	if y >= tr {

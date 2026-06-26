@@ -65,6 +65,57 @@ func TestScreenToBuffer(t *testing.T) {
 	}
 }
 
+func TestSelectionEditRange(t *testing.T) {
+	v := &fakeView{lines: []string{"hello", "world"}, top: 1, msg: "status"}
+	rows, cols := 5, 20
+
+	// Single-line: cells (0,0)-(2,0) cover "hel"; [a,b) = (1,0)-(1,3).
+	a, b, ok := SelectionEditRange(v, rows, cols, ScreenSelection{A: Cell{0, 0}, B: Cell{2, 0}})
+	if !ok || a.Line != 1 || a.Col != 0 || b.Line != 1 || b.Col != 3 {
+		t.Fatalf("single-line range = %+v-%+v ok=%v, want (1,0)-(1,3)", a, b, ok)
+	}
+
+	// Reversed corners normalize the same way.
+	a, b, ok = SelectionEditRange(v, rows, cols, ScreenSelection{A: Cell{2, 0}, B: Cell{0, 0}})
+	if !ok || a.Col != 0 || b.Col != 3 {
+		t.Fatalf("reversed range = %+v-%+v ok=%v", a, b, ok)
+	}
+
+	// Multi-line: (0,0)-(4,1) ends on 'd' (col 4); b advances to (2,5).
+	a, b, ok = SelectionEditRange(v, rows, cols, ScreenSelection{A: Cell{0, 0}, B: Cell{4, 1}})
+	if !ok || a.Line != 1 || a.Col != 0 || b.Line != 2 || b.Col != 5 {
+		t.Fatalf("multi-line range = %+v-%+v ok=%v, want (1,0)-(2,5)", a, b, ok)
+	}
+
+	// Spanning into the status row fails.
+	if _, _, ok := SelectionEditRange(v, rows, cols, ScreenSelection{A: Cell{0, 0}, B: Cell{5, 4}}); ok {
+		t.Error("selection into status row should fail")
+	}
+
+	// A tilde row fails (one buffer line, tilde from row 1).
+	vOne := &fakeView{lines: []string{"hello"}, top: 1}
+	if _, _, ok := SelectionEditRange(vOne, rows, cols, ScreenSelection{A: Cell{0, 0}, B: Cell{0, 1}}); ok {
+		t.Error("selection into tilde row should fail")
+	}
+}
+
+func TestSelectionEditRangeGutter(t *testing.T) {
+	// With line numbers on, an interior/continuation row's gutter must NOT block
+	// editing, but an endpoint that lands in the gutter must.
+	v := &fakeView{lines: []string{"hello", "world"}, top: 1, number: true}
+	rows, cols := 5, 20
+
+	// Endpoints at x=8 (past the gutter) on both buffer rows: editable.
+	if _, _, ok := SelectionEditRange(v, rows, cols, ScreenSelection{A: Cell{8, 0}, B: Cell{8, 1}}); !ok {
+		t.Error("multi-line buffer selection should be editable with :set number")
+	}
+
+	// An endpoint in the gutter (x=0) is not buffer text: not editable.
+	if _, _, ok := SelectionEditRange(v, rows, cols, ScreenSelection{A: Cell{0, 0}, B: Cell{8, 0}}); ok {
+		t.Error("selection starting in the gutter should not be editable")
+	}
+}
+
 func TestScreenToBufferOverlay(t *testing.T) {
 	v := &fakeView{
 		lines: []string{"x"},
