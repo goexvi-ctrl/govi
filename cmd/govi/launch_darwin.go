@@ -12,6 +12,17 @@ import (
 	"syscall"
 )
 
+var (
+	// Tests override osStat to control /dev/console and path existence checks.
+	osStat = os.Stat
+	// Tests override runCommand to stub launching GoVi.app via open(1).
+	runCommand = func(cmd string, args ...string) error {
+		return exec.Command(cmd, args...).Run()
+	}
+	makeWaitFifoFn = makeWaitFifo
+	waitOnFifo     = waitForFifo
+)
+
 // runGUI implements `govi -g`: hand the files to GoVi.app through a govi:// URL.
 //
 // A GUI app launched by open(1) inherits neither the shell's cwd nor a file
@@ -55,7 +66,7 @@ func runGUI(silent, wait bool, files []string) int {
 
 	var fifo string
 	if wait {
-		fifo, err = makeWaitFifo()
+		fifo, err = makeWaitFifoFn()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "govi:", err)
 			return 1
@@ -67,13 +78,13 @@ func runGUI(silent, wait bool, files []string) int {
 		fmt.Fprintln(os.Stderr, "govi:", err)
 		return 1
 	}
-	if err := exec.Command("open", "govi://open?ctx="+token).Run(); err != nil {
+	if err := runCommand("open", "govi://open?ctx="+token); err != nil {
 		fmt.Fprintln(os.Stderr, "govi:", err)
 		return 1
 	}
 
 	if wait {
-		waitForFifo(fifo)
+		waitOnFifo(fifo)
 		os.Remove(fifo)
 	}
 	return 0
@@ -85,7 +96,7 @@ func runGUI(silent, wait bool, files []string) int {
 // switched-out session is correctly not reported here. This is the uid GoVi.app
 // will run as when launched via `open`.
 func consoleUID() (uint32, error) {
-	fi, err := os.Stat("/dev/console")
+	fi, err := osStat("/dev/console")
 	if err != nil {
 		return 0, err
 	}
@@ -130,7 +141,7 @@ func resolveOpenPaths(files []string) ([]string, error) {
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(cwd, p)
 		}
-		if _, err := os.Stat(p); err != nil {
+		if _, err := osStat(p); err != nil {
 			cf, err := os.OpenFile(p, os.O_CREATE, 0o644)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "govi: cannot create %s\n", p)

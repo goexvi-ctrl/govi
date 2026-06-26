@@ -9,6 +9,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -16,25 +17,62 @@ import (
 	tcellfe "govi/frontend/tcell"
 )
 
+// editorHost is the terminal frontend run() drives. Tests substitute a
+// simulation screen via newEditorFrontend.
+type editorHost interface {
+	engine.Frontend
+	Close()
+	Attach(*engine.Engine)
+	Run()
+}
+
+var (
+	newEditorFrontend = func() (editorHost, error) {
+		return tcellfe.New()
+	}
+	runEditor = func(fe editorHost) {
+		fe.Run()
+	}
+	launchGUI = runGUI
+)
+
 func main() {
-	recover := flag.Bool("r", false, "recover the named file from a recovery file")
-	silent := flag.Bool("s", false, "do not read startup files or EXINIT/NEXINIT")
-	gui := flag.Bool("g", false, "open the files in the GoVi.app GUI instead of the terminal")
-	wait := flag.Bool("w", false, "with -g, block until the tabs/windows for these files are closed")
-	flag.Parse()
+	os.Exit(run(os.Args[1:]))
+}
+
+// run is the real entry point; it returns an exit code for main (and tests).
+func run(args []string) int {
+	return runIO(args, os.Stdout, os.Stderr)
+}
+
+func runIO(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("govi", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+
+	recover := fs.Bool("r", false, "recover the named file from a recovery file")
+	silent := fs.Bool("s", false, "do not read startup files or EXINIT/NEXINIT")
+	gui := fs.Bool("g", false, "open the files in the GoVi.app GUI instead of the terminal")
+	wait := fs.Bool("w", false, "with -g, block until the tabs/windows for these files are closed")
+
+	if err := fs.Parse(args); err != nil {
+		if err == flag.ErrHelp {
+			return 0
+		}
+		return 2
+	}
 
 	if *gui {
-		os.Exit(runGUI(*silent, *wait, flag.Args()))
+		return launchGUI(*silent, *wait, fs.Args())
 	}
 	if *wait {
-		fmt.Fprintln(os.Stderr, "govi: -w is only valid with -g")
-		os.Exit(2)
+		fmt.Fprintln(stderr, "govi: -w is only valid with -g")
+		return 2
 	}
 
-	fe, err := tcellfe.New()
+	fe, err := newEditorFrontend()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "govi: cannot initialize terminal: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "govi: cannot initialize terminal: %v\n", err)
+		return 1
 	}
 	defer fe.Close()
 
@@ -45,42 +83,43 @@ func main() {
 	if !*silent {
 		if err := eng.LoadStartup(); err != nil {
 			fe.Close()
-			fmt.Fprintf(os.Stderr, "govi: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintf(stderr, "govi: %v\n", err)
+			return 1
 		}
 		if eng.ShouldQuit() {
-			os.Exit(0)
+			return 0
 		}
 	}
 
-	args := flag.Args()
+	openArgs := fs.Args()
 	if *recover {
-		if len(args) == 0 {
+		if len(openArgs) == 0 {
 			fe.Close()
 			entries, err := eng.ListRecoverable()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "govi: %v\n", err)
-				os.Exit(1)
+				fmt.Fprintf(stderr, "govi: %v\n", err)
+				return 1
 			}
 			if len(entries) == 0 {
-				fmt.Println("govi: No files to recover")
-				os.Exit(0)
+				fmt.Fprintln(stdout, "govi: No files to recover")
+				return 0
 			}
 			for _, ent := range entries {
-				fmt.Printf("%s: %s\n", ent.Mtime.Format(time.ANSIC), ent.Orig)
+				fmt.Fprintf(stdout, "%s: %s\n", ent.Mtime.Format(time.ANSIC), ent.Orig)
 			}
-			os.Exit(0)
+			return 0
 		}
-		if err := eng.Recover(args[0]); err != nil {
+		if err := eng.Recover(openArgs[0]); err != nil {
 			fe.Close()
-			fmt.Fprintf(os.Stderr, "govi: %v\n", err)
-			os.Exit(1)
+			fmt.Fprintf(stderr, "govi: %v\n", err)
+			return 1
 		}
-	} else if err := eng.OpenArgs(args); err != nil {
+	} else if err := eng.OpenArgs(openArgs); err != nil {
 		fe.Close()
-		fmt.Fprintf(os.Stderr, "govi: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "govi: %v\n", err)
+		return 1
 	}
 
-	fe.Run()
+	runEditor(fe)
+	return 0
 }
