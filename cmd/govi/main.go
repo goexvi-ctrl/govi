@@ -114,6 +114,24 @@ func runIO(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "govi: %v\n", err)
 			return 1
 		}
+	} else if len(openArgs) == 0 {
+		// No file: edit a throwaway temp file like nvi -- $TMPDIR/vi.XXXXXX,
+		// removed on exit. :w with no name writes it; quitting discards it.
+		tmp, err := os.CreateTemp("", "vi.")
+		if err != nil {
+			fe.Close()
+			fmt.Fprintf(stderr, "govi: %v\n", err)
+			return 1
+		}
+		tmpPath := tmp.Name()
+		tmp.Close()
+		defer os.Remove(tmpPath)
+		if err := eng.Open(tmpPath); err != nil {
+			fe.Close()
+			fmt.Fprintf(stderr, "govi: %v\n", err)
+			return 1
+		}
+		eng.SetTemporary()
 	} else if err := eng.OpenArgs(openArgs); err != nil {
 		fe.Close()
 		fmt.Fprintf(stderr, "govi: %v\n", err)
