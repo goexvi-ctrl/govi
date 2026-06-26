@@ -35,13 +35,24 @@ final class EditorWindow: NSObject, NSWindowDelegate {
     private static func make(path: String, cwd: String = "", silent: Bool = false) -> EditorWindow? {
         let fg = Settings.defaultForegroundColorSpec
         let bg = Settings.defaultBackgroundColorSpec
+        // Resolve the working directory before starting the engine so LoadStartup
+        // reads ./.nexrc / .exrc from the right place. A fileless window (Finder
+        // launch, File > New) has no launch-payload cwd, so use the configured
+        // initial directory (home by default) instead of the process cwd ("/").
+        var dir = cwd
+        if dir.isEmpty && path.isEmpty {
+            dir = Settings.resolvedInitialDirectory
+        }
         let handle = path.withCString { pathPtr in
             fg.withCString { fgPtr in
                 bg.withCString { bgPtr in
-                    GoviStart(UnsafeMutablePointer(mutating: pathPtr),
-                              UnsafeMutablePointer(mutating: fgPtr),
-                              UnsafeMutablePointer(mutating: bgPtr),
-                              silent ? 1 : 0)
+                    dir.withCString { cwdPtr in
+                        GoviStart(UnsafeMutablePointer(mutating: pathPtr),
+                                  UnsafeMutablePointer(mutating: fgPtr),
+                                  UnsafeMutablePointer(mutating: bgPtr),
+                                  UnsafeMutablePointer(mutating: cwdPtr),
+                                  silent ? 1 : 0)
+                    }
                 }
             }
         }
@@ -50,16 +61,6 @@ final class EditorWindow: NSObject, NSWindowDelegate {
             alert.messageText = "Could not open “\(path)”."
             alert.runModal()
             return nil
-        }
-        // A fileless window (Finder launch, File > New) has no cwd from a launch
-        // payload; start it in the configured initial directory (home by default)
-        // rather than inheriting the process cwd (which is "/" for a Finder launch).
-        var dir = cwd
-        if dir.isEmpty && path.isEmpty {
-            dir = Settings.resolvedInitialDirectory
-        }
-        if !dir.isEmpty {
-            dir.withCString { GoviSetCwd(handle, UnsafeMutablePointer(mutating: $0)) }
         }
         if LaunchPath.isGoviTempFile(LaunchPath.normalize(path)) {
             GoviSetTemporary(handle)

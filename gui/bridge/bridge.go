@@ -152,7 +152,7 @@ func main() {} // required for c-archive builds
 // :set may override them per tab. Returns a handle, or 0 on error.
 //
 //export GoviStart
-func GoviStart(path, foreground, background *C.char, silent C.int) C.longlong {
+func GoviStart(path, foreground, background, cwd *C.char, silent C.int) C.longlong {
 	in := &instance{fe: &host{}}
 	in.eng = engine.New(in.fe, engine.Options{})
 	_ = in.eng.SetStrOption("foreground", cString(foreground))
@@ -160,10 +160,14 @@ func GoviStart(path, foreground, background *C.char, silent C.int) C.longlong {
 	// Apply the GUI's selmode default before LoadStartup so an .exrc :set selmode
 	// can still override it.
 	_ = in.eng.SetStrOption("selmode", defaultSelMode)
+	// Set the working directory before LoadStartup so a project-local ./.nexrc or
+	// .exrc (e.g. one that sets background) is read from the directory govi -g was
+	// run in, not the app's launch cwd ("/"). The host passes cwd from the
+	// validated govi:// payload (or the configured initial dir for new windows).
+	if c := C.GoString(cwd); c != "" {
+		in.eng.SetLaunchContext(engine.LaunchContext{Cwd: c})
+	}
 	p := C.GoString(path)
-	// cwd (and the rest of the launch context) is no longer read from a shared
-	// file here; the host sets it per editor via GoviSetCwd from the validated
-	// govi:// launch payload, so empty/new windows never inherit a stale cwd.
 	// silent (-s) skips startup files / EXINIT, matching the terminal frontend.
 	if silent == 0 {
 		if err := in.eng.LoadStartup(); err != nil {
