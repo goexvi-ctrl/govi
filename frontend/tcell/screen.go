@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	tc "github.com/gdamore/tcell/v2"
@@ -23,6 +24,12 @@ type Frontend struct {
 	scr   tc.Screen
 	eng   *engine.Engine
 	title string
+
+	paintMu       sync.Mutex
+	lastEventAt   time.Time
+	lastPaintAt   time.Time
+	paintDeferred bool
+	paintTimer    *time.Timer
 }
 
 // New initializes a terminal screen and returns a Frontend. Call Attach with
@@ -57,6 +64,7 @@ func (f *Frontend) Attach(e *engine.Engine) { f.eng = e }
 
 // Close restores the terminal.
 func (f *Frontend) Close() {
+	f.stopPaintTimer()
 	if f.scr != nil {
 		f.scr.Fini()
 	}
@@ -127,10 +135,9 @@ func (f *Frontend) runVisual(sigCh <-chan os.Signal) bool {
 		}
 		select {
 		case ev := <-events:
-			if ev == nil {
-				return false
+			if f.processEvents(events, ev) {
+				return false // events channel closed
 			}
-			f.handleEvent(ev)
 		case sig := <-sigCh:
 			if f.handleSignal(sig) {
 				return true
@@ -222,8 +229,10 @@ func (f *Frontend) handleEvent(ev tc.Event) {
 		w, h := ev.Size()
 		f.eng.Resize(textRows(h), w)
 	case *tc.EventKey:
+		f.noteInputEvent()
 		f.eng.Input(translateKey(ev))
 	case *tc.EventInterrupt:
+		f.noteInputEvent()
 		f.eng.Input(engine.InterruptEvent{})
 	}
 }
@@ -244,9 +253,29 @@ func (f *Frontend) Bell() { f.scr.Beep() }
 // in a later phase; stored here so the behavior is observable.)
 func (f *Frontend) SetTitle(title string) { f.title = title }
 
-// Render paints the current View. Phase 2 does a straightforward full repaint;
-// the ChangeSet hints are honored for incremental drawing in a later phase.
-func (f *Frontend) Render(v engine.View, _ engine.ChangeSet) {
+// Render paints the current View. During fast input repaints are capped (see
+// render_throttle.go); urgent changes (mode, scroll, message, resize) paint
+// immediately.
+func (f *Frontend) Render(v engine.View, cs engine.ChangeSet) {
+	if renderUrgent(v, cs) {
+		f.stopPaintTimer()
+		f.paintNow(v)
+		f.markPainted()
+		return
+	}
+	now := time.Now()
+	if f.shouldThrottlePaint(now) {
+		f.deferPaint(now)
+		return
+	}
+	f.stopPaintTimer()
+	f.paintNow(v)
+	f.markPainted()
+}
+
+// paintNow performs a full-screen repaint. Phase 2 always clears and redraws;
+// ChangeSet incremental drawing is a later phase.
+func (f *Frontend) paintNow(v engine.View) {
 	f.scr.Clear()
 	w, h := f.scr.Size()
 
