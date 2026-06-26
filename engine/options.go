@@ -78,6 +78,7 @@ var optDefs = []optDef{
 	{name: "prompt", typ: optBool, dB: true},
 	{name: "readonly", abbr: "ro", typ: optBool},
 	{name: "recdir", typ: optStr, dS: "/var/tmp/vi.recover"},
+	{name: "refresh", typ: optStr, dS: "20ms"}, // govi/tcell: min interval between screen updates during fast input; 0 = no limit
 	{name: "redraw", abbr: "re", typ: optBool},
 	{name: "remap", typ: optBool, dB: true},
 	{name: "report", typ: optNum, dN: 5},
@@ -222,7 +223,13 @@ func (e *Engine) setOne(tok string) error {
 		}
 		switch d.typ {
 		case optStr:
-			if err := validateStrOpt(d.name, val); err != nil {
+			if d.name == "refresh" {
+				canon, err := canonRefresh(val)
+				if err != nil {
+					return err
+				}
+				val = canon
+			} else if err := validateStrOpt(d.name, val); err != nil {
 				return err
 			}
 			o.s[d.name] = val
@@ -300,7 +307,13 @@ func (e *Engine) SetStrOption(name, value string) error {
 	if d.typ != optStr {
 		return fmt.Errorf("set: %s is not a string option", d.name)
 	}
-	if err := validateStrOpt(d.name, value); err != nil {
+	if d.name == "refresh" {
+		canon, err := canonRefresh(value)
+		if err != nil {
+			return err
+		}
+		value = canon
+	} else if err := validateStrOpt(d.name, value); err != nil {
 		return err
 	}
 	e.scr.opts.s[d.name] = value
@@ -336,7 +349,11 @@ func (e *Engine) optDisplay(d *optDef) string {
 	case optNum:
 		return fmt.Sprintf("%s=%d", d.name, o.i[d.name])
 	default:
-		return fmt.Sprintf("%s=%q", d.name, o.s[d.name])
+		val := o.s[d.name]
+		if d.name == "refresh" {
+			val = formatRefresh(val)
+		}
+		return fmt.Sprintf("%s=%q", d.name, val)
 	}
 }
 

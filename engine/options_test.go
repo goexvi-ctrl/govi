@@ -1,6 +1,9 @@
 package engine
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestSetBool(t *testing.T) {
 	e, _, _ := newTestEngine(t, "x\n")
@@ -132,5 +135,30 @@ func TestWrapscanOff(t *testing.T) {
 	drive(e, "/foo\r") // forward, no wrap -> no match below, stays
 	if e.scr.cursor.Line != 3 {
 		t.Fatalf("nows search wrapped or moved: line %d, want 3", e.scr.cursor.Line)
+	}
+}
+
+func TestSetRefresh(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	if got := e.scr.opts.Str("refresh"); got != "20ms" {
+		t.Fatalf("default refresh = %q, want 20ms", got)
+	}
+	if err := e.exExecute("set refresh=100ms"); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.scr.opts.Str("refresh"); got != "100ms" {
+		t.Fatalf("refresh = %q, want 100ms", got)
+	}
+	if got := e.RefreshInterval(); got != 100*time.Millisecond {
+		t.Fatalf("RefreshInterval = %v, want 100ms", got)
+	}
+	if err := e.exExecute("set refresh=0"); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.RefreshInterval(); got != 0 {
+		t.Fatalf("RefreshInterval = %v, want 0", got)
+	}
+	if err := e.exExecute("set refresh=nope"); err == nil {
+		t.Fatal("invalid refresh should fail")
 	}
 }

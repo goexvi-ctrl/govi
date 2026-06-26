@@ -23,6 +23,11 @@ type Frontend struct {
 	scr   tc.Screen
 	eng   *engine.Engine
 	title string
+
+	inEventBurst bool
+	paintPending bool
+	paintUrgent  bool // mode/message/overlay: paint immediately mid-burst
+	lastPaintAt  time.Time
 }
 
 // New initializes a terminal screen and returns a Frontend. Call Attach with
@@ -125,12 +130,13 @@ func (f *Frontend) runVisual(sigCh <-chan os.Signal) bool {
 			timer = time.After(recoverFlushDelay)
 			recoverFlush = true
 		}
+		// processEvents drains input bursts without selecting on sigCh; signals
+		// wait until the burst ends (bursts are short in practice).
 		select {
 		case ev := <-events:
-			if ev == nil {
-				return false
+			if f.processEvents(events, ev) {
+				return false // events channel closed
 			}
-			f.handleEvent(ev)
 		case sig := <-sigCh:
 			if f.handleSignal(sig) {
 				return true
@@ -244,9 +250,22 @@ func (f *Frontend) Bell() { f.scr.Beep() }
 // in a later phase; stored here so the behavior is observable.)
 func (f *Frontend) SetTitle(title string) { f.title = title }
 
-// Render paints the current View. Phase 2 does a straightforward full repaint;
-// the ChangeSet hints are honored for incremental drawing in a later phase.
-func (f *Frontend) Render(v engine.View, _ engine.ChangeSet) {
+// Render paints the current View. During a burst, processEvents schedules
+// repaints; urgent changes (mode, message, overlay) paint on the next loop pass.
+func (f *Frontend) Render(v engine.View, cs engine.ChangeSet) {
+	if f.inEventBurst {
+		f.paintPending = true
+		if renderUrgent(v, cs) {
+			f.paintUrgent = true
+		}
+		return
+	}
+	f.ensurePainted()
+}
+
+// paintNow performs a full-screen repaint. Phase 2 always clears and redraws;
+// ChangeSet incremental drawing is a later phase.
+func (f *Frontend) paintNow(v engine.View) {
 	f.scr.Clear()
 	w, h := f.scr.Size()
 
