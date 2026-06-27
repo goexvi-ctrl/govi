@@ -19,6 +19,59 @@ func colonWordStart(colon []rune) int {
 	return i
 }
 
+// exFilePathCmds lists ex commands whose argument is a file or directory path.
+var exFilePathCmds = map[string]bool{
+	"edit":    true,
+	"write":   true,
+	"read":    true,
+	"file":    true,
+	"source":  true,
+	"recover": true,
+	"cd":      true,
+	"chdir":   true,
+}
+
+// colonExpectsPathArg reports whether the blank-delimited word before the end
+// of the colon line is a file-path argument (e.g. ":w path", ":r path").
+func colonExpectsPathArg(colon []rune) bool {
+	p := &exParser{s: colon}
+	p.skipBlanks()
+	if p.eof() {
+		return false
+	}
+	cur := int64(1)
+	if p.peek() == '%' {
+		p.next()
+	} else if _, ok := p.parseAddr(cur); ok {
+		p.skipBlanks()
+		for p.peek() == ',' || p.peek() == ';' {
+			p.next()
+			p.skipBlanks()
+			if a2, ok := p.parseAddr(cur); ok {
+				cur = a2
+			}
+			p.skipBlanks()
+		}
+	}
+	p.skipBlanks()
+	cmdStart := p.pos
+	name := p.parseName()
+	if name == "" {
+		return false
+	}
+	def, err := findCmd(name)
+	if err != nil || !exFilePathCmds[def.full] {
+		return false
+	}
+	if p.peek() == '!' {
+		p.next()
+	}
+	p.skipBlanks()
+	argStart := p.pos
+	wordStart := colonWordStart(colon)
+	return wordStart >= argStart && wordStart > cmdStart
+}
+
 func (e *Engine) colonFilecKey(ev KeyEvent) bool {
 	fc := e.scr.opts.Str("filec")
 	if fc == "" {

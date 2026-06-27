@@ -147,9 +147,8 @@ func DisplayCells(dl DisplayLine) []Cell {
 	return cells
 }
 
-// FormatVisibleControls renders runes for on-screen display of the colon
-// command line and similar single-line inputs: tabs and control characters
-// appear in ^X form (nvi colon-line / :set list style, without the trailing $).
+// FormatVisibleControls renders tabs and control characters in ^X form (as in
+// :list output, without the trailing $).
 func FormatVisibleControls(runes []rune) string {
 	out := make([]rune, 0, len(runes)*2)
 	for _, r := range runes {
@@ -162,6 +161,36 @@ func FormatVisibleControls(runes []rune) string {
 			out = append(out, '^', '?')
 		default:
 			out = append(out, r)
+		}
+	}
+	return string(out)
+}
+
+// FormatColonLine renders the in-progress colon/ex command line. Control
+// characters appear in ^X form; tabs expand to tab stops unless list is set.
+func FormatColonLine(runes []rune, tabstop int, list bool) string {
+	out := make([]rune, 0, len(runes)*2)
+	col := 0
+	for _, r := range runes {
+		switch {
+		case r == '\t' && !list:
+			n := tabstop - col%tabstop
+			for i := 0; i < n; i++ {
+				out = append(out, ' ')
+			}
+			col += n
+		case r == '\t':
+			out = append(out, '^', 'I')
+			col += 2
+		case r < 0x20:
+			out = append(out, '^', r+0x40)
+			col += 2
+		case r == 0x7f:
+			out = append(out, '^', '?')
+			col += 2
+		default:
+			out = append(out, r)
+			col += runeWidth(r, col, tabstop, list)
 		}
 	}
 	return string(out)

@@ -44,6 +44,22 @@ func TestListModeEmptyLine(t *testing.T) {
 	}
 }
 
+func TestFormatColonLineTabExpanded(t *testing.T) {
+	got := FormatColonLine([]rune("a\tb"), 8, false)
+	want := "a       b"
+	if got != want {
+		t.Fatalf("FormatColonLine = %q, want %q", got, want)
+	}
+}
+
+func TestFormatColonLineTabList(t *testing.T) {
+	got := FormatColonLine([]rune("a\tb"), 8, true)
+	want := "a^Ib"
+	if got != want {
+		t.Fatalf("FormatColonLine(list) = %q, want %q", got, want)
+	}
+}
+
 func TestFormatVisibleControls(t *testing.T) {
 	got := FormatVisibleControls([]rune("a\t\x0d"))
 	want := "a^I^M"

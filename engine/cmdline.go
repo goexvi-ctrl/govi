@@ -44,7 +44,7 @@ func (e *Engine) colonEditKey(ev KeyEvent, opts colonEditOpts) {
 		return
 	}
 
-	if e.colonFilecKey(ev) {
+	if e.colonFilecKey(ev) && colonExpectsPathArg(s.colon) {
 		e.colonDoFileComplete()
 		return
 	}
@@ -178,18 +178,19 @@ func (s *screen) resetColonEdit() {
 }
 
 // colonDisplayMessage formats the in-progress colon/ex command line for the
-// status line, expanding control characters to ^X form (nvi colon command line).
+// status line.
 func (v view) colonDisplayMessage() string {
-	text := FormatVisibleControls(v.s.colon)
+	line := v.s.colon
+	if v.s.exInput == nil {
+		prefix := v.s.cmdPrefix
+		if prefix == 0 {
+			prefix = ':'
+		}
+		line = append([]rune{prefix}, line...)
+	}
+	text := FormatColonLine(line, v.s.opts.Int("tabstop"), v.s.opts.Bool("list"))
 	if v.s.cmdLiteralNext {
 		text += "^"
 	}
-	if v.s.exInput != nil {
-		return text
-	}
-	prefix := v.s.cmdPrefix
-	if prefix == 0 {
-		prefix = ':'
-	}
-	return string(prefix) + text
+	return text
 }

@@ -128,6 +128,68 @@ func TestGlobFileNamesAbsolute(t *testing.T) {
 	}
 }
 
+func TestColonTabDisplayExpanded(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	drive(e, ":")
+	for _, r := range "set tab" {
+		e.Input(KeyEvent{Rune: r})
+	}
+	e.Input(KeyEvent{Rune: '\t'})
+	msg, _ := (view{e.scr}).Message()
+	want := ":set tab        "
+	if msg != want {
+		t.Fatalf("msg = %q, want %q", msg, want)
+	}
+}
+
+func TestColonTabInsertsOutsidePathContext(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	e.Resize(10, 40)
+	drive(e, ":")
+	for _, r := range "set tab" {
+		e.Input(KeyEvent{Rune: r})
+	}
+	// macOS GUI sends Tab as a rune (GoviKeyRune), not KeyTab.
+	e.Input(KeyEvent{Rune: '\t'})
+
+	if got := string(e.scr.colon); got != "set tab\t" {
+		t.Fatalf("colon = %q, want %q", got, "set tab\t")
+	}
+}
+
+func TestColonTabInsertsBeforePathArg(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	e.Resize(10, 40)
+	drive(e, ":")
+	e.Input(KeyEvent{Rune: 'e'})
+	e.Input(KeyEvent{Rune: '\t'})
+
+	if got := string(e.scr.colon); got != "e\t" {
+		t.Fatalf("colon = %q, want %q", got, "e\t")
+	}
+}
+
+func TestColonFileCompleteRuneTab(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hello.txt")
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	e, _, _ := newTestEngine(t, "x\n")
+	e.SetCwd(dir)
+	e.Resize(10, 40)
+	drive(e, ":")
+	for _, r := range "e he" {
+		e.Input(KeyEvent{Rune: r})
+	}
+	e.Input(KeyEvent{Rune: '\t'})
+
+	if got := string(e.scr.colon); got != "e hello.txt" {
+		t.Fatalf("colon = %q, want %q", got, "e hello.txt")
+	}
+}
+
 func TestColonFileCompleteAbsolute(t *testing.T) {
 	e, _, _ := newTestEngine(t, "x\n")
 	e.Resize(10, 40)
