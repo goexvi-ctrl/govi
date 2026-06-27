@@ -415,10 +415,11 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
     private let cursorColorPopup = NSPopUpButton()
     private let cursorColorSwatch = NSView()
     private static let maxPadding: Double = 64
+    private static let labelColumnWidth: CGFloat = 250
 
     private init() {
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 520),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         win.title = "Settings"
         super.init(window: win)
@@ -430,49 +431,57 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
     private func buildUI() {
         guard let content = window?.contentView else { return }
 
-        let paddingRow = makeNumericRow(
-            label: "Text padding (pixels):", field: paddingField, stepper: paddingStepper,
-            min: 0, max: Self.maxPadding, action: #selector(paddingChanged))
-        let rowsRow = makeNumericRow(
-            label: "Default rows:", field: rowsField, stepper: rowsStepper,
-            min: Double(Settings.minTextRows), max: Double(Settings.maxTextRows),
-            action: #selector(defaultRowsChanged))
-        let colsRow = makeNumericRow(
-            label: "Default columns:", field: colsField, stepper: colsStepper,
-            min: Double(Settings.minColumns), max: Double(Settings.maxColumns),
-            action: #selector(defaultColsChanged))
-        let fontLabel = NSTextField(labelWithString: "Font:")
-        fontLabel.translatesAutoresizingMaskIntoConstraints = false
+        configureNumeric(paddingField, paddingStepper, min: 0, max: Self.maxPadding,
+                         action: #selector(paddingChanged))
+        configureNumeric(rowsField, rowsStepper,
+                         min: Double(Settings.minTextRows), max: Double(Settings.maxTextRows),
+                         action: #selector(defaultRowsChanged))
+        configureNumeric(colsField, colsStepper,
+                         min: Double(Settings.minColumns), max: Double(Settings.maxColumns),
+                         action: #selector(defaultColsChanged))
+
         fontSummaryLabel.translatesAutoresizingMaskIntoConstraints = false
-        fontSummaryLabel.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
         let changeFont = NSButton(title: "Change…", target: self, action: #selector(changeFont))
         changeFont.translatesAutoresizingMaskIntoConstraints = false
-        let fontRow = NSStackView(views: [fontLabel, fontSummaryLabel, changeFont])
-        fontRow.translatesAutoresizingMaskIntoConstraints = false
-        fontRow.alignment = .centerY
-        fontRow.spacing = 8
+        let fontControls = NSStackView(views: [fontSummaryLabel, changeFont])
+        fontControls.translatesAutoresizingMaskIntoConstraints = false
+        fontControls.spacing = 8
 
-        let openLabel = NSTextField(labelWithString: "Open files in:")
-        openLabel.translatesAutoresizingMaskIntoConstraints = false
+        configureColorControls(field: fgColorField, popup: fgColorPopup, swatch: fgColorSwatch,
+                               placeholder: "#RRGGBB or color name (empty = system)",
+                               defaultTitle: "System default")
+        configureColorControls(field: bgColorField, popup: bgColorPopup, swatch: bgColorSwatch,
+                               placeholder: "#RRGGBB or color name (empty = system)",
+                               defaultTitle: "System default")
+        configureColorControls(field: cursorColorField, popup: cursorColorPopup,
+                               swatch: cursorColorSwatch,
+                               placeholder: "#RRGGBB or color name (empty = blue)",
+                               defaultTitle: "System blue (default)")
+
+        initialDirField.translatesAutoresizingMaskIntoConstraints = false
+        initialDirField.placeholderString = "empty = home (~)"
+        initialDirField.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        initialDirField.delegate = self
+        let chooseDir = NSButton(title: "Choose…", target: self, action: #selector(chooseInitialDir))
+        chooseDir.translatesAutoresizingMaskIntoConstraints = false
+        let dirControls = NSStackView(views: [initialDirField, chooseDir])
+        dirControls.translatesAutoresizingMaskIntoConstraints = false
+        dirControls.spacing = 8
+
         openFilesPopup.translatesAutoresizingMaskIntoConstraints = false
         openFilesPopup.addItems(withTitles: ["New window", "Tab of front window"])
         openFilesPopup.target = self
         openFilesPopup.action = #selector(openFilesChanged)
-        let openRow = NSStackView(views: [openLabel, openFilesPopup])
-        openRow.translatesAutoresizingMaskIntoConstraints = false
-        openRow.alignment = .centerY
-        openRow.spacing = 8
 
-        let selectionModeLabel = NSTextField(labelWithString: "Selection mode:")
-        selectionModeLabel.translatesAutoresizingMaskIntoConstraints = false
         selectionModePopup.translatesAutoresizingMaskIntoConstraints = false
         selectionModePopup.addItems(withTitles: Settings.SelectionMode.allCases.map(\.label))
         selectionModePopup.target = self
         selectionModePopup.action = #selector(selectionModeChanged)
-        let selectionModeRow = NSStackView(views: [selectionModeLabel, selectionModePopup])
-        selectionModeRow.translatesAutoresizingMaskIntoConstraints = false
-        selectionModeRow.alignment = .centerY
-        selectionModeRow.spacing = 8
+
+        cursorStylePopup.translatesAutoresizingMaskIntoConstraints = false
+        cursorStylePopup.addItems(withTitles: Settings.CursorStyle.allCases.map(\.label))
+        cursorStylePopup.target = self
+        cursorStylePopup.action = #selector(cursorStyleChanged)
 
         useTabsCheckbox.translatesAutoresizingMaskIntoConstraints = false
         useTabsCheckbox.target = self
@@ -484,60 +493,66 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         showDimensionsCheckbox.target = self
         showDimensionsCheckbox.action = #selector(showDimensionsChanged)
 
-        let fgRow = makeColorRow(label: "Default foreground (new tabs):", field: fgColorField,
-                                 popup: fgColorPopup, swatch: fgColorSwatch,
-                                 placeholder: "#RRGGBB or color name (empty = system)",
-                                 defaultTitle: "System default")
-        let bgRow = makeColorRow(label: "Default background (new tabs):", field: bgColorField,
-                                 popup: bgColorPopup, swatch: bgColorSwatch,
-                                 placeholder: "#RRGGBB or color name (empty = system)",
-                                 defaultTitle: "System default")
+        let layoutSection = makeSettingsGrid(rows: [
+            ("Text padding (pixels):", numericControls(paddingField, paddingStepper)),
+            ("Default rows:", numericControls(rowsField, rowsStepper)),
+            ("Default columns:", numericControls(colsField, colsStepper)),
+        ])
+        let appearanceSection = makeSettingsGrid(rows: [
+            ("Font:", fontControls),
+            ("Default foreground (new tabs):", colorControls(fgColorField, fgColorPopup, fgColorSwatch)),
+            ("Default background (new tabs):", colorControls(bgColorField, bgColorPopup, bgColorSwatch)),
+            ("Cursor color:", colorControls(cursorColorField, cursorColorPopup, cursorColorSwatch)),
+        ])
+        let behaviorSection = makeSettingsGrid(rows: [
+            ("Initial directory (new windows):", dirControls),
+            ("Open files in:", openFilesPopup),
+            ("Selection mode:", selectionModePopup),
+            ("Cursor:", cursorStylePopup),
+        ])
+        alignBehaviorPopups(
+            [openFilesPopup, selectionModePopup, cursorStylePopup], to: dirControls)
 
-        let dirLabel = NSTextField(labelWithString: "Initial directory (new windows):")
-        dirLabel.translatesAutoresizingMaskIntoConstraints = false
-        initialDirField.translatesAutoresizingMaskIntoConstraints = false
-        initialDirField.placeholderString = "empty = home (~)"
-        initialDirField.widthAnchor.constraint(equalToConstant: 220).isActive = true
-        initialDirField.delegate = self
-        let chooseDir = NSButton(title: "Choose…", target: self, action: #selector(chooseInitialDir))
-        chooseDir.translatesAutoresizingMaskIntoConstraints = false
-        let dirRow = NSStackView(views: [dirLabel, initialDirField, chooseDir])
-        dirRow.translatesAutoresizingMaskIntoConstraints = false
-        dirRow.alignment = .centerY
-        dirRow.spacing = 8
-
-        let cursorLabel = NSTextField(labelWithString: "Cursor:")
-        cursorLabel.translatesAutoresizingMaskIntoConstraints = false
-        cursorStylePopup.translatesAutoresizingMaskIntoConstraints = false
-        cursorStylePopup.addItems(withTitles: Settings.CursorStyle.allCases.map(\.label))
-        cursorStylePopup.target = self
-        cursorStylePopup.action = #selector(cursorStyleChanged)
-        let cursorStyleRow = NSStackView(views: [cursorLabel, cursorStylePopup])
-        cursorStyleRow.translatesAutoresizingMaskIntoConstraints = false
-        cursorStyleRow.alignment = .centerY
-        cursorStyleRow.spacing = 8
-
-        let cursorColorRow = makeColorRow(label: "Cursor color:", field: cursorColorField,
-                                          popup: cursorColorPopup, swatch: cursorColorSwatch,
-                                          placeholder: "#RRGGBB or color name (empty = blue)",
-                                          defaultTitle: "System blue (default)")
-
-        let stack = NSStackView(views: [
-            paddingRow, rowsRow, colsRow, fontRow, fgRow, bgRow, dirRow, openRow,
-            selectionModeRow, cursorStyleRow, cursorColorRow,
+        let optionsStack = NSStackView(views: [
             useTabsCheckbox, showDimensionsCheckbox, warnCloseCheckbox,
         ])
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 16
-        content.addSubview(stack)
+        optionsStack.translatesAutoresizingMaskIntoConstraints = false
+        optionsStack.orientation = .vertical
+        optionsStack.alignment = .leading
+        optionsStack.spacing = 10
+
+        let dimensionsHeader = makeSectionHeader("Dimensions")
+        let appearanceHeader = makeSectionHeader("Appearance")
+        let behaviorHeader = makeSectionHeader("Behavior")
+        let preferencesHeader = makeSectionHeader("Preferences")
+        let root = NSStackView(views: [
+            dimensionsHeader, layoutSection,
+            appearanceHeader, appearanceSection,
+            behaviorHeader, behaviorSection,
+            preferencesHeader, optionsStack,
+        ])
+        root.translatesAutoresizingMaskIntoConstraints = false
+        root.orientation = .vertical
+        root.alignment = .leading
+        root.spacing = 18
+        // Tuck each section up against its header.
+        for header in [dimensionsHeader, appearanceHeader, behaviorHeader, preferencesHeader] {
+            root.setCustomSpacing(8, after: header)
+        }
+        content.addSubview(root)
 
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -20),
-            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 20),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -20),
+            root.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
+            root.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
+            root.topAnchor.constraint(equalTo: content.topAnchor, constant: 20),
+            root.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -20),
+            layoutSection.widthAnchor.constraint(equalTo: root.widthAnchor),
+            appearanceSection.widthAnchor.constraint(equalTo: root.widthAnchor),
+            behaviorSection.widthAnchor.constraint(equalTo: root.widthAnchor),
+            dimensionsHeader.widthAnchor.constraint(equalTo: root.widthAnchor),
+            appearanceHeader.widthAnchor.constraint(equalTo: root.widthAnchor),
+            behaviorHeader.widthAnchor.constraint(equalTo: root.widthAnchor),
+            preferencesHeader.widthAnchor.constraint(equalTo: root.widthAnchor),
         ])
 
         [paddingField, rowsField, colsField, fgColorField, bgColorField, cursorColorField]
@@ -545,40 +560,63 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         syncFromSettings()
     }
 
-    private func makeColorRow(
-        label text: String, field: NSTextField, popup: NSPopUpButton, swatch: NSView,
-        placeholder: String, defaultTitle: String
-    ) -> NSStackView {
+    private func makeFormLabel(_ text: String) -> NSTextField {
         let label = NSTextField(labelWithString: text)
-        field.translatesAutoresizingMaskIntoConstraints = false
-        field.placeholderString = placeholder
-        field.widthAnchor.constraint(equalToConstant: 180).isActive = true
-        popup.translatesAutoresizingMaskIntoConstraints = false
-        popup.addItem(withTitle: defaultTitle)
-        popup.addItems(withTitles: ColorCatalog.readableNames)
-        popup.target = self
-        popup.action = #selector(colorPopupChanged(_:))
-        popup.widthAnchor.constraint(equalToConstant: 160).isActive = true
-        swatch.translatesAutoresizingMaskIntoConstraints = false
-        swatch.wantsLayer = true
-        swatch.layer?.borderWidth = 1
-        swatch.layer?.borderColor = NSColor.separatorColor.cgColor
-        NSLayoutConstraint.activate([
-            swatch.widthAnchor.constraint(equalToConstant: 28),
-            swatch.heightAnchor.constraint(equalToConstant: 20),
-        ])
-        let row = NSStackView(views: [label, field, popup, swatch])
-        row.translatesAutoresizingMaskIntoConstraints = false
-        row.alignment = .centerY
-        row.spacing = 8
-        return row
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
     }
 
-    private func makeNumericRow(
-        label text: String, field: NSTextField, stepper: NSStepper,
+    // alignBehaviorPopups sizes popups to match the directory field + Choose… row.
+    private func alignBehaviorPopups(_ popups: [NSPopUpButton], to reference: NSView) {
+        for popup in popups {
+            popup.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            popup.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            NSLayoutConstraint.activate([
+                popup.leadingAnchor.constraint(equalTo: reference.leadingAnchor),
+                popup.widthAnchor.constraint(equalTo: reference.widthAnchor),
+            ])
+        }
+    }
+
+    private func makeSettingsGrid(rows: [(String, NSView)]) -> NSGridView {
+        let gridRows = rows.map { [makeFormLabel($0.0), $0.1] }
+        let grid = NSGridView(views: gridRows)
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        grid.rowSpacing = 10
+        grid.columnSpacing = 12
+        grid.column(at: 0).xPlacement = .trailing
+        grid.column(at: 0).width = Self.labelColumnWidth
+        grid.column(at: 1).xPlacement = .leading
+        return grid
+    }
+
+    // makeSectionHeader is a subdued section title followed by a rule that fills
+    // the remaining width, e.g. "Dimensions --------------".
+    private func makeSectionHeader(_ title: String) -> NSStackView {
+        let label = NSTextField(labelWithString: title)
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+        label.textColor = .secondaryLabelColor
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        let sep = NSBox()
+        sep.boxType = .separator
+        sep.translatesAutoresizingMaskIntoConstraints = false
+        sep.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let stack = NSStackView(views: [label, sep])
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 8
+        return stack
+    }
+
+    private func configureNumeric(
+        _ field: NSTextField, _ stepper: NSStepper,
         min: Double, max: Double, action: Selector
-    ) -> NSStackView {
-        let label = NSTextField(labelWithString: text)
+    ) {
         field.translatesAutoresizingMaskIntoConstraints = false
         field.alignment = .right
         field.widthAnchor.constraint(equalToConstant: 64).isActive = true
@@ -589,11 +627,49 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         stepper.valueWraps = false
         stepper.target = self
         stepper.action = action
-        let row = NSStackView(views: [label, field, stepper])
-        row.translatesAutoresizingMaskIntoConstraints = false
-        row.alignment = .centerY
-        row.spacing = 8
-        return row
+    }
+
+    private func numericControls(_ field: NSTextField, _ stepper: NSStepper) -> NSStackView {
+        let stack = NSStackView(views: [field, stepper])
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 8
+        return stack
+    }
+
+    private func configureColorControls(
+        field: NSTextField, popup: NSPopUpButton, swatch: NSView,
+        placeholder: String, defaultTitle: String
+    ) {
+        field.placeholderString = placeholder
+        field.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        popup.addItem(withTitle: defaultTitle)
+        popup.addItems(withTitles: ColorCatalog.readableNames)
+        popup.target = self
+        popup.action = #selector(colorPopupChanged(_:))
+        popup.widthAnchor.constraint(equalToConstant: 160).isActive = true
+        swatch.wantsLayer = true
+        swatch.layer?.borderWidth = 1
+        swatch.layer?.borderColor = NSColor.separatorColor.cgColor
+        NSLayoutConstraint.activate([
+            swatch.widthAnchor.constraint(equalToConstant: 28),
+            swatch.heightAnchor.constraint(equalToConstant: 20),
+        ])
+    }
+
+    private func colorControls(
+        _ field: NSTextField, _ popup: NSPopUpButton, _ swatch: NSView
+    ) -> NSStackView {
+        field.translatesAutoresizingMaskIntoConstraints = false
+        popup.translatesAutoresizingMaskIntoConstraints = false
+        swatch.translatesAutoresizingMaskIntoConstraints = false
+        let stack = NSStackView(views: [field, popup, swatch])
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 8
+        return stack
     }
 
     private func syncFromSettings() {
