@@ -371,17 +371,20 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
     private let showDimensionsCheckbox = NSButton(checkboxWithTitle: "Show rows×columns in title bar (not tabs)", target: nil, action: nil)
     private let fgColorField = NSTextField()
     private let bgColorField = NSTextField()
+    private let fgColorPopup = NSPopUpButton()
+    private let bgColorPopup = NSPopUpButton()
     private let fgColorSwatch = NSView()
     private let bgColorSwatch = NSView()
     private let initialDirField = NSTextField()
     private let cursorStylePopup = NSPopUpButton()
     private let cursorColorField = NSTextField()
+    private let cursorColorPopup = NSPopUpButton()
     private let cursorColorSwatch = NSView()
     private static let maxPadding: Double = 64
 
     private init() {
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 560),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         win.title = "Settings"
         super.init(window: win)
@@ -452,10 +455,14 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         showDimensionsCheckbox.target = self
         showDimensionsCheckbox.action = #selector(showDimensionsChanged)
 
-        let fgRow = makeColorRow(label: "Default foreground (new tabs):", field: fgColorField, swatch: fgColorSwatch,
-                                 placeholder: "#RRGGBB or color name (empty = system)")
-        let bgRow = makeColorRow(label: "Default background (new tabs):", field: bgColorField, swatch: bgColorSwatch,
-                                 placeholder: "#RRGGBB or color name (empty = system)")
+        let fgRow = makeColorRow(label: "Default foreground (new tabs):", field: fgColorField,
+                                 popup: fgColorPopup, swatch: fgColorSwatch,
+                                 placeholder: "#RRGGBB or color name (empty = system)",
+                                 defaultTitle: "System default")
+        let bgRow = makeColorRow(label: "Default background (new tabs):", field: bgColorField,
+                                 popup: bgColorPopup, swatch: bgColorSwatch,
+                                 placeholder: "#RRGGBB or color name (empty = system)",
+                                 defaultTitle: "System default")
 
         let dirLabel = NSTextField(labelWithString: "Initial directory (new windows):")
         dirLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -482,8 +489,9 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         cursorStyleRow.spacing = 8
 
         let cursorColorRow = makeColorRow(label: "Cursor color:", field: cursorColorField,
-                                          swatch: cursorColorSwatch,
-                                          placeholder: "#RRGGBB or color name (empty = blue)")
+                                          popup: cursorColorPopup, swatch: cursorColorSwatch,
+                                          placeholder: "#RRGGBB or color name (empty = blue)",
+                                          defaultTitle: "System blue (default)")
 
         let stack = NSStackView(views: [
             paddingRow, rowsRow, colsRow, fontRow, fontSizeRow, fgRow, bgRow, dirRow, openRow,
@@ -509,12 +517,19 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
     }
 
     private func makeColorRow(
-        label text: String, field: NSTextField, swatch: NSView, placeholder: String
+        label text: String, field: NSTextField, popup: NSPopUpButton, swatch: NSView,
+        placeholder: String, defaultTitle: String
     ) -> NSStackView {
         let label = NSTextField(labelWithString: text)
         field.translatesAutoresizingMaskIntoConstraints = false
         field.placeholderString = placeholder
-        field.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        field.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        popup.translatesAutoresizingMaskIntoConstraints = false
+        popup.addItem(withTitle: defaultTitle)
+        popup.addItems(withTitles: ColorCatalog.readableNames)
+        popup.target = self
+        popup.action = #selector(colorPopupChanged(_:))
+        popup.widthAnchor.constraint(equalToConstant: 160).isActive = true
         swatch.translatesAutoresizingMaskIntoConstraints = false
         swatch.wantsLayer = true
         swatch.layer?.borderWidth = 1
@@ -523,7 +538,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
             swatch.widthAnchor.constraint(equalToConstant: 28),
             swatch.heightAnchor.constraint(equalToConstant: 20),
         ])
-        let row = NSStackView(views: [label, field, swatch])
+        let row = NSStackView(views: [label, field, popup, swatch])
         row.translatesAutoresizingMaskIntoConstraints = false
         row.alignment = .centerY
         row.spacing = 8
@@ -567,18 +582,40 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         useTabsCheckbox.state = Settings.useTabs ? .on : .off
         warnCloseCheckbox.state = Settings.warnOnUnsavedClose ? .on : .off
         showDimensionsCheckbox.state = Settings.showDimensionsInTitle ? .on : .off
-        fgColorField.stringValue = Settings.defaultForegroundColorSpec
-        bgColorField.stringValue = Settings.defaultBackgroundColorSpec
-        updateSwatch(fgColorSwatch, spec: Settings.defaultForegroundColorSpec,
-                     fallback: Settings.defaultForegroundColor)
-        updateSwatch(bgColorSwatch, spec: Settings.defaultBackgroundColorSpec,
-                     fallback: Settings.defaultBackgroundColor)
+        syncColorField(fgColorField, popup: fgColorPopup, spec: Settings.defaultForegroundColorSpec,
+                       fallback: Settings.defaultForegroundColor, swatch: fgColorSwatch)
+        syncColorField(bgColorField, popup: bgColorPopup, spec: Settings.defaultBackgroundColorSpec,
+                       fallback: Settings.defaultBackgroundColor, swatch: bgColorSwatch)
         initialDirField.stringValue = Settings.initialDirectory
         if let idx = Settings.CursorStyle.allCases.firstIndex(of: Settings.cursorStyle) {
             cursorStylePopup.selectItem(at: idx)
         }
-        cursorColorField.stringValue = Settings.cursorColorSpec
-        updateSwatch(cursorColorSwatch, spec: Settings.cursorColorSpec, fallback: Settings.cursorColor)
+        syncColorField(cursorColorField, popup: cursorColorPopup, spec: Settings.cursorColorSpec,
+                       fallback: Settings.cursorColor, swatch: cursorColorSwatch)
+    }
+
+    private func syncColorField(
+        _ field: NSTextField, popup: NSPopUpButton, spec: String, fallback: NSColor, swatch: NSView
+    ) {
+        field.stringValue = ColorParser.displaySpec(spec)
+        syncColorPopup(popup, spec: spec)
+        updateSwatch(swatch, spec: spec, fallback: fallback)
+    }
+
+    private func syncColorPopup(_ popup: NSPopUpButton, spec: String) {
+        let trimmed = spec.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            popup.selectItem(at: 0)
+            return
+        }
+        if let readable = ColorParser.readableName(for: trimmed) {
+            let idx = popup.indexOfItem(withTitle: readable)
+            if idx >= 0 {
+                popup.selectItem(at: idx)
+                return
+            }
+        }
+        popup.selectItem(at: -1)
     }
 
     private func updateSwatch(_ swatch: NSView, spec: String, fallback: NSColor) {
@@ -683,6 +720,31 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         Settings.showDimensionsInTitle = showDimensionsCheckbox.state == .on
     }
 
+    @objc private func colorPopupChanged(_ sender: NSPopUpButton) {
+        let field: NSTextField
+        let swatch: NSView
+        let fallback: NSColor
+        let assign: (String) -> Void
+        switch sender {
+        case fgColorPopup:
+            field = fgColorField; swatch = fgColorSwatch; fallback = NSColor.textColor
+            assign = { Settings.defaultForegroundColorSpec = $0 }
+        case bgColorPopup:
+            field = bgColorField; swatch = bgColorSwatch; fallback = NSColor.textBackgroundColor
+            assign = { Settings.defaultBackgroundColorSpec = $0 }
+        case cursorColorPopup:
+            field = cursorColorField; swatch = cursorColorSwatch; fallback = NSColor.systemBlue
+            assign = { Settings.cursorColorSpec = $0 }
+        default:
+            return
+        }
+        let idx = sender.indexOfSelectedItem
+        let spec = idx <= 0 ? "" : sender.titleOfSelectedItem ?? ""
+        field.stringValue = spec
+        assign(spec)
+        updateSwatch(swatch, spec: spec, fallback: fallback)
+    }
+
     private func commitInt(
         _ field: NSTextField, _ stepper: NSStepper, lo: Int, hi: Int, raw: Int,
         assign: (Int) -> Void
@@ -714,13 +776,14 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         case initialDirField:
             commitInitialDir()
         case fgColorField:
-            commitColor(fgColorField, fgColorSwatch, fallback: NSColor.textColor,
+            commitColor(fgColorField, popup: fgColorPopup, fgColorSwatch, fallback: NSColor.textColor,
                         assign: { Settings.defaultForegroundColorSpec = $0 })
         case bgColorField:
-            commitColor(bgColorField, bgColorSwatch, fallback: NSColor.textBackgroundColor,
+            commitColor(bgColorField, popup: bgColorPopup, bgColorSwatch, fallback: NSColor.textBackgroundColor,
                         assign: { Settings.defaultBackgroundColorSpec = $0 })
         case cursorColorField:
-            commitColor(cursorColorField, cursorColorSwatch, fallback: NSColor.systemBlue,
+            commitColor(cursorColorField, popup: cursorColorPopup, cursorColorSwatch,
+                        fallback: NSColor.systemBlue,
                         assign: { Settings.cursorColorSpec = $0 })
         default:
             break
@@ -728,7 +791,8 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
     }
 
     private func commitColor(
-        _ field: NSTextField, _ swatch: NSView, fallback: NSColor, assign: (String) -> Void
+        _ field: NSTextField, popup: NSPopUpButton, _ swatch: NSView,
+        fallback: NSColor, assign: (String) -> Void
     ) {
         let raw = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if !raw.isEmpty && ColorParser.parse(raw) == nil {
@@ -736,8 +800,11 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
             syncFromSettings()
             return
         }
-        assign(raw)
-        updateSwatch(swatch, spec: raw, fallback: fallback)
+        let stored = ColorParser.storageSpec(raw)
+        field.stringValue = ColorParser.displaySpec(stored)
+        assign(stored)
+        syncColorPopup(popup, spec: stored)
+        updateSwatch(swatch, spec: stored, fallback: fallback)
     }
 
     func show() {
