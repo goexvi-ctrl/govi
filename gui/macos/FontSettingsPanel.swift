@@ -42,13 +42,6 @@ final class FontPreviewView: NSView {
         }
     }
 
-    func preferredSize() -> NSSize {
-        let metrics = Settings.cellSize(
-            font: font, characterSpacing: characterSpacing, lineSpacing: lineSpacing)
-        return NSSize(
-            width: ceil(CGFloat(FontPreview.columns) * metrics.cellW) + 16,
-            height: ceil(CGFloat(FontPreview.rows.count) * metrics.cellH) + 16)
-    }
 }
 
 // FontSettingsPanelController is the Change… sheet for font, size, and spacing.
@@ -325,10 +318,12 @@ final class FontSettingsPanelController: NSWindowController,
     }
 
     @objc private func confirm() {
-        Settings.fontPostScriptName = draftPostScriptName
-        Settings.fontSize = draftFontSize
-        Settings.characterSpacing = draftCharacterSpacing
-        Settings.lineSpacing = draftLineSpacing
+        Settings.batch {
+            Settings.fontPostScriptName = draftPostScriptName
+            Settings.fontSize = draftFontSize
+            Settings.characterSpacing = draftCharacterSpacing
+            Settings.lineSpacing = draftLineSpacing
+        }
         window?.sheetParent?.endSheet(window!, returnCode: .OK)
     }
 

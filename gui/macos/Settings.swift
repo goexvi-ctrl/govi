@@ -6,6 +6,24 @@ import Cocoa
 enum Settings {
     static let changed = Notification.Name("GoviSettingsChanged")
 
+    private static var batchDepth = 0
+
+    // notifyChanged posts Settings.changed unless a batch update is in progress.
+    private static func notifyChanged() {
+        guard batchDepth == 0 else { return }
+        NotificationCenter.default.post(name: changed, object: nil)
+    }
+
+    // batch applies multiple setting changes with one Settings.changed notification.
+    static func batch(_ body: () -> Void) {
+        batchDepth += 1
+        defer {
+            batchDepth -= 1
+            if batchDepth == 0 { NotificationCenter.default.post(name: changed, object: nil) }
+        }
+        body()
+    }
+
     private static let paddingKey = "padding"
     static let defaultPadding: CGFloat = 3
 
@@ -18,7 +36,7 @@ enum Settings {
         }
         set {
             UserDefaults.standard.set(Double(max(0, newValue)), forKey: paddingKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -43,7 +61,7 @@ enum Settings {
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: openFilesInKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -88,7 +106,7 @@ enum Settings {
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: selectionModeKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -103,7 +121,7 @@ enum Settings {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: warnCloseKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -119,7 +137,7 @@ enum Settings {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: useTabsKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -146,7 +164,6 @@ enum Settings {
     static let defaultLineSpacing: CGFloat = 1
     static let minSpacing: CGFloat = 0.25
     static let maxSpacing: CGFloat = 3
-    static let spacingStep: CGFloat = 0.025
 
     // defaultTextRows and defaultColumns are the editable grid size for new
     // windows (rows x cols, not counting the status line).
@@ -159,7 +176,7 @@ enum Settings {
         set {
             UserDefaults.standard.set(clampInt(newValue, min: minTextRows, max: maxTextRows),
                                       forKey: defaultRowsKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -172,7 +189,7 @@ enum Settings {
         set {
             UserDefaults.standard.set(clampInt(newValue, min: minColumns, max: maxColumns),
                                       forKey: defaultColsKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -186,7 +203,7 @@ enum Settings {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: showDimensionsKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -198,7 +215,7 @@ enum Settings {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: fontFamilyKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -211,7 +228,7 @@ enum Settings {
         set {
             UserDefaults.standard.set(Double(clampWindow(newValue, min: minFontSize, max: maxFontSize)),
                                       forKey: fontSizeKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -236,7 +253,7 @@ enum Settings {
             UserDefaults.standard.set(
                 Double(clampWindow(newValue, min: minSpacing, max: maxSpacing)),
                 forKey: characterSpacingKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -250,7 +267,7 @@ enum Settings {
             UserDefaults.standard.set(
                 Double(clampWindow(newValue, min: minSpacing, max: maxSpacing)),
                 forKey: lineSpacingKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -326,7 +343,7 @@ enum Settings {
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: cursorStyleKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -335,7 +352,7 @@ enum Settings {
         get { UserDefaults.standard.string(forKey: cursorColorKey) ?? "" }
         set {
             UserDefaults.standard.set(newValue, forKey: cursorColorKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 
@@ -364,7 +381,7 @@ enum Settings {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: spellKey)
-            NotificationCenter.default.post(name: changed, object: nil)
+            notifyChanged()
         }
     }
 }
@@ -559,7 +576,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
 
     private func makeNumericRow(
         label text: String, field: NSTextField, stepper: NSStepper,
-        min: Double, max: Double, increment: Double = 1, action: Selector
+        min: Double, max: Double, action: Selector
     ) -> NSStackView {
         let label = NSTextField(labelWithString: text)
         field.translatesAutoresizingMaskIntoConstraints = false
@@ -568,7 +585,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         stepper.translatesAutoresizingMaskIntoConstraints = false
         stepper.minValue = min
         stepper.maxValue = max
-        stepper.increment = increment
+        stepper.increment = 1
         stepper.valueWraps = false
         stepper.target = self
         stepper.action = action
