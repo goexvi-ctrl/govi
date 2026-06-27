@@ -10,9 +10,9 @@ var selectionModes = []string{"terminal", "gui", "contextual"}
 
 // selectionModeAlias maps input-only aliases to their canonical name.
 var selectionModeAlias = map[string]string{
-	"passive":    "terminal",
-	"active":     "gui",
-	"hybrid":     "contextual",
+	"passive": "terminal",
+	"active":  "gui",
+	"hybrid":  "contextual",
 }
 
 func selectionModeInputs() []string {

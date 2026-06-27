@@ -128,6 +128,8 @@ enum Settings {
     private static let showDimensionsKey = "showDimensionsInTitle"
     private static let fontFamilyKey = "editorFontFamily"
     private static let fontSizeKey = "editorFontSize"
+    private static let characterSpacingKey = "characterSpacing"
+    private static let lineSpacingKey = "lineSpacing"
     private static let fgColorKey = "foregroundColor"
     private static let bgColorKey = "backgroundColor"
 
@@ -140,36 +142,11 @@ enum Settings {
     static let maxColumns = 512
     static let minFontSize: CGFloat = 8
     static let maxFontSize: CGFloat = 72
-
-    enum EditorFontFamily: String, CaseIterable {
-        case system
-        case menlo = "Menlo"
-        case monaco = "Monaco"
-        case courier = "Courier"
-        case courierNew = "Courier New"
-        case sfMono = "SFMono-Regular"
-
-        var label: String {
-            switch self {
-            case .system: return "System Monospaced"
-            case .menlo: return "Menlo"
-            case .monaco: return "Monaco"
-            case .courier: return "Courier"
-            case .courierNew: return "Courier New"
-            case .sfMono: return "SF Mono"
-            }
-        }
-
-        func font(size: CGFloat) -> NSFont {
-            switch self {
-            case .system:
-                return NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-            default:
-                return NSFont(name: rawValue, size: size)
-                    ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-            }
-        }
-    }
+    static let defaultCharacterSpacing: CGFloat = 1
+    static let defaultLineSpacing: CGFloat = 1
+    static let minSpacing: CGFloat = 0.25
+    static let maxSpacing: CGFloat = 3
+    static let spacingStep: CGFloat = 0.025
 
     // defaultTextRows and defaultColumns are the editable grid size for new
     // windows (rows x cols, not counting the status line).
@@ -213,17 +190,14 @@ enum Settings {
         }
     }
 
-    static var fontFamily: EditorFontFamily {
+    // fontPostScriptName is the editor font (empty = system monospaced).
+    static var fontPostScriptName: String {
         get {
-            let d = UserDefaults.standard
-            guard let raw = d.string(forKey: fontFamilyKey),
-                  let family = EditorFontFamily(rawValue: raw) else {
-                return .system
-            }
-            return family
+            let raw = UserDefaults.standard.string(forKey: fontFamilyKey) ?? ""
+            return EditorFonts.migrateStoredName(raw)
         }
         set {
-            UserDefaults.standard.set(newValue.rawValue, forKey: fontFamilyKey)
+            UserDefaults.standard.set(newValue, forKey: fontFamilyKey)
             NotificationCenter.default.post(name: changed, object: nil)
         }
     }
@@ -242,7 +216,52 @@ enum Settings {
     }
 
     static var editorFont: NSFont {
-        fontFamily.font(size: fontSize)
+        EditorFonts.font(postScriptName: fontPostScriptName, size: fontSize)
+    }
+
+    // fontSummary is shown in Settings (e.g. "Monaco 13").
+    static var fontSummary: String {
+        "\(EditorFonts.displayName(forPostScriptName: fontPostScriptName)) \(Int(fontSize))"
+    }
+
+    // characterSpacing and lineSpacing multiply the font's cell width and line
+    // height (1 = font defaults, like Terminal.app).
+    static var characterSpacing: CGFloat {
+        get {
+            let d = UserDefaults.standard
+            guard d.object(forKey: characterSpacingKey) != nil else { return defaultCharacterSpacing }
+            return clampWindow(d.double(forKey: characterSpacingKey), min: minSpacing, max: maxSpacing)
+        }
+        set {
+            UserDefaults.standard.set(
+                Double(clampWindow(newValue, min: minSpacing, max: maxSpacing)),
+                forKey: characterSpacingKey)
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
+
+    static var lineSpacing: CGFloat {
+        get {
+            let d = UserDefaults.standard
+            guard d.object(forKey: lineSpacingKey) != nil else { return defaultLineSpacing }
+            return clampWindow(d.double(forKey: lineSpacingKey), min: minSpacing, max: maxSpacing)
+        }
+        set {
+            UserDefaults.standard.set(
+                Double(clampWindow(newValue, min: minSpacing, max: maxSpacing)),
+                forKey: lineSpacingKey)
+            NotificationCenter.default.post(name: changed, object: nil)
+        }
+    }
+
+    // cellSize returns the editor grid cell dimensions for a font and spacing.
+    static func cellSize(
+        font: NSFont, characterSpacing: CGFloat, lineSpacing: CGFloat
+    ) -> (cellW: CGFloat, cellH: CGFloat) {
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        let baseW = ("0" as NSString).size(withAttributes: attrs).width
+        let baseH = NSLayoutManager().defaultLineHeight(for: font)
+        return (baseW * characterSpacing, baseH * lineSpacing)
     }
 
     // defaultForegroundColorSpec and defaultBackgroundColorSpec are applied to
@@ -361,9 +380,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
     private let rowsStepper = NSStepper()
     private let colsField = NSTextField()
     private let colsStepper = NSStepper()
-    private let fontPopup = NSPopUpButton()
-    private let fontSizeField = NSTextField()
-    private let fontSizeStepper = NSStepper()
+    private let fontSummaryLabel = NSTextField(labelWithString: "")
     private let openFilesPopup = NSPopUpButton()
     private let selectionModePopup = NSPopUpButton()
     private let useTabsCheckbox = NSButton(checkboxWithTitle: "Use window tabs (show the tab bar)", target: nil, action: nil)
@@ -407,18 +424,13 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
             label: "Default columns:", field: colsField, stepper: colsStepper,
             min: Double(Settings.minColumns), max: Double(Settings.maxColumns),
             action: #selector(defaultColsChanged))
-        let fontSizeRow = makeNumericRow(
-            label: "Font size (points):", field: fontSizeField, stepper: fontSizeStepper,
-            min: Double(Settings.minFontSize), max: Double(Settings.maxFontSize),
-            action: #selector(fontSizeChanged))
-
         let fontLabel = NSTextField(labelWithString: "Font:")
         fontLabel.translatesAutoresizingMaskIntoConstraints = false
-        fontPopup.translatesAutoresizingMaskIntoConstraints = false
-        fontPopup.addItems(withTitles: Settings.EditorFontFamily.allCases.map(\.label))
-        fontPopup.target = self
-        fontPopup.action = #selector(fontFamilyChanged)
-        let fontRow = NSStackView(views: [fontLabel, fontPopup])
+        fontSummaryLabel.translatesAutoresizingMaskIntoConstraints = false
+        fontSummaryLabel.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+        let changeFont = NSButton(title: "Change…", target: self, action: #selector(changeFont))
+        changeFont.translatesAutoresizingMaskIntoConstraints = false
+        let fontRow = NSStackView(views: [fontLabel, fontSummaryLabel, changeFont])
         fontRow.translatesAutoresizingMaskIntoConstraints = false
         fontRow.alignment = .centerY
         fontRow.spacing = 8
@@ -494,7 +506,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
                                           defaultTitle: "System blue (default)")
 
         let stack = NSStackView(views: [
-            paddingRow, rowsRow, colsRow, fontRow, fontSizeRow, fgRow, bgRow, dirRow, openRow,
+            paddingRow, rowsRow, colsRow, fontRow, fgRow, bgRow, dirRow, openRow,
             selectionModeRow, cursorStyleRow, cursorColorRow,
             useTabsCheckbox, showDimensionsCheckbox, warnCloseCheckbox,
         ])
@@ -511,7 +523,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
             stack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -20),
         ])
 
-        [paddingField, rowsField, colsField, fontSizeField, fgColorField, bgColorField, cursorColorField]
+        [paddingField, rowsField, colsField, fgColorField, bgColorField, cursorColorField]
             .forEach { $0.delegate = self }
         syncFromSettings()
     }
@@ -547,7 +559,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
 
     private func makeNumericRow(
         label text: String, field: NSTextField, stepper: NSStepper,
-        min: Double, max: Double, action: Selector
+        min: Double, max: Double, increment: Double = 1, action: Selector
     ) -> NSStackView {
         let label = NSTextField(labelWithString: text)
         field.translatesAutoresizingMaskIntoConstraints = false
@@ -556,7 +568,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         stepper.translatesAutoresizingMaskIntoConstraints = false
         stepper.minValue = min
         stepper.maxValue = max
-        stepper.increment = 1
+        stepper.increment = increment
         stepper.valueWraps = false
         stepper.target = self
         stepper.action = action
@@ -571,10 +583,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         syncNumeric(paddingField, paddingStepper, value: Double(Settings.padding))
         syncNumeric(rowsField, rowsStepper, value: Double(Settings.defaultTextRows))
         syncNumeric(colsField, colsStepper, value: Double(Settings.defaultColumns))
-        syncNumeric(fontSizeField, fontSizeStepper, value: Double(Settings.fontSize))
-        if let idx = Settings.EditorFontFamily.allCases.firstIndex(of: Settings.fontFamily) {
-            fontPopup.selectItem(at: idx)
-        }
+        fontSummaryLabel.stringValue = Settings.fontSummary
         openFilesPopup.selectItem(at: Settings.openFilesIn == .tab ? 1 : 0)
         if let idx = Settings.SelectionMode.allCases.firstIndex(of: Settings.selectionMode) {
             selectionModePopup.selectItem(at: idx)
@@ -655,16 +664,11 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
                   raw: Int(colsStepper.intValue), assign: { Settings.defaultColumns = $0 })
     }
 
-    @objc private func fontSizeChanged() {
-        commitNumeric(fontSizeField, fontSizeStepper,
-                      lo: Double(Settings.minFontSize), hi: Double(Settings.maxFontSize),
-                      raw: fontSizeStepper.doubleValue, assign: { Settings.fontSize = $0 })
-    }
-
-    @objc private func fontFamilyChanged() {
-        let idx = fontPopup.indexOfSelectedItem
-        guard idx >= 0, idx < Settings.EditorFontFamily.allCases.count else { return }
-        Settings.fontFamily = Settings.EditorFontFamily.allCases[idx]
+    @objc private func changeFont() {
+        guard let parent = window else { return }
+        FontSettingsPanelController.show(relativeTo: parent) { [weak self] in
+            self?.syncFromSettings()
+        }
     }
 
     @objc private func chooseInitialDir() {
@@ -769,10 +773,6 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
             commitInt(colsField, colsStepper,
                       lo: Settings.minColumns, hi: Settings.maxColumns,
                       raw: Int(field.intValue), assign: { Settings.defaultColumns = $0 })
-        case fontSizeField:
-            commitNumeric(fontSizeField, fontSizeStepper,
-                          lo: Double(Settings.minFontSize), hi: Double(Settings.maxFontSize),
-                          raw: field.doubleValue, assign: { Settings.fontSize = $0 })
         case initialDirField:
             commitInitialDir()
         case fgColorField:

@@ -36,6 +36,8 @@ final class GoviView: NSView, NSTextInputClient {
     private var markedText = ""
 
     private var font = Settings.editorFont
+    private var characterSpacing = Settings.characterSpacing
+    private var lineSpacing = Settings.lineSpacing
     private var cellW: CGFloat = 8
     private var cellH: CGFloat = 16
 
@@ -148,6 +150,8 @@ final class GoviView: NSView, NSTextInputClient {
         spellEnabled = Settings.spellChecking
         GoviSetMode(handle, Settings.selectionMode.code) // live-update this tab's mode
         font = Settings.editorFont
+        characterSpacing = Settings.characterSpacing
+        lineSpacing = Settings.lineSpacing
         measureFont()
         resizeWindowToCells() // keep the same rows x cols; grow/shrink the window to fit
         updateGeometry()      // refits only if the window could not take the target size
@@ -163,12 +167,14 @@ final class GoviView: NSView, NSTextInputClient {
     // plus one status line, using the given font metrics and padding.
     static func contentSize(
         textRows: Int, cols: Int,
-        font: NSFont = Settings.editorFont, padding: CGFloat = Settings.padding
+        font: NSFont = Settings.editorFont, padding: CGFloat = Settings.padding,
+        characterSpacing: CGFloat = Settings.characterSpacing,
+        lineSpacing: CGFloat = Settings.lineSpacing
     ) -> NSSize {
-        let attrs: [NSAttributedString.Key: Any] = [.font: font]
-        let cellW = ("0" as NSString).size(withAttributes: attrs).width
-        let lm = NSLayoutManager()
-        let cellH = lm.defaultLineHeight(for: font)
+        let metrics = Settings.cellSize(
+            font: font, characterSpacing: characterSpacing, lineSpacing: lineSpacing)
+        let cellW = metrics.cellW
+        let cellH = metrics.cellH
         let screenRows = textRows + 1
         // Round up: AppKit rounds the content rect to whole points, and rounding
         // down would shave a partial cell and lose a row/column.
@@ -189,10 +195,10 @@ final class GoviView: NSView, NSTextInputClient {
     }
 
     private func measureFont() {
-        let attrs: [NSAttributedString.Key: Any] = [.font: font]
-        cellW = ("0" as NSString).size(withAttributes: attrs).width
-        let lm = NSLayoutManager()
-        cellH = lm.defaultLineHeight(for: font)
+        let metrics = Settings.cellSize(
+            font: font, characterSpacing: characterSpacing, lineSpacing: lineSpacing)
+        cellW = metrics.cellW
+        cellH = metrics.cellH
     }
 
     // resizeWindowToCells sizes the window to keep the current rows x cols of
@@ -201,7 +207,9 @@ final class GoviView: NSView, NSTextInputClient {
     // (updateGeometry then handles the fallback).
     private func resizeWindowToCells() {
         guard let window = window else { return }
-        let content = GoviView.contentSize(textRows: textRows, cols: cols, font: font, padding: padding)
+        let content = GoviView.contentSize(
+            textRows: textRows, cols: cols, font: font, padding: padding,
+            characterSpacing: characterSpacing, lineSpacing: lineSpacing)
         let newFrameSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: content)).size
         var frame = window.frame
         frame.origin.y += frame.size.height - newFrameSize.height // keep the top edge put
