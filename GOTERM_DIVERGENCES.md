@@ -660,6 +660,92 @@ common idiom); govi silently ignores any such line.
   strip a leading `:` from script lines. Found by the coverage sweep (goterm
   `TestCoverageSource`).
 
+## Open (small addressable parity gaps from parity-gaps-report, 2026-06-28)
+
+These are the LOW-EFFORT items from the parity.md gap review whose supporting
+machinery already exists in govi. Each was re-verified against real nvi through the
+goterm harness on 2026-06-28 (so they are current, not stale). Do them with the
+usual verify loop (rebuild /Users/claude/bin/govi, then the named goterm probe).
+NOTE: two report items turned out ALREADY DONE on re-check and are NOT listed here
+-- ex `:k`/`:ma`/`:mark` set a mark (works; parity.md row was stale) and insert
+`^U` line-erase (works) -- so don't re-implement them.
+
+### 40. vi `z` lacks the `z^` and `z+` screen types  [OPEN, small]
+govi implements `z<CR>` (line to top), `z.` (center), `z-` (bottom), `[line]z`,
+and `z[count]`, but ignores the `+`/`^` type modifiers and falls back to
+top-positioning.
+- Rule (nvi vs_z / ex_z): `z+` displays the NEXT screenful (like one `^F` measured
+  from the z line); `z^` displays the PREVIOUS screenful (like one `^B`).
+- Repro (12x40, numberedLines(40)): `20Gz+` -> nvi puts 026 at the top row; govi
+  leaves 020 at the top. `20Gz^` -> nvi tops at 004; govi tops at 015.
+- Fix: add the two type cases to govi's `z` dispatch, reusing the window-2 paging
+  math already built for `^F`/`^B` (the #2 paging fix). Small.
+
+### 41. `secure` does not block `!` filters (and `:r!`/`:w!`/`:source`)  [FIXED 2026-06-28]
+FIX: added the secure gate to `filterLines` (shell.go), the shared body of the vi
+`!` operator and `:[range]!cmd`. That was the one ungated shell-out path:
+`:shell`, `:!cmd` (no range), `:r !cmd`, `:w !cmd`, and suspend/stop were ALREADY
+gated. Verified vs real nvi: `:set secure` then `:%!sort` now leaves the buffer
+UNSORTED in both (filter refused).
+
+CORRECTION to the original report: `:source` is NOT secured in nvi. nvi's
+E_SECURE commands (ex_cmd.c) are exactly `!`, `perl`, `perldo`, `script`,
+`shell`, `stop`, `suspend`, `tcl`; `:r !`/`:w !` are gated separately via
+O_SECURE in ex_read.c/ex_write.c. `:source` carries no secure flag, and verified
+against the binary `:set secure` then `:source <script>` still runs the script in
+both editors. So govi correctly does NOT gate `:source` (nor does it gate perl/
+tcl/script, which govi does not implement at all). govi's message lacks nvi's
+trailing period, matching govi's other secure-mode messages (pre-existing style).
+
+--- original analysis (retained) ---
+`:set secure` in govi only blocks `:shell`; every other shell-out path still runs.
+This is a security-correctness gap, so it ranks above its size.
+- Rule (nvi): `secure` disables ALL shell escapes -- `!` filters (`!motion`,
+  `:[range]!cmd`), `:read !cmd`, `:write !cmd`, and `:source` of scripts -- in
+  addition to `:shell`. (`secure` is also `OPT_NOUNSET`: once on it cannot be
+  turned off; govi already honors that.)
+- Repro (24x80): `:set secure\r:%!sort\r` -> nvi leaves the buffer UNSORTED
+  (filter refused); govi SORTS it (filter ran).
+- Fix: route the `!`/`:r !`/`:w !`/`:source` entry points through the same security
+  gate that already guards `:shell`, returning nvi's "not allowed in secure mode"
+  style error. Small/medium.
+
+### 42. `writeany` (wa) is inert -- write safety check not gated on it  [OPEN, small]
+govi performs the ownership/permission safety check on `:write` (the `exrc`
+ownership machinery proves the check exists) but does not let `writeany` bypass it.
+- Rule (nvi): with `set writeany`, a write skips the "file exists / not owner /
+  permission" guard that otherwise requires `!`.
+- Verify: cannot be a screen diff -- use a file the editor would normally refuse to
+  overwrite (e.g. an existing file written without `!`), set `wa`, and confirm the
+  write now succeeds without `!`, matching nvi. (Manual / filesystem check, not a
+  goterm body diff.)
+- Fix: gate the existing write-safety check on the `writeany` option. Small. Pairs
+  naturally with the #41 secure work and the autowrite/backup write-path cluster.
+
+### 43. line wrap: no `@`-fill for a too-tall bottom logical line  [OPEN, small, cosmetic]
+When a single logical line is too tall to fit in the rows left at the bottom of the
+screen, nvi shows `@` continuation rows instead of a partial wrap; govi renders the
+partial wrap.
+- Rule (nvi vs_refresh): a logical line that cannot fully fit at the bottom is not
+  shown partially -- those rows are filled with `@`.
+- Verify: open a buffer with a very long line near the bottom at a narrow width and
+  compare the bottom rows (`~`/`@` fill) to nvi. Cosmetic only; buffer content is
+  unaffected, so isolate by reading the rendered rows, not the buffer.
+- Fix: add the `@`-fill case in the wrapping/redraw path (display.go) when a
+  logical line would overflow the last available rows. Small.
+
+### 44. `^E`/`^Y` cursor-follow is simplified  [OPEN, small/medium]
+The viewport scrolls correctly (built for the #2 paging fix) but the cursor-follow
+rule differs from nvi on the boundary.
+- Rule (nvi vs_sm_scroll): `^E`/`^Y` roll the view one line while keeping the
+  cursor on its current FILE line until that line would scroll off the screen, then
+  move the cursor the minimum to keep it on screen.
+- Verify (12x40): from a known top line, repeated `^E`/`^Y` and compare the cursor
+  row to nvi at the point the original cursor line reaches the edge (use `-count=2`
+  for cursor-only diffs).
+- Fix: apply nvi's "cursor stays until it would leave the screen" adjust in the
+  existing scrollDown/scrollUp path. Small/medium.
+
 ## Undocumented but functional (note, not a divergence)
 - vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes
   in ex mode and returns cleanly with `vi` -- but `^\` is NOT listed in govi's

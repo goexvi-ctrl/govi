@@ -96,7 +96,12 @@ func (e *Engine) exBang(c *exCmd) error {
 }
 
 // filterLines pipes lines [l1,l2] through cmd and replaces them with the output.
+// This is the shared body of the vi ! operator and :[range]!cmd, so the secure
+// gate here covers both (nvi marks ! as E_SECURE).
 func (e *Engine) filterLines(l1, l2 int64, cmd string) error {
+	if e.scr.opts.Bool("secure") {
+		return fmt.Errorf("The ! command is not supported when the secure edit option is set")
+	}
 	s := e.scr
 	if l1 < 1 || l2 > s.lineCount() || l1 > l2 {
 		return fmt.Errorf("Invalid address")
