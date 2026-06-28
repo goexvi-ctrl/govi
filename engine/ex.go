@@ -127,6 +127,7 @@ type exParser struct {
 	e   *Engine
 	s   []rune
 	pos int
+	err error // set by address parsing (e.g. a search address that fails)
 }
 
 func (e *Engine) parseEx(line string) (*exCmd, error) {
@@ -164,6 +165,9 @@ func (e *Engine) parseEx(line string) (*exCmd, error) {
 				p.skipBlanks()
 			}
 		}
+	}
+	if p.err != nil {
+		return nil, p.err
 	}
 
 	p.skipBlanks()
@@ -282,8 +286,49 @@ func (p *exParser) parseAddrBase(cur int64) (int64, bool) {
 			return mk.Line, true
 		}
 		return 0, false
+	case r == '/' || r == '?':
+		// Search address: /pat/ scans forward from the line after the current
+		// line, ?pat? backward from the line before; both wrap (wrapscan). The
+		// closing delimiter is optional. An empty pattern reuses the last one.
+		delim := p.next()
+		dir := searchFwd
+		if delim == '?' {
+			dir = searchBack
+		}
+		pat := p.readDelimited(delim)
+		lno, err := p.e.searchAddr(pat, cur, dir)
+		if err != nil {
+			p.err = err
+			return 0, false
+		}
+		return lno, true
 	}
 	return 0, false
+}
+
+// readDelimited reads up to the next unescaped delim (which it consumes if
+// present) and returns the text between. A backslash-escaped delimiter becomes a
+// literal delimiter; other backslash escapes are preserved for the regex.
+func (p *exParser) readDelimited(delim rune) string {
+	var b strings.Builder
+	for !p.eof() {
+		r := p.next()
+		if r == delim {
+			return b.String()
+		}
+		if r == '\\' && !p.eof() {
+			if p.peek() == delim {
+				b.WriteRune(delim)
+				p.next()
+				continue
+			}
+			b.WriteRune('\\')
+			b.WriteRune(p.next())
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func (p *exParser) parseNumber() (int64, bool) {

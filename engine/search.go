@@ -92,6 +92,29 @@ func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (Pos, bool
 	return Pos{}, false
 }
 
+// searchAddr resolves an ex search line-address (/pat/ or ?pat?): it finds the
+// line matching pat searching from the line adjacent to cur in dir, wrapping per
+// wrapscan, and returns that line number. The current line is excluded at the
+// start (it can only re-match after a wrap), matching nvi.
+func (e *Engine) searchAddr(pat string, cur int64, dir searchDir) (int64, error) {
+	re, err := e.compilePattern(pat)
+	if err != nil {
+		return 0, err
+	}
+	e.scr.lastSearchDir = dir
+	var from Pos
+	if dir == searchFwd {
+		from = Pos{Line: cur, Col: len(e.scr.lineRunes(cur))} // skip the rest of cur
+	} else {
+		from = Pos{Line: cur, Col: 0} // backward: limit -1 skips cur
+	}
+	pos, ok := e.searchFrom(re, from, dir)
+	if !ok {
+		return 0, fmt.Errorf("Pattern not found: %s", e.scr.lastPattern)
+	}
+	return pos.Line, nil
+}
+
 // startSearch runs a / or ? search for pattern and moves the cursor to the
 // match. dir is the search direction.
 func (e *Engine) startSearch(pattern string, dir searchDir) error {
