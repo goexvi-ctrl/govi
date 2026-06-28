@@ -284,6 +284,11 @@ func (e *Engine) global(c *exCmd, invert bool) error {
 		}
 	}
 
+	// Run the whole global as one undo group: nvi undoes an entire :g with a
+	// single u. beginChange/endChange nest, so the per-line sub-commands collapse
+	// into this one change set.
+	e.beginChange()
+	defer e.endChange()
 	var delta int64
 	for _, ln := range matches {
 		target := ln + delta

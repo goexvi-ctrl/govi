@@ -42,8 +42,8 @@ type changeset struct {
 type Log struct {
 	store buffer.LineStore
 
-	open    bool
-	cur     []rec
+	open    int // nesting depth; Begin/End nest so a command made of sub-commands
+	cur     []rec // (e.g. :g) records one undo group
 	curFrom Pos
 
 	undo []changeset
@@ -54,29 +54,39 @@ type Log struct {
 func New(store buffer.LineStore) *Log { return &Log{store: store} }
 
 // Begin opens a change set; cursor is where the cursor was before the edits.
+// Begin/End nest: a command implemented by running sub-commands (e.g. :g, which
+// runs an ex command per matching line) wraps the whole run in an outer
+// Begin/End so all the sub-edits collapse into a single undo group. Only the
+// outermost Begin sets the starting cursor.
 func (l *Log) Begin(cursor Pos) {
-	l.open = true
-	l.cur = nil
-	l.curFrom = cursor
+	if l.open == 0 {
+		l.cur = nil
+		l.curFrom = cursor
+	}
+	l.open++
 }
 
 // Pending reports whether a change set is open and has recorded mutations.
 // The buffer may differ from the last saved copy even before End runs (e.g.
 // while still in insert mode).
-func (l *Log) Pending() bool { return l.open && len(l.cur) > 0 }
+func (l *Log) Pending() bool { return l.open > 0 && len(l.cur) > 0 }
 
 // End closes the current change set; cursor is where the cursor ended up. An
 // empty change set (no mutations) is discarded. Any non-empty change set clears
-// the redo stack.
+// the redo stack. Inner (nested) Ends only decrement the depth; the outermost
+// End commits the accumulated group.
 func (l *Log) End(cursor Pos) {
-	if !l.open {
+	if l.open == 0 {
+		return
+	}
+	l.open--
+	if l.open > 0 {
 		return
 	}
 	if len(l.cur) > 0 {
 		l.undo = append(l.undo, changeset{recs: l.cur, before: l.curFrom, after: cursor})
 		l.redo = l.redo[:0]
 	}
-	l.open = false
 	l.cur = nil
 }
 
@@ -110,7 +120,7 @@ func (l *Log) Delete(lno int64) {
 }
 
 func (l *Log) record(r rec) {
-	if !l.open {
+	if l.open == 0 {
 		// Defensive: an unbracketed edit becomes its own change set so it can
 		// still be undone.
 		l.cur = []rec{r}
