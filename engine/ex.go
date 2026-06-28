@@ -45,6 +45,7 @@ func init() {
 		{full: "put", min: 2, fn: (*Engine).exPut},
 		{full: "join", min: 1, fn: (*Engine).exJoin},
 		{full: "write", min: 1, fn: (*Engine).exWrite},
+		{full: "wn", min: 2, fn: (*Engine).exWriteNext},
 		{full: "wq", min: 2, fn: (*Engine).exWriteQuit},
 		{full: "xit", min: 1, fn: (*Engine).exXit},
 		{full: "quit", min: 1, fn: (*Engine).exQuit},
@@ -60,7 +61,7 @@ func init() {
 		{full: "map", min: 3, fn: (*Engine).exMap},
 		{full: "unmap", min: 3, fn: (*Engine).exUnmap},
 		{full: "abbreviate", min: 2, fn: (*Engine).exAbbreviate},
-		{full: "unabbreviate", min: 4, fn: (*Engine).exUnabbreviate},
+		{full: "unabbreviate", min: 3, fn: (*Engine).exUnabbreviate},
 		{full: "edit", min: 1, fn: (*Engine).exEdit},
 		{full: "next", min: 1, fn: (*Engine).exNext},
 		{full: "previous", min: 4, fn: (*Engine).exPrev},
@@ -92,6 +93,10 @@ func init() {
 		{full: "help", min: 2, fn: (*Engine).exHelp},
 		{full: "exusage", min: 3, fn: (*Engine).exExusage},
 		{full: "viusage", min: 3, fn: (*Engine).exViusage},
+		{full: "undo", min: 1, fn: (*Engine).exUndo},
+		{full: "@", min: 1, fn: (*Engine).exAt},
+		{full: "*", min: 1, fn: (*Engine).exAt},
+		{full: "#", min: 1, fn: (*Engine).exNumber},
 	}
 }
 
@@ -135,6 +140,13 @@ type exParser struct {
 
 func (e *Engine) parseEx(line string) (*exCmd, error) {
 	p := &exParser{e: e, s: []rune(line)}
+	p.skipBlanks()
+	// Permit (and ignore) leading colons, e.g. ":g/re/:p" or a sourced script
+	// line written as ":2d". nvi strips any run of leading colons (ex.c: "any
+	// command could have preceding colons").
+	for p.peek() == ':' {
+		p.next()
+	}
 	p.skipBlanks()
 	if p.eof() {
 		return nil, nil
@@ -198,13 +210,13 @@ func (e *Engine) parseEx(line string) (*exCmd, error) {
 }
 
 // parseName reads the command name: a run of letters, or a single special-char
-// command (< > = & ~ # *).
+// command (< > = & ~ # * ! @).
 func (p *exParser) parseName() string {
 	if p.eof() {
 		return ""
 	}
 	switch p.peek() {
-	case '<', '>', '=', '&', '~', '#', '*', '!':
+	case '<', '>', '=', '&', '~', '#', '*', '!', '@':
 		return string(p.next())
 	}
 	var b strings.Builder

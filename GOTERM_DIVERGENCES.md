@@ -94,6 +94,19 @@ Fixed in display.go GutterWidth: return a fixed 8 (nvi O_NUMBER_LENGTH,
 O_NUMBER_FMT "%7lu ") when numbering is on, instead of the dynamic digits+1.
 Updated frontend/grid and frontend/tcell gutter tests to the 8-wide expectation.
 
+## Status: divergences #1-39 are addressed. The FIFTH wave (roster-driven,
+2026-06-28) added #37-39, all FIXED: #38 (`:una` abbreviation now resolves to
+`:unabbreviate` -- min lowered from 4 to 3), #39 (`:source`/ex parser now strips
+a leading `:` from command lines, nvi ex.c behavior), and #37 (the notable
+unimplemented ex commands are now implemented: `:undo`, `:@`/`:*` execute a buffer
+as EX commands, `:#` = `:number`, `:wn` write-and-next). Two residues under #37
+are deferred: `:z`/`:display` are purely informational display commands tangled
+with the unresolved info-message pagination (see "Inconclusive"), and the bare
+`:*` form replicates nvi's own arcane quirk only partially -- nvi's `:*` carries
+no address flag, so an address-sensitive buffer command (e.g. `d`) fails with
+"address of 0"; govi runs the buffer like the useful `:@` form (the same class of
+faithful-emulation gap as `2G0d(`).
+
 ## Status: divergences #1-36 are addressed. The FOURTH wave (autonomous, ex+vi
 focus, 2026-06-28) #17-36 is now fixed except two explained residues: #21 (the
 substitute-flag BEHAVIOR is fixed; only the multi-line usage-message pagination
@@ -560,6 +573,99 @@ re-open #32 and make `(`/`)` stop at a blank-line (paragraph) boundary. If there
 a specific nvi inconsistency that motivated the WONT-FIX, capture that exact repro
 here; I could not find one. (Note: this is about matching nvi, which is the project
 target, regardless of how vim -- which does NOT stop on blank lines -- behaves.)
+
+## Open (roster-driven mining: every :viusage/:exusage command, 2026-06-28)
+
+Used the captured nvi/govi `:viusage` and `:exusage` rosters as a test matrix and
+drove every command in both editors (NOT comparing the usage text itself -- that is
+just reference). Almost everything matched: vi `^A` (forward cursor-word search),
+`[[`/`]]` (sections), `_`, `^N`/`^P`/`^M`/`^J`, `!`-to-motion, and ex `:source`,
+`:p`/`:nu`/`:l`, `:cd`, `:file`, plus -- importantly -- `:q`/`:x` on a MODIFIED
+buffer correctly REFUSE in govi (no data loss; only the warning's screen rendering
+differs, which is the known message-pagination note). The residue is one cluster of
+unimplemented ex commands (#37) and one undocumented-but-working vi command (noted
+under "Undocumented but functional").
+
+### 37. several ex commands nvi lists in :exusage are no-ops in govi  [FIXED 2026-06-28, :z/:display deferred]
+FIX: implemented the data-affecting and trivial commands. `:undo` (ex.go table +
+exUndo, sharing the vi-mode undo/redo direction toggle, nvi ex_undo.c). `:@`/`:*`
+(parseName now accepts `@`; exAt executes the named buffer's lines as EX commands,
+defaulting to the last-executed buffer for `@@`/`@*`, nvi ex_at.c). `:#` registered
+as a synonym for `:number`. `:wn` (exWriteNext: write then advance the arg list).
+Verified vs real nvi (goterm coverage): `:@a` matches, `:undo` matches, `:1,3#`
+matches, `:wn` writes + advances (data identical; the multi-line info message
+renders via the known pagination path). The `:*` bare form is NOT made to match:
+nvi's C_STAR table entry has no address flag, so a bare `:*` does not default the
+address and an address-sensitive buffer command (`d`) errors with "address of 0"
+-- an arcane nvi quirk, like the `2G0d(` underflow, so govi runs the buffer like
+`:@`. DEFERRED: `:z` (screenful display) and `:display` (buffer/mark/screen/tag
+lists) are purely informational and route through the same info-message display
+that cannot be cleanly diffed here yet (see "Inconclusive").
+
+--- original analysis (retained) ---
+Driving each by its behavior (not its absence from govi's :exusage) shows these do
+nothing in govi while nvi acts:
+
+| command            | nvi                                   | govi        |
+|--------------------|---------------------------------------|-------------|
+| `:@x` / `:*x`      | execute buffer x as ex commands       | no-op       |
+| `:undo`            | undo last change                      | no-op       |
+| `:#` (range)       | print with line numbers (= `:number`) | no-op       |
+| `:z` (e.g. `:10z`) | display a screenful around a line      | no-op       |
+| `:display ...`     | show buffers / marks / screens / tags  | no-op       |
+| `:wn`              | write current file AND go to next      | writes only |
+
+Notes / priority: `:undo` and `:@`/`:*` are the notable ones -- govi has the vi-mode
+equivalents (`u`, and `@x` executes a buffer as vi KEYS) but not the EX forms (`:@`
+executes the buffer as EX COMMANDS, a different and useful thing). Repro for `:@`:
+buffer line 1 = "d", `"ayyj:@a` -> nvi deletes the current line (ran "d" as an ex
+command), govi leaves it. `:#` is just the `#` synonym for `:number` (`:nu`/`:number`
+already work, so this is a one-line alias). `:z`/`:display` are niche display
+commands. `:wn` writes correctly but does not advance to the next file. None of
+these touch data incorrectly; they simply do nothing.
+
+### 38. `:una` (abbreviation of `:unabbreviate`) is not recognized  [FIXED 2026-06-28]
+FIX: lowered the `unabbreviate` entry's `min` from 4 to 3 in the ex command table
+(ex.go), matching nvi's `una[bbrev]` and govi's own `:exusage` text. No collision
+with `unmap` (different prefix). Verified vs real nvi (goterm cov ex-unabbrev):
+`:ab zz zebra` then `:una zz` now removes the abbreviation in both.
+
+--- original analysis (retained) ---
+The full command works but its standard abbreviation does not resolve, so the
+abbreviation it should remove stays active.
+- Repro: `:ab zz zebra<CR>` then `:una zz<CR>` then `ozz <Esc>`.
+  - nvi: the line reads `zz ` -- `:una` removed the abbreviation.
+  - govi: the line reads `zebra ` -- `:una` did nothing; the abbreviation still fires.
+- `:unabbreviate zz` (spelled out) DOES work in govi (the abbrev is removed), and
+  `:ab` itself works, so this is purely a missing entry in govi's ex-command
+  abbreviation table: `una` -> `unabbreviate`. (Contrast `:unmap`, which resolves
+  fine.) Found by the coverage sweep (goterm `TestCoverageEx` -> `ex-unabbrev`).
+
+### 39. `:source` skips lines that begin with a leading `:`  [FIXED 2026-06-28]
+FIX: the ex parser (parseEx in ex.go) now strips a run of leading `:` characters
+(and surrounding blanks) before parsing the command, matching nvi ex.c ("any
+command could have preceding colons"). This covers sourced scripts and inline
+idioms like `:g/re/:p`. Verified vs real nvi (goterm cov so-colon): a script of
+`:%s/a/A/g` and `:2d` now runs in both.
+
+--- original analysis (retained) ---
+nvi tolerates an optional leading `:` on each command in a sourced ex script (a
+common idiom); govi silently ignores any such line.
+- Repro: source a file whose two lines are `:%s/a/A/g` and `:2d` over buffer
+  `alpha/beta/gamma`.
+  - nvi: runs both -> `AlphA` / `gAmmA` (line 2 deleted).
+  - govi: buffer unchanged (both lines skipped).
+- With the SAME commands written WITHOUT the leading colon (`%s/a/A/g`, `2d`),
+  govi runs them correctly and matches nvi. So `:source` works; it just does not
+  strip a leading `:` from script lines. Found by the coverage sweep (goterm
+  `TestCoverageSource`).
+
+## Undocumented but functional (note, not a divergence)
+- vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes
+  in ex mode and returns cleanly with `vi` -- but `^\` is NOT listed in govi's
+  `:viusage` (nvi lists it). So it is a documentation gap in the usage text, while
+  the command itself behaves. (govi's ex-mode screen rendering still differs per the
+  #28/#29 display notes, but the command is functional.) Worth adding to viusage.
 
 ## Inconclusive / needs a cleaner test
 - EX INFO-MESSAGE PAGINATION: for multi-line informational/error output (`:r` ->

@@ -17,6 +17,9 @@ parity with nvi; rows are validated against the nvi oracle where marked.
 The authoritative behavior spec is the official manual in [`nvi.md`](nvi.md);
 [`nvi-index.md`](nvi-index.md) maps every command/option to its line there, so a
 parity row can be checked against the source description quickly.
+[`VI_EX_COMMANDS.md`](VI_EX_COMMANDS.md) is the exhaustive catalog of every
+command/option in the nvi C sources; the rows below are reconciled against it so
+no nvi command is silently missing here.
 
 **Status legend** (per frontend)
 
@@ -47,6 +50,7 @@ parity row can be checked against the source description quickly.
 | `^W` | switch screens | yes | ❌ | ❌ | no split screens |
 | `^Z` | suspend | yes | ✅ | — | terminal job control only; blocked when `secure` |
 | `^^` | alternate file | yes | ✅✔ | ✅✔ | |
+| `^\` | switch to ex mode | yes | ✅ | ✅ | works (like `Q`); **absent from govi's `:viusage`** — usage-text gap, not a behavior gap |
 | `:` | ex command line | yes | ✅✔ | ✅✔ | |
 | `/` `?` `n` `N` | search / repeat | yes | ✅✔ | ✅✔ | wrapscan honored |
 | `!` | filter through shell | yes | ✅✔ | ✅✔ | `!motion` + `:range!cmd` |
@@ -104,15 +108,18 @@ parity row can be checked against the source description quickly.
 | `:[range]j[oin]` | yes | ✅✔ | ✅✔ | |
 | `:[range]<` `:[range]>` | yes | ✅✔ | ✅✔ | |
 | `:[range]s[ubstitute]` | yes | ✅✔ | ✅✔ | `g` flag, `&`, `\1`-`\9`, `\u\l\U\L\E`, `\n` |
+| `:&` / `:~` (repeat substitute) | yes | ✅ | ✅ | `:&` reuses RE+replacement; `:~` reuses last RE |
 | `:[range]g[lobal]` / `:v` | yes | ✅✔ | ✅✔ | |
 | `:[line]=` | yes | ✅ | ✅ | |
 | `:[range]p[rint]`/`nu[mber]`/`l[ist]` | yes | ✅ | ✅ | output via overlay/transcript |
+| `:[range]#` (synonym for `:nu[mber]`) | yes | ✅ | ✅ | implemented as a synonym for `:number` (GOTERM_DIVERGENCES #37) |
 | `:w[rite]` `:wq` `:x[it]` `:q[uit]` | yes | ✅✔ | ✅✔ | `!`, `:[range]w !cmd`, dirty guard (incl. insert-mode pending edits); temporary-buffer exit warning |
 | `:r[ead] file` `:r !cmd` | yes | ✅✔ | ✅✔ | |
 | `:[range]!cmd` / `:!cmd` | yes | ✅✔ | ✅✔ | |
 | `:set` / `:set all` / `:set opt` | yes | ✅✔ | ✅✔ | full option registry, grid display |
 | `:map` `:map!` `:unmap` | yes | ✅✔ | ✅✔ | non-recursive |
-| `:ab[breviate]` `:una[bbreviate]` | yes | ✅✔ | ✅✔ | |
+| `:ab[breviate]` `:unabbreviate` | yes | ✅✔ | ✅✔ | full forms work |
+| `:una` (abbrev of `:unabbreviate`) | yes | ✅ | ✅ | abbreviation now resolves (GOTERM_DIVERGENCES #38) |
 | `:e[dit]` `:n[ext]` `:prev`/`:N` `:rew[ind]` `:ar[gs]` | yes | ✅✔ | ✅✔ | argument list |
 | `:f[ile] [name]` | yes | ✅ | ✅ | status line; optional rename sets alternate file |
 | `:ta[g]` | yes | ✅✔ | ✅✔ | |
@@ -121,21 +128,24 @@ parity row can be checked against the source description quickly.
 | `Q` ex (line) mode | yes | ✅ | ✅ | terminal leaves the full screen for a scrolling line REPL (no banner); GUI shows an equivalent bottom-growing scrolling transcript |
 | `:[range]a[ppend]`/`i[nsert]`/`c[hange]` | yes | ✅ | ✅ | ex input mode; input ends on a sole `.` (works in ex mode and from the colon line) |
 | `:cd`/`:chdir` | yes | ✅ | ✅ | per-tab cwd; GUI also follows tab focus |
-| `:so[urce]` | yes | ✅ | ✅ | reads ex commands from a file |
+| `:so[urce]` | yes | ✅ | ✅ | reads ex commands from a file; a leading `:` on a line is tolerated (GOTERM_DIVERGENCES #39) |
 | `:mk[exrc]` | yes | ❌ | ❌ | write current options to an exrc file |
 | `:k`/`:ma` (mark) | yes | ❌ | ❌ | (vi `m` works) |
-| `:u[ndo]` | yes | ❌ | ❌ | (vi `u` works) |
+| `:u[ndo]` | yes | ✅ | ✅ | shares the vi `u` undo/redo direction toggle (GOTERM_DIVERGENCES #37) |
 | `:di[splay] b\|c\|s\|t` | yes | ❌ | ❌ | buffers/screens/tags inspector |
 | `:he[lp]` | yes | ✅ | ✅ | points to :viusage / :exusage |
 | `:exu[sage] [cmd]` | yes | ✅ | ✅ | lists implemented ex commands |
 | `:viu[sage] [key]` | yes | ✅ | ✅ | lists implemented vi keys |
 | `:o[pen]` | yes | — | — | non-objective (also unimplemented in nvi); distinct from vi `o` |
-| `:bg` `:fg` `:res[ize]` | yes | ❌ | ❌ | needs split screens |
+| `:bg` `:fg` `:res[ize]` `:sc[ript]` `:vs[plit]` | yes | ❌ | ❌ | needs split screens |
 | `:su[spend]`/`:st[op]` | yes | ✅ | — | terminal only; `!` skips autowrite; blocked when `secure` |
 | `:cs[cope]` | yes | — | — | cscope integration; out of scope |
 | `:pre[serve]` `:rec[over]` | yes | ✅ | ✅ | crash recovery (govi format) |
 | `:ve[rsion]` | yes | ✅ | ✅ | git-derived build metadata (`govi-0.1`, date, hash) |
-| `:@`/`:*` (exec buffer) `:w>>` `:wn` etc. | yes | 🟡 | 🟡 | partial |
+| `:[range]w[rite] >>file` (append) | yes | ✅ | ✅ | appends to file; "appended" message on status line, not paginated into body |
+| `:wn` | yes | ✅ | ✅ | writes the current file then advances to the next file (GOTERM_DIVERGENCES #37) |
+| `:@`/`:*` (execute buffer as **ex** commands) | yes | ✅ | ✅ | `:@` runs a buffer as ex commands; bare `:*` follows nvi's address-0 quirk (GOTERM_DIVERGENCES #37) |
+| `:[line]z [type] [count]` (ex screenful) | yes | ❌ | ❌ | no-op; vi `z` screen-positioning works (GOTERM_DIVERGENCES #37) |
 | `:sh[ell]` | yes | ✅ | ❌ | terminal spawns an interactive shell (`tcell` suspend); not implemented in GoVi.app; blocked when `secure` |
 
 ## Options
@@ -184,7 +194,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | Large-file editing | recno DB paging | ✅ | ✅ | paged piece-table line store; multi-GB |
 | Undo / redo | yes | ✅✔ | ✅✔ | multi-level; nvi directional `u`/`.` |
 | Marks | yes | 🟡 | 🟡 | line-granular fixups; intra-line column fixup partial |
-| Registers / cut buffers | yes | ✅✔ | ✅✔ | named a-z (A-Z append), numbered 1-9 |
+| Registers / cut buffers | yes | ✅✔ | ✅✔ | named a-z (A-Z append), numbered 1-9; **govi extensions** `"0` (yank) and `"-` (small-delete), absent in nvi |
 | Regex engine | BRE + extensions | ✅✔ | ✅✔ | backrefs, `\<`/`\>` (incl. Spencer's `[[:<:]]`/`[[:>:]]` word-boundary kludge), intervals, classes; `+?(){}\|` and `\+\?\w\W` literal as in nvi BRE. Pinned by a ~55-case `:s`/`:g` battery vs the oracle. (The Homebrew nvi binary's POSIX `[[:class:]]` is broken — Spencer's source is correct — so govi follows the source, a deliberate divergence from that binary.) |
 | Search | yes | ✅✔ | ✅✔ | line-oriented, wrapscan |
 | Maps / abbreviations | yes | 🟡 | 🟡 | non-recursive (noremap) |

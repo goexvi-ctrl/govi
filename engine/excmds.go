@@ -459,6 +459,62 @@ func (e *Engine) exWriteQuit(c *exCmd) error {
 	return nil
 }
 
+// exWriteNext implements :wn[ext] -- write the current file, then edit the next
+// file in the argument list (nvi ex_next.c, the write-and-advance form).
+func (e *Engine) exWriteNext(c *exCmd) error {
+	if e.argIdx+1 >= len(e.argv) {
+		return fmt.Errorf("No more files to edit")
+	}
+	if err := e.exWrite(c); err != nil {
+		return err
+	}
+	e.argIdx++
+	return e.Open(e.argv[e.argIdx])
+}
+
+// exUndo implements :u[ndo] -- undo the last change. Like nvi's ex_undo, this
+// shares the undo/redo direction toggle with the vi-mode 'u' command (ep->lundo),
+// so alternating :undo commands alternate undo and redo.
+func (e *Engine) exUndo(c *exCmd) error {
+	e.vi.doUndoCommand(e, false)
+	return nil
+}
+
+// exAt implements :@ buffer / :* buffer -- execute the named buffer's contents
+// as EX commands (nvi ex_at.c). With no buffer, or @@/@*, reuse the last executed
+// buffer (the SC_AT_SET / at_lbuf state shared with vi-mode @). Unlike vi-mode @,
+// the buffer's lines run as ex commands, not as vi keys.
+func (e *Engine) exAt(c *exCmd) error {
+	name := []rune(strings.TrimSpace(c.arg))
+	b := rune('@')
+	if len(name) > 0 {
+		b = name[0]
+	}
+	if b == '@' || b == '*' {
+		if e.scr.lastAtBuf == 0 {
+			return fmt.Errorf("No previous buffer to execute")
+		}
+		b = e.scr.lastAtBuf
+	}
+	if !validBufferName(b) {
+		return fmt.Errorf("Buffers should be specified using the English alphabet")
+	}
+	txt := e.scr.regs.Get(b)
+	if txt.Empty() {
+		return fmt.Errorf("Buffer %c is empty", b)
+	}
+	e.scr.lastAtBuf = b
+	for _, ln := range txt.Lines {
+		if err := e.exExecute(string(ln)); err != nil {
+			return err
+		}
+		if e.quit {
+			break
+		}
+	}
+	return nil
+}
+
 // exXit implements :x and ZZ -- write only if the buffer was modified, then quit.
 func (e *Engine) exXit(c *exCmd) error {
 	if strings.TrimSpace(c.arg) == "" {
