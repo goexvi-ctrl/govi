@@ -838,6 +838,14 @@ func (e *Engine) endChange() {
 	e.scr.log.End(undo.Pos{Line: e.scr.cursor.Line, Col: e.scr.cursor.Col})
 	e.scr.modified = true
 	e.noteRecovery()
+	// A committed buffer change starts a fresh undo group: the next 'u' should
+	// undo it. vi commands also reset this in finishCommand, but changes made
+	// through the ex/cmdline/filter path (e.g. !!cmd, :d) never reach
+	// finishCommand, so resetting here keeps the undo direction correct for them.
+	if e.vi != nil {
+		e.vi.lastStepRedo = true
+		e.vi.dotUndo = false
+	}
 }
 
 // normalizeKey maps special keys to their command-mode rune equivalents so the
