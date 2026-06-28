@@ -74,8 +74,17 @@ func (e *Engine) exDelete(c *exCmd) error {
 	s.regs.StoreDelete(c.buffer, txt)
 	e.deleteLines(l1, l2)
 	e.endChange()
+	// nvi's ex_delete sets only the line, leaving the column where it was
+	// (unlike interactive dd or :move/:copy); it does not jump to first-nonblank.
 	tl := clampLine(s, l1)
-	s.cursor = Pos{Line: tl, Col: s.firstNonBlank(tl)}
+	col := s.cursor.Col
+	if n := s.lineLen(tl); col > n-1 {
+		col = n - 1
+	}
+	if col < 0 {
+		col = 0
+	}
+	s.cursor = Pos{Line: tl, Col: col}
 	return nil
 }
 
