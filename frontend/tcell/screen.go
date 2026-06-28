@@ -228,10 +228,27 @@ func (f *Frontend) handleEvent(ev tc.Event) {
 		w, h := ev.Size()
 		f.eng.Resize(textRows(h), w)
 	case *tc.EventKey:
-		f.eng.Input(translateKey(ev))
+		f.inputKey(translateKey(ev))
 	case *tc.EventInterrupt:
 		f.eng.Input(engine.InterruptEvent{})
 	}
+}
+
+// inputKey feeds a translated key event to the engine, splitting the Alt-merged
+// event tcell synthesizes for a lone ESC that is immediately followed by another
+// byte in the same read. tcell's input parser turns "ESC x" into Alt+x (and
+// "ESC ^W" into Ctrl-Alt+w); see input.go inpStateEsc. vi has no Meta bindings,
+// so nvi resolves such a buffered ESC -- one that does not begin a recognized
+// key sequence -- to a plain Escape followed by the next key. Without this, an
+// <Esc> arriving in the same read as trailing bytes (scripted or pasted input)
+// would never exit insert mode and the trailing byte would be inserted as text.
+func (f *Frontend) inputKey(ev engine.Event) {
+	if k, ok := ev.(engine.KeyEvent); ok && k.Key == engine.KeyNone && k.Mods&engine.ModAlt != 0 {
+		f.eng.Input(engine.KeyEvent{Key: engine.KeyEscape})
+		f.eng.Input(engine.KeyEvent{Rune: k.Rune, Mods: k.Mods &^ engine.ModAlt})
+		return
+	}
+	f.eng.Input(ev)
 }
 
 // textRows is the number of buffer rows, reserving the bottom row for the
