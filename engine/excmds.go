@@ -288,9 +288,8 @@ func (e *Engine) exWrite(c *exCmd) error {
 		return e.writeToCommand(c, cmd)
 	}
 	named := arg != ""
-	if named {
-		arg = e.resolvePath(arg)
-	}
+	// Save resolves the name against the current directory at write time; pass it
+	// through as given so the buffer's name stays relative (nvi FR_NAME).
 	if err := e.Save(arg); err != nil {
 		return err
 	}
@@ -345,13 +344,12 @@ func (e *Engine) SaveAs(path string) error {
 	if path == "" {
 		return fmt.Errorf("No filename")
 	}
-	path = e.resolvePath(path)
 	old := e.scr.name
 	if old != "" && old != path {
 		e.altFile = old
 		e.scr.nameChanged = true
 	}
-	e.scr.name = path
+	e.scr.name = path // as given; Save resolves it at write time
 	e.fe.SetTitle(filepath.Base(path))
 	if err := e.Save(path); err != nil {
 		return err
@@ -367,37 +365,42 @@ func (e *Engine) SaveAs(path string) error {
 // Save writes the buffer to path (or the current file when path is empty).
 // An untitled buffer adopts path as its name on the first successful save.
 func (e *Engine) Save(path string) error {
-	if path == "" {
-		path = e.scr.name
+	// `given` is the name as typed, or the buffer's current as-given name. It is
+	// resolved against the current directory only here, at write time, so a :cd
+	// between editing and :w sends the file to the new directory (nvi behavior).
+	given := strings.TrimSpace(path)
+	if given == "" {
+		given = e.scr.name
 	}
-	if path == "" {
+	if given == "" {
 		return fmt.Errorf("No current filename")
 	}
-	path = e.resolvePath(path)
-	n, b, err := e.writeFile(path)
+	target := e.resolvePath(given)
+	n, b, err := e.writeFile(target)
 	if err != nil {
 		return err
 	}
 	if e.scr.name == "" {
-		e.scr.name = path
+		e.scr.name = given
 	}
-	if sameFile(path, e.scr.name) {
+	if e.samePath(given, e.scr.name) {
 		e.scr.modified = false
 		e.scr.nameChanged = false
 		e.removeRecovery() // saved: no recovery needed
 	}
-	e.scr.msg = fmt.Sprintf("%q: %d lines, %d bytes", filepath.Base(path), n, b)
+	e.scr.msg = fmt.Sprintf("%q: %d lines, %d bytes", filepath.Base(target), n, b)
 	e.scr.msgKind = MsgInfo
 	return nil
 }
 
-func sameFile(a, b string) bool {
+// samePath reports whether two buffer names refer to the same file once each is
+// resolved against the editor's current directory. Names are kept as given
+// (nvi FR_NAME), so a plain string compare is not enough.
+func (e *Engine) samePath(a, b string) bool {
 	if a == b {
 		return true
 	}
-	aa, errA := filepath.Abs(a)
-	bb, errB := filepath.Abs(b)
-	return errA == nil && errB == nil && aa == bb
+	return e.resolvePath(a) == e.resolvePath(b)
 }
 
 func (e *Engine) exWriteQuit(c *exCmd) error {

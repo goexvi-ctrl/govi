@@ -96,7 +96,7 @@ func (e *Engine) writeRecovery(path string) {
 	tmpName := tmp.Name()
 	tmp.Chmod(0o600)
 	w := bufio.NewWriter(tmp)
-	abs, _ := filepath.Abs(e.scr.name)
+	abs := e.resolvePath(e.scr.name) // resolve against the editor's cwd, not the process cwd
 	n := e.scr.store.Lines()
 	fmt.Fprintf(w, "%s\nFile: %s\nTime: %d\nLines: %d\n\n", recoverMagic, abs, time.Now().Unix(), n)
 	for i := int64(1); i <= n; i++ {

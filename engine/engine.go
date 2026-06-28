@@ -104,15 +104,21 @@ func (e *Engine) replaceBuffer(store buffer.LineStore, name string) {
 // unsaved buffer named path (vi's "new file"). Large files are paged from disk
 // rather than read whole.
 func (e *Engine) Open(path string) error {
-	path = e.canonicalPath(path)
+	// Keep the file name exactly as given (relative or absolute), like nvi's
+	// FR_NAME: it is what the status line shows and, crucially, what later file
+	// operations re-resolve against the *current* directory. Only the filesystem
+	// access below uses the resolved path. Storing the absolute path here would
+	// make a :w after a :cd write to the original directory instead of the new one.
+	name := strings.TrimSpace(path)
+	resolved := e.canonicalPath(name)
 	// Remember the file we are leaving as the alternate file.
-	if e.scr != nil && e.scr.name != "" && e.scr.name != path {
+	if e.scr != nil && e.scr.name != "" && e.scr.name != name {
 		e.altFile = e.scr.name
 	}
-	store, fh, err := buffer.NewPagedFile(path)
+	store, fh, err := buffer.NewPagedFile(resolved)
 	if err != nil {
 		if os.IsNotExist(err) {
-			e.replaceBuffer(buffer.NewMem(), path)
+			e.replaceBuffer(buffer.NewMem(), name)
 			if len(e.argv) > 1 {
 				e.showFileCount = true
 			}
@@ -126,17 +132,17 @@ func (e *Engine) Open(path string) error {
 		e.file.Close()
 	}
 	e.file = fh
-	e.replaceBuffer(store, path)
+	e.replaceBuffer(store, name)
 	if len(e.argv) > 1 {
 		e.showFileCount = true
 	}
 	chars := int64(0)
-	if fi, err := os.Stat(path); err == nil {
+	if fi, err := os.Stat(resolved); err == nil {
 		chars = fi.Size()
 	}
 	e.scr.msg = fmt.Sprintf("%s: %d lines, %d characters", e.scr.name, store.Lines(), chars)
 	e.scr.msgKind = MsgInfo
-	if e.hasRecovery(path) {
+	if e.hasRecovery(resolved) {
 		e.scr.msg = fmt.Sprintf("%s: recovery file exists; use :recover to restore it", e.scr.name)
 		e.scr.msgKind = MsgInfo
 	}
