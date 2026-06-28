@@ -92,6 +92,14 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 				m.insertRune(e, r)
 				m.insertText = append(m.insertText, r)
 			}
+		default:
+			// An unhandled control key (^A ^B ^G ^K ^P ...) is inserted literally,
+			// rendered in caret notation (nvi vi/v_txt.c: a control with no insert
+			// binding lands in the buffer), instead of being discarded.
+			if r, ok := ctrlRune(ev); ok && r != 0 {
+				m.insertRune(e, r)
+				m.insertText = append(m.insertText, r)
+			}
 		}
 		return
 	}
