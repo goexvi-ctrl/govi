@@ -11,15 +11,33 @@ import (
 
 // Regex-dependent ex commands: :s (substitute) and :g / :v (global).
 
-// exSubstitute implements :[range]s/pattern/replacement/[flags].
+// exSubstitute implements :[range]s/pattern/replacement/[flags][count].
 func (e *Engine) exSubstitute(c *exCmd) error {
+	// A bare :s (no pattern/delimiter) repeats the last substitution, like :&
+	// (nvi). The current line is the default range.
+	if strings.TrimSpace(c.arg) == "" {
+		return e.exAmp(c)
+	}
 	l1, l2, err := e.rangeNoCount(c)
 	if err != nil {
 		return err
 	}
-	pattern, repl, flags, err := splitSubst(c.arg)
+	pattern, repl, rawFlags, err := splitSubst(c.arg)
 	if err != nil {
 		return err
+	}
+	flags, count, hasCount, err := splitFlagsCount(rawFlags)
+	if err != nil {
+		return err
+	}
+	// A trailing count applies the substitution to count lines starting at the
+	// last addressed line (nvi/POSIX).
+	if hasCount {
+		l1 = l2
+		l2 = l1 + count - 1
+		if l2 > e.scr.lineCount() {
+			return fmt.Errorf("Invalid address")
+		}
 	}
 	re, err := e.compilePattern(pattern)
 	if err != nil {
@@ -133,6 +151,11 @@ func (e *Engine) exAmp(c *exCmd) error {
 	s.cursor = Pos{Line: clampLine(s, last), Col: s.firstNonBlank(clampLine(s, last))}
 	return nil
 }
+
+// exTilde implements :[range]~ -- repeat the last substitution using the last
+// regular expression used in any context. govi keeps a single lastPattern that
+// both search and substitute update, so this resolves to the same repeat as :&.
+func (e *Engine) exTilde(c *exCmd) error { return e.exAmp(c) }
 
 // substituteLine applies re to a single line, replacing the first match or all
 // matches (global). It returns the new line runes (which may contain '\n'), the
@@ -304,6 +327,53 @@ func (e *Engine) global(c *exCmd, invert bool) error {
 		}
 	}
 	return nil
+}
+
+// splitFlagsCount splits a substitute's trailing flags into the flag letters and
+// an optional repeat count (nvi: [cgr][count][#lp]). An unknown flag letter is a
+// usage error -- nvi rejects it and makes NO change, rather than silently
+// substituting (so :s/foo//n errors instead of deleting).
+func splitFlagsCount(s string) (flags string, count int64, hasCount bool, err error) {
+	usage := fmt.Errorf("Usage: [range]s[ubstitute] [/pattern/replace/] [cgr] [count] [#lp]")
+	rs := []rune(s)
+	i := 0
+	var fb strings.Builder
+	for i < len(rs) {
+		r := rs[i]
+		if r == ' ' || r == '\t' {
+			i++
+			continue
+		}
+		if r >= '0' && r <= '9' {
+			break
+		}
+		switch r {
+		case 'c', 'g', 'r', '#', 'l', 'p':
+			fb.WriteRune(r)
+			i++
+		default:
+			return "", 0, false, usage
+		}
+	}
+	for i < len(rs) && (rs[i] == ' ' || rs[i] == '\t') {
+		i++
+	}
+	start := i
+	for i < len(rs) && rs[i] >= '0' && rs[i] <= '9' {
+		count = count*10 + int64(rs[i]-'0')
+		i++
+	}
+	hasCount = i > start
+	// Trailing print flags (#lp) may follow the count.
+	for i < len(rs) {
+		switch rs[i] {
+		case ' ', '\t', '#', 'l', 'p':
+			i++
+		default:
+			return "", 0, false, usage
+		}
+	}
+	return fb.String(), count, hasCount, nil
 }
 
 // splitSubst parses pattern/replacement/flags from a substitute argument whose

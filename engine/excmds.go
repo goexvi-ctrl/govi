@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"govi/engine/mark"
 	"govi/engine/register"
 )
 
@@ -119,6 +120,21 @@ func (e *Engine) exPut(c *exCmd) error {
 	return nil
 }
 
+// exMark implements :[line]k<char> and :[line]mark <char> -- set mark <char> on
+// the addressed line (default current), matching the vi m command (nvi ex_mark).
+func (e *Engine) exMark(c *exCmd) error {
+	name := strings.TrimSpace(c.arg)
+	if len([]rune(name)) != 1 {
+		return fmt.Errorf("Usage: mark <character>")
+	}
+	lno := c.addr2
+	if c.addrCount == 0 {
+		lno = e.scr.cursor.Line
+	}
+	e.scr.marks.Set([]rune(name)[0], mark.Mark{Line: lno, Col: 0})
+	return nil
+}
+
 func (e *Engine) exJoin(c *exCmd) error {
 	l1, l2, err := e.rangeOf(c)
 	if err != nil {
@@ -132,7 +148,10 @@ func (e *Engine) exJoin(c *exCmd) error {
 	}
 	s := e.scr
 	e.beginChange()
-	// Join l1..l2 into one line.
+	// Join l1..l2 into one line, tracking the column of the last join boundary so
+	// the cursor lands there (nvi/vi J: on the inserted separator, or the last
+	// char of the first part when no separator is added with !).
+	joinCol := 0
 	for l1 < l2 {
 		a := cloneR(s.lineRunes(l1))
 		b := s.lineRunes(l1 + 1)
@@ -145,12 +164,20 @@ func (e *Engine) exJoin(c *exCmd) error {
 		if !c.force && len(a) > 0 && a[len(a)-1] != ' ' && a[len(a)-1] != '\t' && (len(b) == 0 || b[0] != ')') {
 			sep = []rune{' '}
 		}
+		if len(sep) > 0 {
+			joinCol = len(a) // the inserted blank
+		} else if len(a) > 0 {
+			joinCol = len(a) - 1 // last char of the first part
+		} else {
+			joinCol = 0
+		}
 		s.setLine(l1, append(append(a, sep...), b...))
 		s.deleteLine(l1 + 1)
 		l2--
 	}
 	e.endChange()
-	s.cursor = Pos{Line: clampLine(s, l1), Col: 0}
+	s.cursor = Pos{Line: clampLine(s, l1), Col: joinCol}
+	s.clampCursor()
 	return nil
 }
 
@@ -202,13 +229,27 @@ func (e *Engine) exCopy(c *exCmd) error {
 	return nil
 }
 
-func (e *Engine) exShiftRight(c *exCmd) error { return e.shift(c, +1) }
-func (e *Engine) exShiftLeft(c *exCmd) error  { return e.shift(c, -1) }
+func (e *Engine) exShiftRight(c *exCmd) error { return e.shift(c, '>') }
+func (e *Engine) exShiftLeft(c *exCmd) error  { return e.shift(c, '<') }
 
-func (e *Engine) shift(c *exCmd, dir int) error {
+func (e *Engine) shift(c *exCmd, ch rune) error {
+	// Repeated shift characters add levels: :1>> shifts twice, :1<<< thrice
+	// (nvi). The first char was consumed as the command name; count the rest.
+	levels := 1
+	a := []rune(strings.TrimSpace(c.arg))
+	i := 0
+	for i < len(a) && a[i] == ch {
+		levels++
+		i++
+	}
+	c.arg = strings.TrimSpace(string(a[i:]))
 	l1, l2, err := e.rangeOf(c)
 	if err != nil {
 		return err
+	}
+	dir := levels
+	if ch == '<' {
+		dir = -levels
 	}
 	e.shiftLines(l1, l2, dir)
 	s := e.scr

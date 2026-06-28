@@ -17,6 +17,9 @@ type exCmdUsage struct {
 var exCmdMeta = map[string]exCmdUsage{
 	"!":            {"filter lines through a shell command", ":[range] !cmd\n:!cmd"},
 	"&":            {"repeat the last substitute", ":&"},
+	"~":            {"repeat the last substitute with the last regular expression", ":~"},
+	"k":            {"set a mark on a line", ":[line] k <char>"},
+	"mark":         {"set a mark on a line", ":[line] mark <char>"},
 	"<":            {"shift lines left", ":[range] < [count]"},
 	">":            {"shift lines right", ":[range] > [count]"},
 	"=":            {"display line number", ":[line]="},
