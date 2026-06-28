@@ -255,13 +255,24 @@ func (e *Engine) put(m *vimode, after bool) {
 	m.count, m.haveCount = 0, false
 
 	e.beginChange()
+	var firstStart Pos
+	firstSet := false
 	for i := 0; i < count; i++ {
 		if txt.Kind == register.LineWise {
 			e.putLines(after, txt)
 		} else {
-			e.putChars(after, txt)
+			start := e.putChars(after, txt)
+			if !firstSet {
+				firstStart, firstSet = start, true
+			}
 		}
 		after = afterAfterFirstPut(after, txt)
+	}
+	// nvi leaves the cursor on the FIRST character of a characterwise put
+	// (vi/v_put.c), unlike vim/POSIX which lands on the last. Linewise put
+	// already positions at the first non-blank of the first put line.
+	if firstSet {
+		s.cursor = firstStart
 	}
 	e.endChange()
 	m.changed = true
@@ -289,7 +300,10 @@ func (e *Engine) putLines(after bool, txt register.Text) {
 	s.cursor = Pos{Line: first, Col: s.firstNonBlank(clampLine(s, first))}
 }
 
-func (e *Engine) putChars(after bool, txt register.Text) {
+// putChars inserts a characterwise register and leaves the cursor on the LAST
+// inserted char so a repeated (counted) put stacks correctly; it returns the
+// position of the FIRST inserted char, which put() uses for the final cursor.
+func (e *Engine) putChars(after bool, txt register.Text) Pos {
 	s := e.scr
 	col := s.cursor.Col
 	if after && s.lineLen(s.cursor.Line) > 0 {
@@ -298,6 +312,7 @@ func (e *Engine) putChars(after bool, txt register.Text) {
 	line := s.lineRunes(s.cursor.Line)
 	col = clampIdx(col, len(line))
 	head, tail := cloneR(line[:col]), cloneR(line[col:])
+	start := Pos{Line: s.cursor.Line, Col: col}
 
 	if len(txt.Lines) == 1 {
 		ins := txt.Lines[0]
@@ -307,7 +322,7 @@ func (e *Engine) putChars(after bool, txt register.Text) {
 		if s.cursor.Col < col {
 			s.cursor.Col = col
 		}
-		return
+		return start
 	}
 
 	// Multi-line characterwise put.
@@ -321,6 +336,7 @@ func (e *Engine) putChars(after bool, txt register.Text) {
 	lastContent := append(cloneR(txt.Lines[lastIdx]), tail...)
 	s.appendLine(insLine, lastContent)
 	s.cursor = Pos{Line: insLine + 1, Col: len(txt.Lines[lastIdx])}
+	return start
 }
 
 // replaceChar implements r: replace count chars under/after the cursor with c.
