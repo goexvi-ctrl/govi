@@ -94,6 +94,13 @@ Fixed in display.go GutterWidth: return a fixed 8 (nvi O_NUMBER_LENGTH,
 O_NUMBER_FMT "%7lu ") when numbering is on, instead of the dynamic digits+1.
 Updated frontend/grid and frontend/tcell gutter tests to the 8-wide expectation.
 
+## Status: divergences #1-45 are addressed. #45 (2026-06-28, DATA-SAFETY) FIXED:
+implemented the `lock` option (advisory `flock` on a dedicated fd, read-only
+fallback when another process -- including nvi -- holds it, re-locked across the
+temp+rename write so the lock survives saves) AND the readonly write-guard it
+depends on, which was also missing (`:set ro` + `:w` used to write silently).
+Cross-process nvi<->govi interop verified both directions.
+
 ## Status: divergences #1-44 are addressed. The SIXTH wave (work-items #40-44,
 2026-06-28): #40 (vi `z+`/`z^` screen types) FIXED; #41 (`secure` now blocks the
 `!` filter path -- the one ungated shell-out) FIXED, with the report's `:source`
@@ -797,6 +804,79 @@ substantial change to govi's logical-line viewport model, NOT the "small/medium"
 the entry assumed. It belongs with the line-wrap cluster (#43 and the
 "Inconclusive: LONG-LINE WRAP" note), so it is left as a known architectural
 simplification rather than fixed piecemeal.
+
+### 45. `lock` option not implemented -- no concurrent-edit protection  [FIXED 2026-06-28]
+FIX (engine): implemented the `lock` option plus the readonly write-guard it
+depends on -- the latter turned out to be MISSING too (a second real gap):
+- readonly guard (excmds.go exWrite): `:w` of the buffer's own file is now
+  refused when `readonly` is set, unless forced -- "Read-only file, not written;
+  use ! to override" (nvi common/exf.c file_write). Previously `:set ro` then
+  `:w` silently wrote.
+- lock (engine.go Open + lock_unix.go): on opening a file with `lock` on, take a
+  non-blocking `flock(LOCK_EX|LOCK_NB)` on a DEDICATED fd (nvi keeps a separate
+  lock fd). On EAGAIN/EWOULDBLOCK (held elsewhere) the buffer opens read-only
+  with "<file>: already locked, session is read-only"; any other error means
+  locking is unsupported and editing proceeds (nvi LOCK_FAILED). The lock is
+  released on :e/:n/buffer-close/exit.
+- temp+rename re-lock (excmds.go Save -> relockAfterWrite): govi writes via a
+  temp file + atomic rename, which orphans the inode the lock was held on, so the
+  lock would evaporate on the first :w (nvi writes in place and keeps it). After
+  a successful self-write govi re-takes the lock on the new inode.
+- A non-unix stub (lock_other.go) treats locking as unsupported.
+
+Verified vs real nvi (cross-process, advisory flock is shared): nvi-then-nvi and
+govi-then-govi BOTH make instance 2 read-only and refuse its `:w`; and
+nvi<->govi interoperate BOTH directions; `:w!` overrides; a single session's
+self-`:w` still writes and KEEPS the lock so a later second instance is still
+read-only (matching nvi, not the temp-rename lock-loss). `:set ro` + `:w` now
+refuses in both. Full `go test ./...` passes (conformance opens unique temp files,
+no lock collisions).
+
+--- original analysis (retained) ---
+nvi's `lock` option (default ON) takes an advisory lock on the file being edited;
+if the file is already locked (typically because it is open in another editor
+window), nvi cannot acquire the lock, warns the user, and opens the file
+READ-ONLY so that only the first editor can write it. This prevents the classic
+data-loss case: two windows open on one file, and the second window's `:w`
+silently clobbers the first window's unsaved changes. govi does not implement it
+(parity.md: lock ❌), so a second govi happily edits and overwrites. This is the
+same data-safety family as #42 (the overwrite guard) -- treat it as a real
+feature, not legacy cruft.
+
+Rule (nvi common/exf.c `file_lock`, called from `file_init`):
+- When `O_LOCK` is set, on opening a file for editing nvi attempts a NON-BLOCKING
+  exclusive lock (flock `LOCK_EX|LOCK_NB`, falling back to fcntl/lockf).
+- LOCK_SUCCESS: hold the lock for the session; release it on file close / switch /
+  exit (closing the fd releases an flock).
+- LOCK_UNAVAIL (held by another process): set the buffer read-only (nvi's
+  `F_RDONLY`) and warn, e.g. "<file>: already locked, session is read-only".
+  Writing then requires the usual readonly override (`:w!`).
+- LOCK_FAILED (locking unsupported, e.g. some NFS): proceed normally -- graceful
+  fallback, no warning, not read-only.
+- The lock is advisory and keyed on the file, so it works cross-program: an flock
+  held by nvi blocks govi and vice-versa.
+
+Implementation notes for govi:
+- Gate on the existing `lock` option (already in the option table; currently
+  inert).
+- govi likely reads the file into its piece-table and may not keep the original
+  fd open. flock is released when its fd closes, so govi must hold a dedicated
+  open fd (the file itself, or a lock fd) for the lifetime of the edit session and
+  close it on `:e`/`:n`/buffer-close/exit.
+- Set the buffer read-only on LOCK_UNAVAIL and emit the warning so the existing
+  readonly write-guard (and #42's overwrite guard) then protect the file.
+- Apply on the read/edit path; nvi also locks on read/write, but the edit-open
+  case is the user-visible one to do first.
+
+Verify (cross-process, oracle = a second nvi):
+- Start editor instance 1 on file F (acquires the lock). Start instance 2 on the
+  SAME F. Instance 2 must come up read-only with the warning, and a plain `:w` in
+  instance 2 must REFUSE (only `:w!` overrides). Capture nvi-then-nvi as the
+  reference, then require govi-then-govi to match it, AND nvi-then-govi /
+  govi-then-nvi to interoperate (the cross-program advisory lock). A goterm test
+  can drive two Terms on one temp file and diff instance 2's status/readonly state
+  and whether a no-force `:w` changed the file on disk (cf. the #42 disk-based
+  guard in goterm coverage_test.go `TestCoverageRecentFixes`).
 
 ## Undocumented but functional (note, not a divergence)
 - vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes

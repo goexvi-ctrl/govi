@@ -330,6 +330,13 @@ func (e *Engine) exWrite(c *exCmd) error {
 		return e.writeToCommand(c, cmd)
 	}
 	named := arg != ""
+	// nvi readonly guard (common/exf.c file_write): writing the buffer's own file
+	// is refused when `readonly` is set (set by the user, or by the lock option
+	// when another process holds the file), unless forced. Writing to a different
+	// name is allowed -- readonly is a property of the edit session's file.
+	if !c.force && (arg == "" || e.samePath(arg, e.scr.name)) && e.scr.opts.Bool("readonly") {
+		return fmt.Errorf("Read-only file, not written; use ! to override")
+	}
 	// nvi overwrite guard (common/exf.c file_write): refuse to clobber an
 	// existing file that is not the buffer's own file (or whose name was changed
 	// via :f) unless the write is forced (:w!) or the `writeany` option is set.
@@ -445,6 +452,9 @@ func (e *Engine) Save(path string) error {
 		e.scr.modified = false
 		e.scr.nameChanged = false
 		e.removeRecovery() // saved: no recovery needed
+		// writeFile renamed a temp over the file, replacing the inode the lock
+		// was held on; re-take it so the session keeps the lock across saves.
+		e.relockAfterWrite(target)
 	}
 	e.scr.msg = fmt.Sprintf("%q: %d lines, %d bytes", filepath.Base(target), n, b)
 	e.scr.msgKind = MsgInfo

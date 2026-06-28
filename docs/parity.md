@@ -176,12 +176,13 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | `lisp`, `redraw`, `slowopen`/`slow`, `optimize`/`opt` | yes | — | — | non-objectives (see below); settable but never drive behavior |
 | `autowrite` (aw) | yes | ❌ | ❌ | auto-write on file/tag/navigation commands |
 | `backup` | yes | ❌ | ❌ | backup file path and versioning |
-| `lock` | yes | ❌ | ❌ | file locking before write |
+| `lock` | yes | ✅ | ✅ | advisory `flock` on the edited file (held across saves); a file already locked by another process (incl. nvi) opens read-only (GOTERM_DIVERGENCES #45) |
 | `recdir` | yes | ✅ | ✅ | recovery directory for crash-recovery files |
 | `writeany` (wa) | yes | ✅ | ✅ | bypasses the "file exists, not written" overwrite guard (GOTERM_DIVERGENCES #42) |
+| `readonly` (ro) | yes | ✅ | ✅ | refuses `:w` of the buffer's own file unless forced; also set by `lock` (GOTERM_DIVERGENCES #45) |
 | `ruler` | yes | ✅ | ✅ | row/column on status line when no message |
 | `showmode` (smd) | yes | ✅ | ✅ | mode indicator on status line; `*` when modified |
-| `secure` | yes | 🟡 | 🟡 | blocks `:shell` when set; `!` filters still run |
+| `secure` | yes | ✅ | ✅ | blocks all shell-out paths (`:shell`, `!` filters, `:!`, `:r !`, `:w !`, suspend) (GOTERM_DIVERGENCES #41) |
 | `matchtime` (mt) | yes | ✅ | ✅ | showmatch flash duration (tenths of a second) |
 | `report` | yes | ⚙️ | ⚙️ | change-report threshold (recognized; used by `:r` line count) |
 | `octal` | yes | ⚙️ | ⚙️ | unknown char display format (recognized, inert) |

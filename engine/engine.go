@@ -34,6 +34,7 @@ type Engine struct {
 	tagStack      []tagLoc // tag jump stack for ^T
 
 	file    *os.File // open handle backing a paged buffer, if any
+	lockF   *os.File // dedicated fd holding the advisory edit lock (nvi ep->fd)
 	quit    bool
 	exitMsg string // set when a signal caused the exit; printed by the host
 
@@ -131,6 +132,7 @@ func (e *Engine) Open(path string) error {
 	if e.file != nil {
 		e.file.Close()
 	}
+	e.releaseLock() // drop any lock held on the previous file
 	e.file = fh
 	e.replaceBuffer(store, name)
 	if len(e.argv) > 1 {
@@ -142,6 +144,16 @@ func (e *Engine) Open(path string) error {
 	}
 	e.scr.msg = fmt.Sprintf("%s: %d lines, %d characters", e.scr.name, store.Lines(), chars)
 	e.scr.msgKind = MsgInfo
+	// Advisory file lock (nvi `lock` option / common/exf.c file_lock): take a
+	// non-blocking exclusive lock for the edit session on a dedicated fd. If
+	// another process holds it, open read-only and warn so the readonly
+	// write-guard protects the first session's edits. The lock is keyed on the
+	// file, so it interoperates with nvi.
+	if e.scr.opts.Bool("lock") && e.acquireLock(resolved) == lockUnavail {
+		e.scr.opts.b["readonly"] = true
+		e.scr.msg = fmt.Sprintf("%s: already locked, session is read-only", e.scr.name)
+		e.scr.msgKind = MsgInfo
+	}
 	if e.hasRecovery(resolved) {
 		e.scr.msg = fmt.Sprintf("%s: recovery file exists; use :recover to restore it", e.scr.name)
 		e.scr.msgKind = MsgInfo
@@ -162,12 +174,53 @@ func (e *Engine) OpenArgs(args []string) error {
 
 // Close releases any file handle held by the engine.
 func (e *Engine) Close() error {
+	e.releaseLock()
 	if e.file != nil {
 		err := e.file.Close()
 		e.file = nil
 		return err
 	}
 	return nil
+}
+
+// acquireLock takes the advisory edit lock on resolved using a dedicated fd
+// (nvi keeps a separate lock fd, ep->fd). On success the fd is held in e.lockF
+// until released; on LOCK_UNAVAIL/LOCK_FAILED the fd is closed and the result is
+// returned so the caller can fall back to read-only.
+func (e *Engine) acquireLock(resolved string) lockResult {
+	e.releaseLock()
+	f, err := os.Open(resolved)
+	if err != nil {
+		return lockFailed
+	}
+	if r := tryFileLock(f); r == lockSuccess {
+		e.lockF = f
+		return r
+	} else {
+		f.Close()
+		return r
+	}
+}
+
+// releaseLock drops the advisory edit lock (closing its fd releases the flock).
+func (e *Engine) releaseLock() {
+	if e.lockF != nil {
+		e.lockF.Close()
+		e.lockF = nil
+	}
+}
+
+// relockAfterWrite re-takes the advisory lock after a temp-file+rename write.
+// The rename replaces the inode the lock was held on with a new one, so without
+// this the lock would silently evaporate on the first :w (nvi writes in place
+// and keeps its lock). Best-effort: only when we already hold the lock and are
+// writing the buffer's own file; a failure leaves the session unlocked rather
+// than erroring a successful write.
+func (e *Engine) relockAfterWrite(resolved string) {
+	if e.lockF == nil {
+		return
+	}
+	e.acquireLock(resolved)
 }
 
 // ShouldQuit reports whether a quit command has been issued; the host event
