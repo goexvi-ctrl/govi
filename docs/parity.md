@@ -40,7 +40,7 @@ no nvi command is silently missing here.
 | `^A` | search forward for word under cursor | yes | ✅ | ✅ | |
 | `^B` `^F` | page up / down | yes | ✅ | ✅ | |
 | `^D` `^U` | scroll down / up half-screen | yes | ✅ | ✅ | maintains column |
-| `^E` `^Y` | scroll one line, cursor fixed | yes | 🟡 | 🟡 | scrolls; cursor-follow simplified |
+| `^E` `^Y` | scroll one line, cursor fixed | yes | 🟡 | 🟡 | matches nvi on non-wrapping files (cursor-follow + boundary verified); scrolls by logical line, not screen row, so wrapped lines differ (GOTERM_DIVERGENCES #44) |
 | `^G` | file information | yes | ✅ | ✅ | |
 | `^H` `h` / `l` `space` | left / right | yes | ✅✔ | ✅✔ | |
 | `^J` `^N` `j` / `^P` `k` | down / up | yes | ✅✔ | ✅✔ | logical-line; maintains display column |

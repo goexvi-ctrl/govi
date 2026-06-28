@@ -94,6 +94,19 @@ Fixed in display.go GutterWidth: return a fixed 8 (nvi O_NUMBER_LENGTH,
 O_NUMBER_FMT "%7lu ") when numbering is on, instead of the dynamic digits+1.
 Updated frontend/grid and frontend/tcell gutter tests to the 8-wide expectation.
 
+## Status: divergences #1-44 are addressed. The SIXTH wave (work-items #40-44,
+2026-06-28): #40 (vi `z+`/`z^` screen types) FIXED; #41 (`secure` now blocks the
+`!` filter path -- the one ungated shell-out) FIXED, with the report's `:source`
+claim corrected (nvi does not secure `:source`); #42 FIXED and upgraded -- govi
+had NO overwrite guard at all (silent data loss on `:w other-existing-file`), so
+nvi's "exists, not written" guard was implemented and `writeany` now bypasses it.
+#43 and #44 were RE-SCOPED after verification: the cursor-follow (#44) and static
+wrapped rendering (#43) already MATCH nvi on non-wrapping/common cases; the real
+residual is a shared architectural gap -- govi's viewport scrolls by logical line
+and lacks nvi's screen-row soft map (SMAP) for lines taller than the screen and
+for `^E`/`^Y` over wrapped lines. Both are display-only (buffer always correct)
+and are tracked together as the line-wrap/soft-map cluster, not small fixes.
+
 ## Status: divergences #1-39 are addressed. The FIFTH wave (roster-driven,
 2026-06-28) added #37-39, all FIXED: #38 (`:una` abbreviation now resolves to
 `:unabbreviate` -- min lowered from 4 to 3), #39 (`:source`/ex parser now strips
@@ -744,29 +757,46 @@ ownership machinery proves the check exists) but does not let `writeany` bypass 
 - Fix: gate the existing write-safety check on the `writeany` option. Small. Pairs
   naturally with the #41 secure work and the autowrite/backup write-path cluster.
 
-### 43. line wrap: no `@`-fill for a too-tall bottom logical line  [OPEN, small, cosmetic]
-When a single logical line is too tall to fit in the rows left at the bottom of the
-screen, nvi shows `@` continuation rows instead of a partial wrap; govi renders the
-partial wrap.
-- Rule (nvi vs_refresh): a logical line that cannot fully fit at the bottom is not
-  shown partially -- those rows are filled with `@`.
-- Verify: open a buffer with a very long line near the bottom at a narrow width and
-  compare the bottom rows (`~`/`@` fill) to nvi. Cosmetic only; buffer content is
-  unaffected, so isolate by reading the rendered rows, not the buffer.
-- Fix: add the `@`-fill case in the wrapping/redraw path (display.go) when a
-  logical line would overflow the last available rows. Small.
+### 43. line wrap: no `@`-fill for a too-tall bottom logical line  [OPEN, architectural -- soft-map cluster with #44]
+RE-SCOPED after verification 2026-06-28. govi's STATIC wrapped rendering already
+matches nvi in the common cases probed (a long line wrapping to several rows at
+the bottom shows the same rows and a blank/`~` tail in both; scrolling short
+lines past it matches). The `@`-fill did NOT reproduce there. The behavior that
+DOES diverge is the same soft-map gap as #44: when a logical line is taller than
+the whole screen, nvi keeps prior context and the cursor on its file line at a
+screen-row offset, e.g. (12x40, line 2 ~604 chars) `2G` -> nvi keeps "top line"
+at row 0 and the huge line from row 1 (cursor 1,0), while govi scrolls the huge
+line to row 0 (cursor 0,0); `2Gj` -> nvi cursor row 10, govi 0,0. nvi's `@`
+continuation fill is one face of that screen-row (SMAP) machinery.
+- Cosmetic/positional only: buffer content is always correct in govi.
+- Fix: shares the sub-line viewport offset rework described in #44 (renderer +
+  scrollToCursor + paging). Tracked together with #44 and the "Inconclusive:
+  LONG-LINE WRAP" note as the line-wrap/soft-map cluster; not a standalone small
+  fix.
 
-### 44. `^E`/`^Y` cursor-follow is simplified  [OPEN, small/medium]
-The viewport scrolls correctly (built for the #2 paging fix) but the cursor-follow
-rule differs from nvi on the boundary.
-- Rule (nvi vs_sm_scroll): `^E`/`^Y` roll the view one line while keeping the
-  cursor on its current FILE line until that line would scroll off the screen, then
-  move the cursor the minimum to keep it on screen.
-- Verify (12x40): from a known top line, repeated `^E`/`^Y` and compare the cursor
-  row to nvi at the point the original cursor line reaches the edge (use `-count=2`
-  for cursor-only diffs).
-- Fix: apply nvi's "cursor stays until it would leave the screen" adjust in the
-  existing scrollDown/scrollUp path. Small/medium.
+### 44. `^E`/`^Y` cursor-follow is simplified  [OPEN, architectural -- wrapped lines only; non-wrap verified MATCHING]
+RE-SCOPED after verification 2026-06-28. The cursor-follow rule the entry blamed
+is actually CORRECT: on a non-wrapping file, govi matches nvi EXACTLY for `^E`
+and `^Y` across single steps, counts (`3^E`, `5^E`, `3^Y`), the EOF clamp, the
+last line, and column maintenance (`$`, `ll`), including the boundary frame where
+the cursor reaches the top/bottom row and then sticks (e.g. 12x40, 40 lines:
+`30G` then six `^Y` -> top 025..019, cursor row 5->10 then held at 10 -- identical
+in both). So scrollDown/scrollUp are fine.
+
+The REAL residual divergence is granularity on WRAPPED long lines: nvi's `^E`/`^Y`
+scroll by SCREEN rows (the soft map, vs_sm_scroll), so one `^E` can put a
+wrap-continuation segment of a logical line at the top and keep the cursor on the
+same file line at a wrapped column; govi's viewport top is a whole LOGICAL line,
+so one `^E` advances to the next file line. Repro (12x40, lines of ~95 chars that
+wrap to 3 rows): `8G^E` -> nvi tops on a continuation row (cursor 4,40), govi tops
+on the next logical line (cursor 0,0).
+
+Closing this needs a sub-line viewport offset (which wrap segment sits on the top
+row) threaded through the renderer, scrollToCursor, and the paging math -- a
+substantial change to govi's logical-line viewport model, NOT the "small/medium"
+the entry assumed. It belongs with the line-wrap cluster (#43 and the
+"Inconclusive: LONG-LINE WRAP" note), so it is left as a known architectural
+simplification rather than fixed piecemeal.
 
 ## Undocumented but functional (note, not a divergence)
 - vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes
