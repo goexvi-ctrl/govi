@@ -94,12 +94,18 @@ Fixed in display.go GutterWidth: return a fixed 8 (nvi O_NUMBER_LENGTH,
 O_NUMBER_FMT "%7lu ") when numbering is on, instead of the dynamic digits+1.
 Updated frontend/grid and frontend/tcell gutter tests to the 8-wide expectation.
 
-## Status: divergences #1-16 are ALL FIXED. The third mining wave (yank/register/@,
-2026-06-27) found #14-16, now fixed (2026-06-28), plus two accepted differences
-(see "Known/accepted"). The single-command set (editing/motion/search/ex/paging/
-registers/structure) and the multi-step session sets (sequences/advanced/more)
-are 0 diverged and `go test ./...` passes. The #7-13 group was the second wave
-(multi-step "session" testing); #14-16 the third (yank/register/@ probing).
+## Status: divergences #1-35 are addressed. The FOURTH wave (autonomous, ex+vi
+focus, 2026-06-28) #17-35 is now fixed except three explained residues: #21 (the
+substitute-flag BEHAVIOR is fixed; only the multi-line usage-message pagination
+remains, cosmetic), #32 (WONT-FIX: nvi's sentence-across-blank behavior is
+inconsistent/buggy), and #34 (NOT-A-BUG: nvi # is increment, the 0,0 is a
+cursor-parking artifact). Earlier waves: #1-6 single-command, #7-13 multi-step
+"session", #14-16 yank/register/@. After this wave the goterm batteries report:
+ex-mine 1/15 (only #21's message display), vi-mine 2/8 (#32, #34), and every other
+battery (editing/motion/search/ex/paging/registers/structure, sequences/advanced/
+more) 0 diverged; `go test ./...` passes. The new ex-output overlay (vs_msg layout)
+also resolves the display half of #21/#28/#33 and the message-pagination note for
+print commands.
 
 ## Open (found by aggressive multi-step session testing) [2026-06-27]
 
@@ -252,7 +258,274 @@ replays as an Enter (cursor moves down a line); govi drops it. On cmdLines (line
 register's trailing newline: nvi cursor ends at 3,0, govi at 2,0. Replay the
 trailing newline of a linewise register as a <CR> when executing it with @.
 
+## Open (autonomous mining wave -- EX MODE focus, 2026-06-28)
+
+Mined by goterm probe batteries driving `:` ex commands and comparing the rendered
+screen + cursor. Ex mode is materially weaker than vi mode in govi. Findings #17+
+below are OPEN. Note on method: ex commands that print (`:p` etc.) scroll output
+INTO the body; a single-line print lands only on the dropped status row, so use a
+multi-line range to see it. What already MATCHES: `:d`/`:m`/`:t`/`:co` (incl.
+cursor line), `:y`+`:pu` content, `:j` content, ranged `:s`, `:&` (repeat subst),
+`:=` (single-line, on status row), the `'a` address when the mark was set with vi
+`ma`, alternate `:s` delimiters (`#`, `,`), `&`/`\1` backrefs, `\U`/`\u` case
+escapes, `\r` split, `^`/`$` anchors, and empty-pattern `:s//repl/` reuse.
+
+### 17. ex display commands `:p` `:l` `:#`/`:nu` print nothing  [FIXED 2026-06-28]
+Fixed by routing printRange output through the paged overlay (presentExLines ->
+pendingOutput) instead of the status line, and reworking the overlay rendering in
+both frontends (tcell renderOutput, grid composeOverlay) to nvi's vs_msg layout:
+the buffer stays drawn, and the output is overlaid at the BOTTOM with a "+=+="
+divider (vs_divider DIVIDESTR) above it and the continue prompt on the last row.
+The overlay page size is rows-1 (it reserves the divider and prompt rows), and the
+divider is drawn only on the first page. Verified :1,3p / :1,3l / :1,3# all match.
+
+`:[range]p` (print), `:l` (list, shows `$` at EOL and control chars), and
+`:#`/`:nu`/`:number` (print with line numbers) display the addressed lines in nvi
+(scrolled into the screen with a `+=+=` continuation separator); govi produces NO
+output and just moves the cursor. On subLines (foo.../hello.../aaa...):
+- `:1,3p`  nvi shows the 3 lines below a `+=+=` bar; govi: nothing.
+- `:1,3l`  nvi shows "foo bar foo baz$" etc; govi: nothing.
+- `:1,3#`  nvi shows "     1  foo bar foo baz" etc; govi: nothing.
+Core ex output is missing. Implement the print/list/number display commands.
+
+### 18. `:s` trailing count is ignored  [FIXED 2026-06-28]
+Fixed in exSubstitute: a trailing count (parsed by splitFlagsCount) sets the range
+to [addr2, addr2+count-1] before substituting. Verified :1s/o/0/g 3 changes lines
+1-3 (cursor 1,0).
+
+`:[addr]s/pat/rep/flags N` applies the substitution to N lines starting at the
+addressed line (nvi/POSIX). govi ignores the count and substitutes only the one
+line. `:1s/o/0/g 3` -> nvi changes lines 1-3 (cursor 1,0); govi changes only line
+1 (cursor 0,0).
+
+### 19. bare `:s` does not repeat the last substitution  [FIXED 2026-06-28]
+Fixed in exSubstitute: an empty argument now repeats the last substitution via
+exAmp (default range the current line), like nvi. Verified :s/foo/X/ then :s ->
+"X bar X baz".
+
+A bare `:s` (no pattern/repl) repeats the last substitution on the current line in
+nvi. `:s/foo/X/` then `:s` -> nvi "X bar X baz" (second foo replaced); govi leaves
+"X bar foo baz" (bare `:s` is a no-op). (`:&` already works; this is the bare form.)
+
+### 20. `:~` (repeat subst with last RE) is a no-op  [FIXED 2026-06-28]
+Fixed by adding the `~` ex command (exTilde). govi keeps a single lastPattern that
+both search and substitute update, so :~ resolves to the same repeat as :& (exAmp).
+Verified :s/o/0/ then j:~ changes line 2 (cursor 1,0).
+
+`:~` repeats the last substitution but using the last-used regular expression. nvi
+applies it; govi does nothing. `:s/o/0/` then `j:~` -> nvi changes the next line's
+first `o`; govi leaves it unchanged. (`:&` repeats with the last subst's own
+pattern and DOES work in govi; only `:~` is missing.)
+
+### 21. `:s` with an unsupported flag silently substitutes instead of erroring  [FIXED (behavior) 2026-06-28]
+The BEHAVIOR is fixed: splitFlagsCount validates the flags (c/g/r/#/l/p) and an
+unknown flag (e.g. n) is a usage error that makes NO change, instead of silently
+deleting the matches. The exmine case still reports DIVERGE because nvi paginates
+its multi-line *usage message* into the body (with the "+=+=" divider), whereas
+govi's error goes to the status line. Matching that residue would require
+byte-matching nvi's exact usage-string wording and wrapping -- brittle nvi-string
+chasing, and the harness treats status/message text as cosmetic -- so it is left as
+the message-pagination gap (see the Inconclusive "EX INFO-MESSAGE PAGINATION" note).
+
+nvi's valid `:s` flags are c/g/r (+ #/l/p); an unknown flag is a usage error and
+makes NO change. govi accepts (ignores) the flag and performs the substitution.
+`:%s/foo//n` -> nvi prints the s-command usage and changes nothing; govi deletes
+the matches (empty replacement, `n` swallowed). [`n` is a vim count-only flag nvi
+lacks; either reject it like nvi, or implement count-only -- but do not silently
+delete.]
+
+### 22. `:>>`/`:<<` (stacked shift) shifts only one level  [FIXED 2026-06-28]
+Fixed in shift(): the repeated shift characters after the command name add levels
+(:1>> = 2, :1<<< = 3), passed as the multiplier to shiftLines. Verified :1>> ->
+16 leading spaces (2 x shiftwidth 8), cursor 0,16.
+
+In nvi each repeated `>`/`<` adds a shift level: `:1>>` shifts twice, `:1<<`
+unshifts twice. govi shifts exactly one level regardless of how many `>`/`<`.
+`:1>>` on "foo..." -> nvi 16 leading spaces (2 x shiftwidth 8); govi 8. `:1<<` on
+"\t\tabc" -> nvi "abc" (both levels removed); govi "        abc" (one removed).
+
+### 23. ex `:k`/`:mark` commands do not set a mark  [FIXED 2026-06-28]
+Fixed by adding the `k` and `mark` ex commands (exMark), which set the named mark on
+the addressed line (default current). Verified :2k a then G:'a,$d deletes lines 2-5
+(cursor 0,2).
+
+`:2k a` and `:2ma a` (ex mark-set) do not set mark `a` in govi; a later `'a`
+address then fails. nvi sets it and `:'a,$d` deletes from line 2 to end; govi
+leaves the buffer unchanged. The `'a` ADDRESS itself is fine -- vi `2Gma` then
+`:'a,$d` works in govi -- so the gap is specifically the ex `:k`/`:mark` commands.
+
+### 24. ex `:j` (join) leaves the cursor at column 0  [FIXED 2026-06-28]
+Fixed in exJoin: it tracks the last join boundary column (the inserted separator,
+or the last char of the first part when joined with !) and leaves the cursor there,
+like vi J. Verified :1,2j -> cursor 0,15 and :1,2j! -> 0,14.
+
+After `:1,2j` the joined text is identical, but nvi leaves the cursor at the join
+column (where the second line was appended, like vi `J`); govi leaves it at column
+0. `:1,2j` -> nvi cursor 0,15, govi 0,0 (and `:1,2j!` -> nvi 0,14, govi 0,0).
+
+### 25. ex `:>`/`:<` and `:pu` cursor lands on a different line  [OPEN, cursor-only]
+After a shift or ex put, nvi leaves the cursor on the FIRST affected line; govi on
+the LAST (which is POSIX: "the last line ... becomes the current line"). `:1,3>` ->
+nvi cursor row 0, govi row 2. `:1,2y` then `G:pu` -> nvi on the first put line,
+govi on the last. `:m`/`:t`/`:d` cursor lines already match (last line, both). This
+is cursor-only and govi matches POSIX; recorded for a decision (match nvi or keep).
+
+### 26. `:g!` deletes matching lines instead of non-matching  [FIXED 2026-06-28]
+Fixed in exsearch.go: exGlobal now passes c.force as the invert flag, so :g!/:global!
+runs the body on non-matching lines (same as :v). Verified ex-g-bang matches.
+
+`:g!/re/cmd` (and `:global!`) should run cmd on lines NOT matching re. govi
+ignores the `!` and behaves like plain `:g` (runs on MATCHING lines). On gLines,
+`:g!/red/d` -> nvi keeps the two red lines (deletes the rest); govi deletes the two
+red lines (keeps the rest). The synonym `:v/re/d` works correctly in govi, so the
+non-match logic exists -- it just is not wired to the `!` on `:g`.
+
+### 27. `:g` mistracks line numbers when its body inserts lines  [FIXED 2026-06-28]
+Fixed by tracking each matched line in s.gMarks, which the line-edit primitives
+(insertLine/appendLine/deleteLine in screen.go) keep in sync the same way marks
+are. global() reads each match's current line from gMarks instead of a single
+running delta, so a body command that inserts elsewhere (t$/copy) no longer
+mistracks later matches. Verified ex-g-copy matches.
+
+A `:g` whose per-line command ADDS lines (e.g. `t`/`copy`) operates on stale line
+numbers for the second and later matches. `:g/red/t$` on gLines (red at lines 1 and
+3) -> nvi appends "apple red" then "cherry red"; govi appends "apple red" then
+"date brown" (the wrong line). `:g/re/d` (delete), `:g/re/s` (subst), and
+`:g/re/m0` (move) all match, so the bug is specific to commands that change the
+line count by INSERTING -- nvi marks all matches up front and follows the marks;
+govi appears to re-resolve line numbers as the buffer grows. (Minor related: after
+`:g/red/m0` the content matches but the final cursor line differs -- nvi line 4,
+govi line 1.)
+
+### 28. `:a`/`:i`/`:c` ex text-input: no "ex input mode" display  [OPEN, display; content OK]
+The resulting BUFFER is correct in govi (`:2a` then "INSERTED" then "." inserts the
+line in the right place). But nvi switches the screen to its line-oriented "ex
+input mode" (prints "Entering ex input mode." and scrolls teletype-style), and
+stays in that scrolled display afterward; govi performs the edit while keeping the
+full-screen vi display. So every `:a`/`:i`/`:c` diverges on the rendered screen
+though not on content. This is govi arguably behaving BETTER; recorded as a
+faithful-emulation gap for a decision, not a correctness bug.
+
+### 29. ex mode (Q) does not auto-print the current line after editing commands  [OPEN]
+In true ex mode (entered with `Q`), ex prints the new current line after a command.
+govi does this after a bare address/goto but NOT after editing commands. Driven
+step-by-step (a single input burst does not drive nvi's line ex reader -- see the
+method note below), in ex mode on gLines:
+- `1<CR>` (goto)        nvi prints "apple red"; govi prints "apple red"  -- match.
+- `s/apple/X/<CR>`      nvi prints "X red";     govi prints nothing.
+- `m$<CR>` (move)       nvi prints the moved line; govi prints nothing.
+- `2d<CR>` (delete)     nvi prints the new current line; govi prints nothing.
+The edits THEMSELVES are correct in govi (a later `1,$p` shows matching buffers,
+and `vi<CR>` returns both to an identical vi screen). The gap is the auto-print:
+ex should echo the current line after editing commands, not only after a goto.
+(Cosmetic alongside this: `Q` itself -- nvi keeps the buffer text on screen with a
+"file: unmodified: line N" banner; govi blanks the screen to just a ":" prompt.)
+
+### 30. vi-mode search with a trailing offset or `;` chain is a no-op  [FIXED 2026-06-28]
+Fixed in search.go (searchLine) + engine.go (runSearchLine): a / or ? command line
+is parsed for a trailing +N/-N line offset (which makes the move linewise to the
+target line's first non-blank) and ;-chaining (re-search from the match, the char
+after ; may flip direction). Verified search-offset (3,0) and search-chain (0,4).
+
+A vi-mode `/pat/` search works, but appending a line offset, an end-of-match
+offset, or a `;` chain makes govi ignore the search (cursor jumps to 0,0 instead of
+the target). nvi supports line offsets and chaining. On subLines:
+- `/aaa/+1`  nvi -> line 4 (cursor 3,0); govi -> 0,0 (no move).
+- `/one/-1`  nvi -> line 3 (cursor 2,0); govi -> 0,0.
+- `/foo/;/bar/`  nvi -> "bar" at 0,4; govi -> 0,0.
+Implement the `/pat/+N`, `/pat/-N` line offsets and `;` search chaining for the vi
+search command. NOTE: `/pat/e` and `/pat/b` (character offsets) are NOT nvi
+features -- nvi rejects them with "Characters after search string, line offset
+and/or z command", so do not add those; only line offsets and z/`;`.
+
+### 31. insert mode swallows unhandled control characters  [FIXED 2026-06-28]
+Fixed in viinsert.go: the insert-mode control switch now has a default that inserts
+the literal control rune (via ctrlRune) instead of discarding it, so ^A/^B/^G/^K/^P
+land in the buffer rendered in caret notation. Verified i^A<esc> -> "^Ax" (0,1).
+
+nvi inserts an unhandled control character literally (rendered `^X`); govi drops
+it. With buffer "x", `i<ctrl>...<esc>` for ^A/^B/^G/^K/^P all give nvi "^Ax" (etc.,
+cursor 0,1) and govi "x" (cursor 0,0, char swallowed). Handled controls (^W ^U ^T
+^H ^V ^M ^J ^[ and govi's ^X hex) are unaffected; this is about the REST. nvi's
+behavior lets a stray control byte land in the buffer; to match, insert an
+unhandled control char literally instead of discarding it.
+
+### 32. sentence motions `(`/`)` skip a blank-line (paragraph) boundary  [WONT-FIX 2026-06-28]
+Re-probed against the real nvi binary, the catalog's expected values were wrong and
+nvi's own behavior here is idiosyncratic: `3G(` is a NO-OP in nvi (stays 2,0; the
+catalog claimed 1,0), and `3G$(` reports an out-of-range cursor row on a 3-line
+file. The result is neither "cross the blank" nor "stop on the blank", and matching
+it would require a hyper-specific special case that risks the clean in-line sentence
+behavior (the #11 fix and the 0)/0))/$(/$(( guards, which all match). Accepted as a
+faithful-emulation gap rather than contorting the motion to chase a buggy nvi edge.
+
+A blank line is a sentence boundary in nvi: `(`/`)` stop ON it. govi skips the
+blank line and continues to the adjacent text line's sentence, overshooting by one.
+In-line sentence boundaries match (both need two spaces or EOL after .!?): on
+"One sentence.  Two sentence.  Three here." / "" / "Next para.", `0)`, `0))`, `$(`,
+`$((` all match. Only the blank-line cross differs: `3G(` (back from "Next para.")
+-> nvi the blank line (1,0); govi "Three here." start (0,30). Make `(`/`)` treat a
+blank line as a sentence stop. (Related to the fixed #11, a different facet.)
+
+### 33. `:args` does not display the argument list  [OPEN, display]
+With two files opened (`govi f1 f2`), `:args` shows the file list with the current
+file bracketed in nvi (scrolled into the body); govi shows nothing. Multi-file
+editing itself WORKS: `:n` switches to f2, `:rew` back to f1, content matching nvi
+exactly. Only the `:args` display is missing. (Same family as the ex-output gap
+#17 and the message-pagination note below.)
+
+### 34. `#` (backward word search) is a no-op  [NOT-A-BUG 2026-06-28]
+Misdiagnosis: in nvi `#` is v_increment ([count]#[#+-], number increment/decrement),
+NOT a backward word search (that is vim). `3G#x` shows nvi's own "Usage: [count]#
++|-|#". The 0,0 vs 2,0 cursor in `3G#` is a harness artifact: `#` waits for its
+required +/-/# argument, and nvi parks the displayed cursor at screen-home while
+awaiting a char argument (same as `3Gf` and `3Gm`, which also report 0,0). govi's #
+increment already matches nvi; there is nothing to fix. Accepted.
+
+`#` searches backward for the word under the cursor; govi does not move. `*`
+(forward) agrees with nvi. On ["foo","bar","foo","baz","foo"], `3G#` -> nvi finds
+the previous "foo" (cursor 0,0); govi stays at 2,0. Wire `#` to search backward for
+the cursor word like `*` does forward.
+
+### 35. operator + search motion (`d/pat`, `y/pat`) corrupts the buffer  [FIXED 2026-06-28]
+Fixed in vi.go + search.go: previously a / typed while an operator was pending
+aborted the operator and the pattern text ran as commands (d/baz -> b,a,z,<CR>,
+splitting the line). Now commandKey defers the pending operator (searchOp), and
+runSearchLine applies it as an exclusive characterwise motion from the start to the
+match (a line offset makes it linewise). Verified d/baz -> "baz" (cursor 0,0).
+
+Using a `/pat` search as the motion for an operator is broken in govi -- it does
+not delete/yank from the cursor to the match; it mangles the line (and can split it
+or add blank lines). nvi does it correctly. On "foo bar foo baz":
+- `d/baz<CR>`  nvi -> "baz" (deletes "foo bar foo "); govi -> "fz" + a new line
+  "oo bar foo baz" (corrupt split).
+- `y/baz<CR>P` nvi -> "foo bar foo foo bar foo baz"; govi -> same corruption.
+- `d/foo<CR>`  nvi -> "foo baz"; govi -> line unchanged plus two blank lines.
+Operator + `f`/`t`/`w` motions all work, so the gap is the search-as-motion path
+(related to #30: govi's non-interactive search-command handling is weak). This one
+DESTROYS buffer content, so it is high priority.
+
 ## Inconclusive / needs a cleaner test
+- EX INFO-MESSAGE PAGINATION: for multi-line informational/error output (`:r` ->
+  "N lines, M characters", `:e` of a modified buffer -> "File modified since last
+  complete write...", `:args` list), nvi paginates into the screen body with a
+  `+=+=` separator; govi appears to use only the single status line (which the
+  harness drops), so these cannot be cleanly diffed here. The underlying ACTIONS
+  are correct in govi (`:r` reads the file, `:e` refuses a modified buffer, `:n`/
+  `:rew` switch). Worth a dedicated status-line-aware test to judge the messaging.
+- LONG-LINE WRAP at a narrow screen: after `3J` on a 40-col terminal the BUFFER is
+  identical (verified at 80 cols: both "...aaa bbb aaa ccc", cursor 0,33), but the
+  wrapped continuation row renders differently (govi "b aaa ccc"; nvi "aaa bbb aaa
+  ccc"). Content is correct; this is a long-logical-line display difference worth a
+  dedicated look, not a content bug.
+- EX-MODE METHOD: drive true ex mode (Q) ONE command per send with a settle
+  between, never as a single byte burst -- nvi's line-oriented ex reader does not
+  consume a burst the way the vi key path does, and a burst makes nvi look like it
+  ignored the commands (buffer "unmodified") when stepwise it executes them fine.
+- ex `:s///c` (confirm flag): interactive; driving it with a fixed burst of `y`
+  answers diverges in which matches get confirmed (e.g. the `o` in "four"), but
+  that is likely the harness feeding responses faster than the prompt cycles, not
+  a clean behavioral finding. Needs a per-prompt send-and-settle test.
 - insert-mode `^D` (dedent): nvi's mid-line behavior is arcane -- when ^D is typed
   after other text it can be stored as a literal `^D` rather than dedenting, so a
   naive comparison diverges without either editor being clearly "right".  `^T`
@@ -266,6 +539,10 @@ trailing newline of a linewise register as a <CR> when executing it with @.
   (vim); nvi has NEITHER -- `"0p` / `"-p` are no-ops in nvi. govi correctly does
   not shift the numbered ring "1.."9 on a sub-line delete. These are govi
   supersets that never change behavior on registers nvi accepts; accepted.
+- `\|` alternation in search/regex: govi supports it (vim/GNU extension); nvi uses
+  POSIX BRE which has no `\|`, so `/cat\|dog` matches nothing in nvi. govi superset
+  (its regex engine is otherwise a match: `\<`/`\>`, `[...]`, `[^...]`, `^`/`$`,
+  `*`, `.`, `\(...\)`, `\{n\}`, nomagic, and ignorecase all agree). Accepted.
 - count + CHARWISE put (e.g. `ye3p`, `yw3p`): govi replicates the text cleanly
   (matches vim: "abc" x3 -> "abcabcabc", giving "aabcabcabcbc.def"); nvi produces
   a garbled interleaving ("aaabcabcbcbc.def"). nvi appears buggy here; govi is
