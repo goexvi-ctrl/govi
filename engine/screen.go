@@ -79,6 +79,10 @@ type screen struct {
 	// the matching open bracket at matchPos.
 	matchActive bool
 	matchPos    Pos
+
+	// lastAtBuf is the buffer most recently run with @<buf>; @@ repeats it
+	// (nvi sp->at_lbuf / SC_AT_SET).
+	lastAtBuf rune
 }
 
 // lineCount returns the number of lines in the buffer, treating an empty buffer

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"govi/engine/mark"
+	"govi/engine/register"
 	"govi/engine/undo"
 )
 
@@ -573,13 +574,27 @@ func (m *vimode) charArg(e *Engine, ev KeyEvent) {
 }
 
 // execBuffer implements @<buffer>: run the named register's contents as vi
-// commands.
+// commands (nvi vi/v_at.c). @@ (or @*) repeats the last executed buffer. Only
+// the named (a-z, A-Z) and numbered (1-9) buffers are valid; any other name
+// (e.g. @:) is not a buffer and is a no-op, matching nvi's empty-buffer error.
 func (e *Engine) execBuffer(name rune) {
+	if name == '@' || name == '*' {
+		if e.scr.lastAtBuf == 0 {
+			e.fe.Bell()
+			return
+		}
+		name = e.scr.lastAtBuf
+	}
+	if !validBufferName(name) {
+		e.fe.Bell()
+		return
+	}
 	txt := e.scr.regs.Get(name)
 	if txt.Empty() {
 		e.fe.Bell()
 		return
 	}
+	e.scr.lastAtBuf = name
 	for i, ln := range txt.Lines {
 		if i > 0 {
 			e.dispatchRune('\n')
@@ -588,6 +603,26 @@ func (e *Engine) execBuffer(name rune) {
 			e.dispatchRune(r)
 		}
 	}
+	// A linewise buffer ends every line with a <newline>, including the last,
+	// so its replay finishes with an Enter that moves the cursor down a line
+	// (nvi v_at.c, CB_LMODE). A charwise buffer joins lines without a trailer.
+	if txt.Kind == register.LineWise {
+		e.dispatchRune('\n')
+	}
+}
+
+// validBufferName reports whether name is a buffer that @ can execute: the
+// named buffers a-z / A-Z and the numbered buffers 1-9 (nvi CBNAME).
+func validBufferName(name rune) bool {
+	switch {
+	case name >= 'a' && name <= 'z':
+		return true
+	case name >= 'A' && name <= 'Z':
+		return true
+	case name >= '1' && name <= '9':
+		return true
+	}
+	return false
 }
 
 // screenPosition implements [line]z[window]<type> (nvi v_z.c / vs_sm_fill).
