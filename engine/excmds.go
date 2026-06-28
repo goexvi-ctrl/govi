@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -329,6 +330,22 @@ func (e *Engine) exWrite(c *exCmd) error {
 		return e.writeToCommand(c, cmd)
 	}
 	named := arg != ""
+	// nvi overwrite guard (common/exf.c file_write): refuse to clobber an
+	// existing file that is not the buffer's own file (or whose name was changed
+	// via :f) unless the write is forced (:w!) or the `writeany` option is set.
+	// Without this, :w other-existing-file silently overwrites it (data loss).
+	if !c.force && !e.scr.opts.Bool("writeany") {
+		target := arg
+		if target == "" {
+			target = e.scr.name
+		}
+		noname := arg == "" || e.samePath(arg, e.scr.name)
+		if target != "" && (!noname || e.scr.nameChanged) {
+			if _, err := os.Stat(e.resolvePath(target)); err == nil {
+				return fmt.Errorf("%s exists, not written; use ! to override", target)
+			}
+		}
+	}
 	// Save resolves the name against the current directory at write time; pass it
 	// through as given so the buffer's name stays relative (nvi FR_NAME).
 	if err := e.Save(arg); err != nil {

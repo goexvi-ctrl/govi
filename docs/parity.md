@@ -178,7 +178,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | `backup` | yes | ❌ | ❌ | backup file path and versioning |
 | `lock` | yes | ❌ | ❌ | file locking before write |
 | `recdir` | yes | ✅ | ✅ | recovery directory for crash-recovery files |
-| `writeany` (wa) | yes | ❌ | ❌ | override ownership checks on write |
+| `writeany` (wa) | yes | ✅ | ✅ | bypasses the "file exists, not written" overwrite guard (GOTERM_DIVERGENCES #42) |
 | `ruler` | yes | ✅ | ✅ | row/column on status line when no message |
 | `showmode` (smd) | yes | ✅ | ✅ | mode indicator on status line; `*` when modified |
 | `secure` | yes | 🟡 | 🟡 | blocks `:shell` when set; `!` filters still run |

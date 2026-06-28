@@ -721,7 +721,18 @@ This is a security-correctness gap, so it ranks above its size.
   gate that already guards `:shell`, returning nvi's "not allowed in secure mode"
   style error. Small/medium.
 
-### 42. `writeany` (wa) is inert -- write safety check not gated on it  [OPEN, small]
+### 42. `writeany` (wa) is inert -- write safety check not gated on it  [FIXED 2026-06-28]
+CORRECTION + FIX: the premise was wrong -- govi had NO overwrite safety check at
+all, so `:w other-existing-file` silently CLOBBERED it (data loss), where nvi
+refuses. Implemented nvi's guard (common/exf.c file_write) in exWrite: when the
+write is not forced (`:w!`) and `writeany` is off, refuse to write a file that
+already exists and is not the buffer's own file (or whose name was changed via
+:f), with "exists, not written; use ! to override". This also makes `writeany`
+do its job (bypass the guard) and is inherited by :wq/:x/:wn (they call exWrite).
+Verified vs real nvi: `:w b` (b exists) refuses and preserves b in both; `:w! b`
+and `:set wa` + `:w b` both overwrite in both; a plain self-`:w` still saves.
+
+--- original analysis (retained) ---
 govi performs the ownership/permission safety check on `:write` (the `exrc`
 ownership machinery proves the check exists) but does not let `writeany` bypass it.
 - Rule (nvi): with `set writeany`, a write skips the "file exists / not owner /
