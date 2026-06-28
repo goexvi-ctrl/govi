@@ -94,18 +94,21 @@ Fixed in display.go GutterWidth: return a fixed 8 (nvi O_NUMBER_LENGTH,
 O_NUMBER_FMT "%7lu ") when numbering is on, instead of the dynamic digits+1.
 Updated frontend/grid and frontend/tcell gutter tests to the 8-wide expectation.
 
-## Status: divergences #1-35 are addressed. The FOURTH wave (autonomous, ex+vi
-focus, 2026-06-28) #17-35 is now fixed except three explained residues: #21 (the
+## Status: divergences #1-36 are addressed. The FOURTH wave (autonomous, ex+vi
+focus, 2026-06-28) #17-36 is now fixed except two explained residues: #21 (the
 substitute-flag BEHAVIOR is fixed; only the multi-line usage-message pagination
-remains, cosmetic), #32 (WONT-FIX: nvi's sentence-across-blank behavior is
-inconsistent/buggy), and #34 (NOT-A-BUG: nvi # is increment, the 0,0 is a
-cursor-parking artifact). Earlier waves: #1-6 single-command, #7-13 multi-step
-"session", #14-16 yank/register/@. After this wave the goterm batteries report:
-ex-mine 1/15 (only #21's message display), vi-mine 2/8 (#32, #34), and every other
-battery (editing/motion/search/ex/paging/registers/structure, sequences/advanced/
-more) 0 diverged; `go test ./...` passes. The new ex-output overlay (vs_msg layout)
-also resolves the display half of #21/#28/#33 and the message-pagination note for
-print commands.
+remains, cosmetic) and #34 (NOT-A-BUG: nvi # is increment, the 0,0 is a
+cursor-parking artifact). #32 was reopened as #36 and FIXED: the sentence motions
+`(`/`)` now port nvi's character-stream engine and stop on blank-line paragraph
+boundaries (the earlier WONT-FIX was wrong). Earlier waves: #1-6 single-command,
+#7-13 multi-step "session", #14-16 yank/register/@. After this wave the goterm
+batteries report: ex-mine 1/15 (only #21's message display), vi-mine 0/9, and every
+other battery (editing/motion/search/ex/paging/registers/structure, sequences/
+advanced/more) 0 diverged; `go test ./...` passes. The new ex-output overlay
+(vs_msg layout) also resolves the display half of #21/#28/#33 and the
+message-pagination note for print commands. One acknowledged corner remains under
+#36: `2G0d(` (operator + backward sentence) hits nvi's own arcane m_start.cno
+underflow and is left as a faithful-emulation gap.
 
 ## Open (found by aggressive multi-step session testing) [2026-06-27]
 
@@ -450,22 +453,14 @@ cursor 0,1) and govi "x" (cursor 0,0, char swallowed). Handled controls (^W ^U ^
 behavior lets a stray control byte land in the buffer; to match, insert an
 unhandled control char literally instead of discarding it.
 
-### 32. sentence motions `(`/`)` skip a blank-line (paragraph) boundary  [WONT-FIX 2026-06-28]
-Re-probed against the real nvi binary, the catalog's expected values were wrong and
-nvi's own behavior here is idiosyncratic: `3G(` is a NO-OP in nvi (stays 2,0; the
-catalog claimed 1,0), and `3G$(` reports an out-of-range cursor row on a 3-line
-file. The result is neither "cross the blank" nor "stop on the blank", and matching
-it would require a hyper-specific special case that risks the clean in-line sentence
-behavior (the #11 fix and the 0)/0))/$(/$(( guards, which all match). Accepted as a
-faithful-emulation gap rather than contorting the motion to chase a buggy nvi edge.
-
-A blank line is a sentence boundary in nvi: `(`/`)` stop ON it. govi skips the
-blank line and continues to the adjacent text line's sentence, overshooting by one.
-In-line sentence boundaries match (both need two spaces or EOL after .!?): on
-"One sentence.  Two sentence.  Three here." / "" / "Next para.", `0)`, `0))`, `$(`,
-`$((` all match. Only the blank-line cross differs: `3G(` (back from "Next para.")
--> nvi the blank line (1,0); govi "Three here." start (0,30). Make `(`/`)` treat a
-blank line as a sentence stop. (Related to the fixed #11, a different facet.)
+### 32. sentence motions `(`/`)` skip a blank-line (paragraph) boundary  [FIXED 2026-06-28, see #36]
+SUPERSEDED. This was first closed WONT-FIX on the belief that nvi's behavior here
+was idiosyncratic, but #36's focused re-probe disproved that: nvi is consistent and
+DOES stop on a blank-line paragraph boundary in every blank-crossing case. The
+earlier "3G( is a no-op / 3G$( reports an out-of-range row" observations were
+test-construction artifacts, not nvi inconsistency. Fixed together with #36 by
+porting nvi's character-stream sentence engine; see #36 for the implementation and
+the 6-case verification table.
 
 ### 33. `:args` does not display the argument list  [OPEN, display]
 With two files opened (`govi f1 f2`), `:args` shows the file list with the current
@@ -504,6 +499,67 @@ or add blank lines). nvi does it correctly. On "foo bar foo baz":
 Operator + `f`/`t`/`w` motions all work, so the gap is the search-as-motion path
 (related to #30: govi's non-interactive search-command handling is weak). This one
 DESTROYS buffer content, so it is high priority.
+
+### 36. RE-OPEN #32: nvi's sentence/blank-line behavior is consistent, not buggy  [FIXED 2026-06-28]
+The pushback was correct. Verified by re-probing the real nvi binary with the exact
+document and key sequences below (0-based screen rows); govi now matches nvi in all
+six cases (and the earlier WONT-FIX of #32 is withdrawn):
+
+| keys     | nvi          | govi before     | govi after   |
+|----------|--------------|-----------------|--------------|
+| `4G0(`   | row2 (blank) | row0,6 "Two."   | row2 (blank) |
+| `1G$)`   | row1 (blank) | row3,0 "Three." | row1 (blank) |
+| `1G$))`  | row3,0       | row3,8          | row3,0       |
+| `5G0)`   | row5 (blank) | row5 (blank)    | row5 (blank) |
+| `7G0(`   | row5 (blank) | row4,0          | row5 (blank) |
+| `1G$)))` | row3,8 "F"   | row4,0          | row3,8 "F"   |
+
+FIX: govi's hand-rolled sentence scanner was replaced with a faithful port of nvi's
+character-stream cursor and both sentence functions (vi/getc.c cs_*, vi/v_sentence.c
+v_sentencef/v_sentenceb) in engine/vimotion2.go. The port models empty lines
+(whitespace-only included) as a first-class boundary (CS_EMP) that is its own
+sentence stop, which is exactly what the old code missed -- its period-state
+whitespace-skip walked straight across blank lines. The nvi VM_LMODE rule (a
+sentence motion cuts whole lines when the cursor starts in column 0 and the motion
+ended on a line boundary) is carried via a new motion.endFlag and applied in
+engine/viedit.go, which keeps `d)`/`y)` line-vs-char behavior matching nvi.
+
+Verification: all ex/vi conformance and goterm batteries pass; vi-mine is now 0/9
+diverged (was 2/8). One acknowledged residue is NOT fixed and is nvi's own arcane
+edge: `2G0d(` (operator + backward sentence where the cut range underflows
+m_start.cno in nvi's own code) deletes an extra line in nvi; govi keeps it. The
+PLAIN motions and the well-defined operator cases all match; this single
+operator+merge corner is left as a faithful-emulation gap, not chased into nvi's
+documented inconsistency.
+
+--- original analysis (retained) ---
+#32 (`(`/`)` skip a blank-line paragraph boundary) was closed as WONT-FIX on the
+grounds that nvi's "sentence-across-blank" behavior is inconsistent/buggy. A
+focused re-test does not support that: across 12 cases -- single blanks, runs of
+two blank lines, a line with no ending punctuation, both `(` and `)`, forward and
+backward -- nvi was CONSISTENT every time. It treats a blank-line paragraph
+boundary as a sentence boundary and stops on it; a run of consecutive blanks
+collapses to one stop. govi is the one that varies from nvi: it skips the blank and
+lands on the adjacent sentence. Evidence (doc: "One.  Two." / "" / "" /
+"Three.  Four." / "no period here" / "" / "Five."):
+
+| keys      | nvi lands         | govi lands        |
+|-----------|-------------------|-------------------|
+| `4G0(`    | blank (row 2)     | "Two." (0,6)      |
+| `1G$)`    | blank (row 1)     | "Three." (3,0)    |
+| `1G$))`   | "Three." (3,0)    | "Three." col 8    |
+| `5G0)`    | blank (row 5)     | blank (row 5) *   |
+| `7G0(`    | blank (row 5)     | "no period" (4,0) |
+| `1G$)))`  | "Four." (3,8)     | (4,0)             |
+
+(* the no-punctuation-line case happens to agree.) In every blank-crossing case nvi
+stops on the blank and govi does not. This matches the POSIX definition -- "a
+sentence is bounded by a '.', '!', or '?' ... or by a paragraph or section
+boundary" -- so nvi is spec-correct, and the divergence is govi's. Recommendation:
+re-open #32 and make `(`/`)` stop at a blank-line (paragraph) boundary. If there is
+a specific nvi inconsistency that motivated the WONT-FIX, capture that exact repro
+here; I could not find one. (Note: this is about matching nvi, which is the project
+target, regardless of how vim -- which does NOT stop on blank lines -- behaves.)
 
 ## Inconclusive / needs a cleaner test
 - EX INFO-MESSAGE PAGINATION: for multi-line informational/error output (`:r` ->

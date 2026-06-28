@@ -12,6 +12,12 @@ type motion struct {
 	// become linewise for an operator when the motion ends in column 0 and the
 	// start is at or before the line's first non-blank (POSIX vi rule).
 	promote bool
+	// endFlag marks a promote motion that terminated on a line boundary
+	// (end-of-line/empty-line/end-of-file rather than on an in-line character).
+	// nvi's sentence motions set the equivalent "cs.cs_flags != 0" condition,
+	// which forces line mode for an operator when the cursor starts in column 0
+	// (see v_sentence.c VM_LMODE).
+	endFlag bool
 }
 
 // Synthetic motion keys for the mark motions, which carry a char argument.

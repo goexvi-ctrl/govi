@@ -50,6 +50,16 @@ func (m *vimode) operate(e *Engine, op, reg rune, mot motion) {
 		return
 	}
 
+	// nvi VM_LMODE (v_sentence.c): a sentence motion cuts whole lines when the
+	// cursor starts in column 0 and the motion ended on a line boundary. The
+	// column-0-target case is handled by the exclusive adjustment below.
+	if mot.promote && mot.endFlag && s.cursor.Col == 0 {
+		l1, l2 := minmaxLine(s.cursor.Line, mot.to.Line)
+		l1, l2 = clampLine(s, l1), clampLine(s, l2)
+		m.operateLines(e, op, reg, l1, l2)
+		return
+	}
+
 	p1, p2 := orderPos(s.cursor, mot.to)
 	if mot.inclusive {
 		p2.Col++
