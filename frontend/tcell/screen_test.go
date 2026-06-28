@@ -106,17 +106,17 @@ func TestFrontendNumberGutter(t *testing.T) {
 	eng.Input(engine.KeyEvent{Key: engine.KeyEnter})
 
 	rows := rowsOf(t, sim)
-	// Gutter is right-aligned in a 5-wide field + space, then the text.
-	if rows[0] != "    1 alpha" {
-		t.Errorf("row0 = %q, want %q", rows[0], "    1 alpha")
+	// Gutter is right-aligned in a 7-wide field + space (nvi O_NUMBER_LENGTH 8).
+	if rows[0] != "      1 alpha" {
+		t.Errorf("row0 = %q, want %q", rows[0], "      1 alpha")
 	}
-	if rows[1] != "    2 beta" {
-		t.Errorf("row1 = %q, want %q", rows[1], "    2 beta")
+	if rows[1] != "      2 beta" {
+		t.Errorf("row1 = %q, want %q", rows[1], "      2 beta")
 	}
-	// Cursor sits after the gutter at column 6.
+	// Cursor sits after the gutter at column 8.
 	x, y, _ := sim.GetCursor()
-	if x != 6 || y != 0 {
-		t.Fatalf("cursor (%d,%d), want (6,0)", x, y)
+	if x != 8 || y != 0 {
+		t.Fatalf("cursor (%d,%d), want (8,0)", x, y)
 	}
 }
 

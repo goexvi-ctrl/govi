@@ -1,23 +1,23 @@
 package engine
 
 import (
-	"strconv"
-
 	"golang.org/x/text/width"
 )
 
-// GutterWidth returns the width of the line-number gutter for a buffer with the
-// given line count, or 0 when numbering is off. It is shared by the engine's
-// wrap/scroll math and the frontend so both agree on the text area width.
+// numberGutter is the fixed width of the :set number line-number gutter, matching
+// nvi's O_NUMBER_LENGTH (O_NUMBER_FMT "%7lu ": a 7-column right-justified number
+// plus one trailing space). nvi reserves this width regardless of line count.
+const numberGutter = 8
+
+// GutterWidth returns the width of the line-number gutter, or 0 when numbering is
+// off. It is shared by the engine's wrap/scroll math and the frontend so both
+// agree on the text area width. lineCount is unused (the width is fixed, as in
+// nvi) but kept in the signature for callers that pass it.
 func GutterWidth(lineCount int64, number bool) int {
 	if !number {
 		return 0
 	}
-	digits := len(strconv.FormatInt(lineCount, 10))
-	if digits < 5 {
-		digits = 5
-	}
-	return digits + 1 // numbers right-aligned, then a space
+	return numberGutter
 }
 
 // Display layout helpers. The engine is authoritative over how buffer runes map

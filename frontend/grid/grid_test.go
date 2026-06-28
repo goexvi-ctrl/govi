@@ -125,12 +125,12 @@ func TestLocate(t *testing.T) {
 
 func TestLocateWithGutter(t *testing.T) {
 	v := &fakeView{lines: []string{"abc"}, top: 1, number: true}
-	// Gutter is 6 wide; clicking screen column 6 is buffer col 0.
-	if p := Locate(v, 4, 20, 6, 0); p.Col != 0 {
-		t.Errorf("Locate col 6 with gutter = %+v, want col 0", p)
+	// Gutter is 8 wide (nvi O_NUMBER_LENGTH); clicking screen column 8 is buffer col 0.
+	if p := Locate(v, 4, 20, 8, 0); p.Col != 0 {
+		t.Errorf("Locate col 8 with gutter = %+v, want col 0", p)
 	}
-	if p := Locate(v, 4, 20, 8, 0); p.Col != 2 {
-		t.Errorf("Locate col 8 with gutter = %+v, want col 2", p)
+	if p := Locate(v, 4, 20, 10, 0); p.Col != 2 {
+		t.Errorf("Locate col 10 with gutter = %+v, want col 2", p)
 	}
 }
 
@@ -155,8 +155,8 @@ func TestCellOf(t *testing.T) {
 func TestCellOfWithGutter(t *testing.T) {
 	v := &fakeView{lines: []string{"abc"}, top: 1, number: true}
 	x, y, ok := CellOf(v, 4, 20, engine.Pos{Line: 1, Col: 2})
-	if !ok || x != 8 || y != 0 { // gutter 6 + col 2
-		t.Errorf("CellOf with gutter = (%d,%d,%v), want (8,0,true)", x, y, ok)
+	if !ok || x != 10 || y != 0 { // gutter 8 + col 2
+		t.Errorf("CellOf with gutter = (%d,%d,%v), want (10,0,true)", x, y, ok)
 	}
 }
 
@@ -242,11 +242,11 @@ func TestComposeGutter(t *testing.T) {
 		number: true,
 	}
 	g := Compose(v, 4, 20)
-	// Gutter is right-aligned line numbers in a 6-wide column ("    1 ").
-	if got := gridRow(&g, 0); got != "    1 a" {
+	// Gutter is right-aligned line numbers in an 8-wide column ("      1 ").
+	if got := gridRow(&g, 0); got != "      1 a" {
 		t.Errorf("gutter row 0 = %q", got)
 	}
-	if g.CursorY != 1 || g.CursorX != 6 {
-		t.Errorf("cursor with gutter = (%d,%d), want (6,1)", g.CursorX, g.CursorY)
+	if g.CursorY != 1 || g.CursorX != 8 {
+		t.Errorf("cursor with gutter = (%d,%d), want (8,1)", g.CursorX, g.CursorY)
 	}
 }

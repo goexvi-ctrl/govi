@@ -47,8 +47,8 @@ func TestScreenToBuffer(t *testing.T) {
 		number: true,
 	}
 	rows, cols := 5, 20
-	// Buffer text.
-	if p, ok := ScreenToBuffer(v, rows, cols, 8, 1); !ok || p.Line != 2 || p.Col != 2 {
+	// Buffer text. Gutter is 8 wide, so screen col 10 is buffer col 2.
+	if p, ok := ScreenToBuffer(v, rows, cols, 10, 1); !ok || p.Line != 2 || p.Col != 2 {
 		t.Errorf("buffer cell = %+v,%v want {2,2},true", p, ok)
 	}
 	// Gutter.
