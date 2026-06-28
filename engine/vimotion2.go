@@ -248,7 +248,36 @@ func (e *Engine) sentenceBack(count int) (motion, bool) {
 
 func (e *Engine) sentenceBackOnce(p Pos) Pos {
 	s := e.scr
-	// Step back over any leading whitespace first.
+	// The start of the sentence containing p. If p is already at that start, that
+	// is no movement, so step into the previous sentence and take its start
+	// instead -- otherwise a repeated `(` stays pinned at one boundary.
+	if start := e.sentenceStartScan(p); posLess(start, p) {
+		return start
+	}
+	np, ok := s.stepBack(p)
+	if !ok {
+		return Pos{Line: 1, Col: 0}
+	}
+	for {
+		r := s.runeAtPos(np)
+		if r == ' ' || r == '\t' || r == '\n' || r == ')' || r == ']' || r == '"' || r == '\'' {
+			q, ok := s.stepBack(np)
+			if !ok {
+				return Pos{Line: 1, Col: 0}
+			}
+			np = q
+			continue
+		}
+		break
+	}
+	return e.sentenceStartScan(np)
+}
+
+// sentenceStartScan returns the start of the sentence that contains or ends at p,
+// found by scanning backward to the preceding sentence boundary (a .!? followed
+// by closers/whitespace) or the start of a paragraph.
+func (e *Engine) sentenceStartScan(p Pos) Pos {
+	s := e.scr
 	moved := false
 	for {
 		np, ok := s.stepBack(p)
@@ -261,10 +290,8 @@ func (e *Engine) sentenceBackOnce(p Pos) Pos {
 			continue
 		}
 		moved = true
-		// Look for a sentence end before np.
-		prev := s.runeAtPos(np)
-		if isSentenceEnd(prev) {
-			// The sentence starts after this end + whitespace.
+		if isSentenceEnd(r) {
+			// The sentence starts after this end + closers + whitespace.
 			q := p
 			for {
 				rr := s.runeAtPos(q)
@@ -285,6 +312,11 @@ func (e *Engine) sentenceBackOnce(p Pos) Pos {
 		}
 		p = np
 	}
+}
+
+// posLess reports whether a is strictly before b in the buffer.
+func posLess(a, b Pos) bool {
+	return a.Line < b.Line || (a.Line == b.Line && a.Col < b.Col)
 }
 
 func (s *screen) isSectionStart(lno int64) bool {
