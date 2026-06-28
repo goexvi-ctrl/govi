@@ -210,6 +210,7 @@ func (e *Engine) Resize(rows, cols int) {
 	e.scr.mapRows = rows
 	e.scr.minMapRows = rows
 	e.scr.cols = cols
+	e.scr.defScroll = 0 // re-derive the half-page size from the new height
 	// Keep the columns/lines options in step with the terminal geometry.
 	e.scr.opts.i["columns"] = cols
 	e.scr.opts.i["lines"] = rows + 1

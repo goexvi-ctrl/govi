@@ -125,7 +125,9 @@ func (e *Engine) computeMotion(key rune, count int, explicit bool, charArg rune)
 		if bottom > s.lineCount() {
 			bottom = s.lineCount()
 		}
-		line := (s.top + bottom) / 2
+		// nvi rounds the middle toward the bottom on an even displayed-line
+		// count: (top+bottom+1)/2 (vs_sm_position P_MIDDLE).
+		line := (s.top + bottom + 1) / 2
 		return motion{to: Pos{Line: line, Col: s.firstNonBlank(clampLine(s, line))}, linewise: true}, true
 	case 'w':
 		return e.wordForward(cur, count, false, false), true

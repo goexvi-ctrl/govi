@@ -228,20 +228,24 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 	s := e.scr
 	count := effCount(m.count)
 	switch r {
-	case 'f': // forward a screen
-		m.moveVertical(e, s.cursor.Line+int64(max(1, s.rows-2)))
-	case 'b': // back a screen
-		m.moveVertical(e, s.cursor.Line-int64(max(1, s.rows-2)))
-	case 'd': // down half a screen
-		m.moveVertical(e, s.cursor.Line+int64(max(1, s.rows/2)))
-	case 'u': // up half a screen
-		m.moveVertical(e, s.cursor.Line-int64(max(1, s.rows/2)))
-	case 'e': // scroll down one line
-		s.top++
-	case 'y': // scroll up one line
-		if s.top > 1 {
-			s.top--
+	case 'f': // forward a full screen (nvi v_pagedown)
+		m.pageDown(e, count*s.rows-2, true)
+	case 'b': // back a full screen (nvi v_pageup)
+		m.pageUp(e, count*s.rows-2, true)
+	case 'd': // down half a screen (nvi v_hpagedown)
+		if m.haveCount {
+			s.defScroll = count
 		}
+		m.pageDown(e, s.halfPage(), false)
+	case 'u': // up half a screen (nvi v_hpageup)
+		if m.haveCount {
+			s.defScroll = count
+		}
+		m.pageUp(e, s.halfPage(), false)
+	case 'e': // scroll viewport down one line (nvi v_linedown)
+		m.scrollDown(e, count)
+	case 'y': // scroll viewport up one line (nvi v_lineup)
+		m.scrollUp(e, count)
 	case 'j', 'n': // move down (aliases for j)
 		m.moveVertical(e, s.cursor.Line+int64(count))
 	case 'p': // move up (alias for k)
@@ -312,6 +316,121 @@ func (m *vimode) moveVertical(e *Engine, targetLine int64) {
 	s.cursor.Line = clampLine(s, targetLine)
 	s.cursor.Col = s.maintainedCol(s.cursor.Line)
 	m.preserveCol = true
+}
+
+// pageDown scrolls the viewport toward EOF by offset screen lines (nvi
+// vs_sm_scroll). For a full page (^F) with a complete scroll the cursor lands on
+// the first non-blank of the new top line; otherwise (^D, or ^F clamped at EOF)
+// the cursor advances with the scroll toward EOF. The viewport never scrolls
+// past showing the last line at the bottom row.
+func (m *vimode) pageDown(e *Engine, offset int, full bool) {
+	s := e.scr
+	if offset < 1 {
+		offset = 1
+	}
+	last := s.lineCount()
+	oldTop := s.top
+	newTop := oldTop + int64(offset)
+	if maxTop := s.topForBottom(last); newTop > maxTop {
+		newTop = maxTop
+	}
+	if newTop < oldTop {
+		newTop = oldTop
+	}
+	s.top = newTop
+
+	var line int64
+	if full && newTop-oldTop == int64(offset) {
+		line = newTop // ^F full page: cursor to the top of the new screen
+	} else {
+		line = s.cursor.Line + int64(offset)
+	}
+	s.cursor.Line = clampToViewport(s, line, newTop)
+	s.cursor.Col = s.firstNonBlank(s.cursor.Line)
+}
+
+// pageUp scrolls the viewport toward SOF by offset screen lines. For a full page
+// (^B) with a complete scroll the cursor lands on the new bottom line; otherwise
+// (^U, or ^B clamped at SOF) it moves up with the scroll.
+func (m *vimode) pageUp(e *Engine, offset int, full bool) {
+	s := e.scr
+	if offset < 1 {
+		offset = 1
+	}
+	oldTop := s.top
+	newTop := oldTop - int64(offset)
+	if newTop < 1 {
+		newTop = 1
+	}
+	s.top = newTop
+
+	var line int64
+	if full && oldTop-newTop == int64(offset) {
+		line = s.bottomLine(newTop) // ^B full page: cursor to the new bottom line
+	} else {
+		line = s.cursor.Line - int64(offset)
+	}
+	s.cursor.Line = clampToViewport(s, line, newTop)
+	s.cursor.Col = s.firstNonBlank(s.cursor.Line)
+}
+
+// scrollDown implements ^E: roll the viewport down n lines, leaving the cursor
+// on its line until it would scroll off the top, then keeping it on the top row.
+func (m *vimode) scrollDown(e *Engine, n int) {
+	s := e.scr
+	if n < 1 {
+		n = 1
+	}
+	newTop := s.top + int64(n)
+	if maxTop := s.topForBottom(s.lineCount()); newTop > maxTop {
+		newTop = maxTop
+	}
+	if newTop < 1 {
+		newTop = 1
+	}
+	s.top = newTop
+	if s.cursor.Line < newTop {
+		s.cursor.Line = newTop
+		s.cursor.Col = s.maintainedCol(newTop)
+	}
+	m.preserveCol = true
+}
+
+// scrollUp implements ^Y: roll the viewport up n lines, leaving the cursor on
+// its line until it would scroll off the bottom, then keeping it on the bottom row.
+func (m *vimode) scrollUp(e *Engine, n int) {
+	s := e.scr
+	if n < 1 {
+		n = 1
+	}
+	newTop := s.top - int64(n)
+	if newTop < 1 {
+		newTop = 1
+	}
+	s.top = newTop
+	if bl := s.bottomLine(newTop); s.cursor.Line > bl {
+		s.cursor.Line = bl
+		s.cursor.Col = s.maintainedCol(bl)
+	}
+	m.preserveCol = true
+}
+
+// clampToViewport keeps line within the visible region [top, bottomLine(top)]
+// and within the buffer.
+func clampToViewport(s *screen, line, top int64) int64 {
+	if line < top {
+		line = top
+	}
+	if bl := s.bottomLine(top); line > bl {
+		line = bl
+	}
+	if line < 1 {
+		line = 1
+	}
+	if last := s.lineCount(); line > last {
+		line = last
+	}
+	return line
 }
 
 func (m *vimode) startOperator(op rune) {

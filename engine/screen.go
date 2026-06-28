@@ -28,6 +28,7 @@ type screen struct {
 	mapRows    int   // active scroll-map height (nvi t_rows)
 	minMapRows int   // minimum map height after z[count] (nvi t_minrows)
 	cols       int   // columns available
+	defScroll  int   // ^D/^U half-page size (nvi defscroll); 0 = derive from rows
 
 	mode          Mode
 	showModeLabel string // showmode text: Command, Insert, Append, Change, Replace
@@ -305,14 +306,14 @@ func (s *screen) scrollToCursor() {
 	if s.top < 1 {
 		s.top = 1
 	}
-	// Cursor above the viewport: bring its line to the top.
-	if s.cursor.Line < s.top {
-		s.top = s.cursor.Line
-		return
-	}
 
 	// Small map: expand toward full height until the cursor fits (vs_refresh.c).
 	if s.minMapRows < s.rows {
+		// Cursor above the viewport: bring its line to the top.
+		if s.cursor.Line < s.top {
+			s.top = s.cursor.Line
+			return
+		}
 		for {
 			if s.screenRowOf(s.cursor.Line, s.top) < s.effectiveMapRows() {
 				return
@@ -323,12 +324,109 @@ func (s *screen) scrollToCursor() {
 			}
 			break
 		}
+		if newTop := s.topForBottom(s.cursor.Line); newTop > s.top {
+			s.top = newTop
+		}
+		return
 	}
 
-	// Full map: scroll top so the cursor line fits at the bottom.
-	if newTop := s.topForBottom(s.cursor.Line); newTop > s.top {
-		s.top = newTop
+	s.scrollFull()
+}
+
+// scrollFull repositions a full-height viewport around the cursor, following
+// nvi's vs_refresh.c section 6: an on-screen cursor doesn't scroll; a cursor
+// within half a text screen of an edge scrolls minimally to that edge; a farther
+// jump puts the file boundary at the edge when close to it, otherwise centers
+// the cursor line. This is why a forward jump to an off-screen line (e.g. 20G)
+// lands mid-screen rather than on the bottom row.
+func (s *screen) scrollFull() {
+	top := s.top
+	c := s.cursor.Line
+	bottom := s.bottomLine(top)
+	if c >= top && c <= bottom {
+		return // already visible
 	}
+	half := s.rows / 2
+	if half < 1 {
+		half = 1
+	}
+
+	if c > bottom {
+		// Below the screen.
+		if s.rowsBetween(bottom, c, half) < half {
+			s.top = s.topForBottom(c) // scroll the cursor to the bottom row
+			return
+		}
+		// Far below: snap the last line to the bottom if near EOF, else center.
+		if last := s.lineCount(); s.rowsBetween(c, last+1, s.rows) < half {
+			s.top = s.topForBottom(last)
+		} else {
+			s.top = s.topForMiddle(c)
+		}
+		return
+	}
+
+	// Above the screen.
+	if s.rowsBetween(c, top, half) < half {
+		s.top = c // scroll the cursor to the top row
+	} else if s.rowsBetween(1, c, half) < half {
+		s.top = 1 // near SOF: snap the first line to the top
+	} else {
+		s.top = s.topForMiddle(c)
+	}
+	if s.top < 1 {
+		s.top = 1
+	}
+}
+
+// rowsBetween returns the number of screen rows spanned by buffer lines [a, b)
+// (a <= b), saturating at cap (nvi vs_sm_nlines with a capped count). Used to
+// measure how far the cursor sits from a viewport edge or a file boundary.
+func (s *screen) rowsBetween(a, b int64, cap int) int {
+	n := 0
+	for ln := a; ln < b; ln++ {
+		n += s.screenLines(ln)
+		if n >= cap {
+			return cap
+		}
+	}
+	return n
+}
+
+// bottomLine returns the last buffer line visible when the viewport starts at
+// top, accounting for line wrapping within the active map.
+func (s *screen) bottomLine(top int64) int64 {
+	mapH := s.effectiveMapRows()
+	if mapH <= 0 {
+		return top
+	}
+	used := 0
+	last := top
+	for ln := top; ln <= s.lineCount(); ln++ {
+		r := s.screenLines(ln)
+		if used > 0 && used+r > mapH {
+			break
+		}
+		used += r
+		last = ln
+		if used >= mapH {
+			break
+		}
+	}
+	return last
+}
+
+// halfPage is the ^D/^U scroll size (nvi defscroll): an explicit count sticks in
+// defScroll, otherwise it is half the window rounded up, matching nvi's
+// (O_WINDOW+1)/2 default.
+func (s *screen) halfPage() int {
+	if s.defScroll > 0 {
+		return s.defScroll
+	}
+	if s.rows <= 0 {
+		return 1
+	}
+	return (s.rows + 1) / 2
 }
 
 // topForBottom returns the topmost line such that lines [top, bottom] fit within
