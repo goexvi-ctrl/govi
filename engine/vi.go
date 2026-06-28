@@ -42,7 +42,8 @@ type vimode struct {
 	inserting   bool
 	replaceMode bool
 	insertText  []rune // text typed this insert (for dot)
-	insertEnter Pos    // where insert began
+	insertEnter Pos    // where insert began (bounds ^U)
+	overtyped   []rune // R-mode: original chars overtyped this insert (noOrig = appended past EOL), for backspace restore
 	insertCmd   rune   // command that entered insert (i/a/o/O/c/R...)
 	insertCount int    // repeat count for the insertion
 	literalNext bool   // ^V was typed; insert the next key literally
