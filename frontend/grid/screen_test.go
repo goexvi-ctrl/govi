@@ -177,16 +177,19 @@ func TestScreenLinearRangeText(t *testing.T) {
 
 func TestComposeOverlayScreenSelect(t *testing.T) {
 	v := &fakeViewOverlay{
-		fakeView: fakeView{lines: []string{"x"}, top: 1},
+		fakeView: fakeView{lines: []string{"x"}, top: 1, cursor: engine.Pos{Line: 1}},
 		out:      []string{"output"},
 		prompt:   "continue",
 	}
+	// The overlay is anchored at the bottom: in a 4-row grid with one output line
+	// and the divider, "output" lands on row 2 (divider row 1, prompt row 3).
 	g := Compose(v, 4, 20)
-	ApplyScreenSel(&g, &ScreenSelection{A: Cell{0, 0}, B: Cell{5, 0}})
-	if g.At(0, 0).Style&engine.StyleReverse == 0 {
+	const outRow = 2
+	ApplyScreenSel(&g, &ScreenSelection{A: Cell{0, outRow}, B: Cell{5, outRow}})
+	if g.At(0, outRow).Style&engine.StyleReverse == 0 {
 		t.Error("overlay text should highlight")
 	}
-	sel := ScreenSelection{A: Cell{0, 0}, B: Cell{5, 0}}
+	sel := ScreenSelection{A: Cell{0, outRow}, B: Cell{5, outRow}}
 	if got := ScreenRangeText(g, sel); got != "output" {
 		t.Errorf("overlay text = %q", got)
 	}

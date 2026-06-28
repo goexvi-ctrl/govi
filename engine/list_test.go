@@ -105,8 +105,9 @@ func TestPrintRangeList(t *testing.T) {
 	if err := e.exExecute("list"); err != nil {
 		t.Fatal(err)
 	}
-	if e.scr.msg != "a^Ib$" {
-		t.Fatalf("msg = %q, want a^Ib$", e.scr.msg)
+	// Print output goes to the paged overlay (nvi vs_msg), not the status line.
+	if got := e.scr.pendingOutput; len(got) != 1 || got[0] != "a^Ib$" {
+		t.Fatalf("pendingOutput = %q, want [a^Ib$]", got)
 	}
 }
 
@@ -118,8 +119,8 @@ func TestPrintRangeListOption(t *testing.T) {
 	if err := e.exExecute("1print"); err != nil {
 		t.Fatal(err)
 	}
-	if e.scr.msg != "hello$" {
-		t.Fatalf("msg = %q, want hello$", e.scr.msg)
+	if got := e.scr.pendingOutput; len(got) != 1 || got[0] != "hello$" {
+		t.Fatalf("pendingOutput = %q, want [hello$]", got)
 	}
 }
 

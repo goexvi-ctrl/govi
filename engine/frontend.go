@@ -114,6 +114,9 @@ type View interface {
 	PendingOutput() []string
 	// PendingOutputPrompt is the continue message on the overlay's last row.
 	PendingOutputPrompt() string
+	// PendingOutputFirst reports whether the first overlay page is showing, so
+	// the frontend draws the "+=+=" divider only where the ex output begins.
+	PendingOutputFirst() bool
 	// MatchHighlight returns the position of the matching bracket to flash
 	// (showmatch) and whether one is active; while active the frontend shows the
 	// cursor there instead of at the insertion point.

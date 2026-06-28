@@ -45,4 +45,6 @@ func (v view) PendingOutput() []string { return v.s.pendingPageLines() }
 
 func (v view) PendingOutputPrompt() string { return v.s.pendingOutputPrompt() }
 
+func (v view) PendingOutputFirst() bool { return v.s.pendingOutputFirst() }
+
 func (v view) MatchHighlight() (Pos, bool) { return v.s.matchPos, v.s.matchActive }

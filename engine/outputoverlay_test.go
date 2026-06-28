@@ -18,8 +18,9 @@ func TestPendingOutputPagination(t *testing.T) {
 	if got := v.PendingOutputPrompt(); got != promptMorePages {
 		t.Fatalf("page0 prompt = %q", got)
 	}
-	if len(v.PendingOutput()) != 3 {
-		t.Fatalf("page0 lines = %d, want 3", len(v.PendingOutput()))
+	// One page holds rows-1 lines (the overlay reserves a divider and prompt row).
+	if len(v.PendingOutput()) != 2 {
+		t.Fatalf("page0 lines = %d, want 2", len(v.PendingOutput()))
 	}
 
 	e.Input(KeyEvent{Rune: ' '})

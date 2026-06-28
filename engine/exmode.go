@@ -319,6 +319,7 @@ func (e *Engine) printRange(c *exCmd, number, list bool) error {
 		return err
 	}
 	useList := list || e.scr.opts.Bool("list")
+	var out []string
 	for ln := l1; ln <= l2; ln++ {
 		runes := e.scr.lineRunes(ln)
 		var text string
@@ -330,8 +331,26 @@ func (e *Engine) printRange(c *exCmd, number, list bool) error {
 		if number {
 			text = fmt.Sprintf("%6d  %s", ln, text)
 		}
-		e.printLine(text)
+		out = append(out, text)
 	}
 	e.scr.cursor = Pos{Line: clampLine(e.scr, l2), Col: 0}
+	e.presentExLines(out)
 	return nil
+}
+
+// presentExLines shows ex command output: echoed to the transcript in ex (Q)
+// mode, otherwise accumulated into the paged overlay (nvi vs_msg) so :p/:l/:#
+// (and a :g whose body prints) appear in the screen body, not just the status
+// line. Accumulating lets a :g/re/p collect every matched line into one overlay.
+func (e *Engine) presentExLines(lines []string) {
+	if e.startup || len(lines) == 0 {
+		return
+	}
+	if e.scr.mode == ModeExText {
+		for _, l := range lines {
+			e.exEcho(l)
+		}
+		return
+	}
+	e.scr.pendingOutput = append(e.scr.pendingOutput, lines...)
 }

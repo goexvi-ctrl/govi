@@ -5,14 +5,23 @@ const (
 	promptLastPage  = "Press any key to continue [: to enter more ex commands]: "
 )
 
+// pendingPageSize is how many output lines fit on one overlay page. The overlay
+// is drawn at the bottom over the buffer with a "+=+=" divider above it and a
+// continue-prompt below (nvi vs_msg), so the block needs the divider and prompt
+// rows in addition to the text -- one page holds rows-1 lines.
+func (s *screen) pendingPageSize() int {
+	page := s.rows - 1
+	if page < 1 {
+		page = 1
+	}
+	return page
+}
+
 func (s *screen) pendingPageLines() []string {
 	if s.pendingOutput == nil {
 		return nil
 	}
-	page := s.rows
-	if page < 1 {
-		page = 1
-	}
+	page := s.pendingPageSize()
 	start := s.pendingPage * page
 	if start >= len(s.pendingOutput) {
 		return nil
@@ -28,12 +37,12 @@ func (s *screen) pendingHasMorePages() bool {
 	if s.pendingOutput == nil {
 		return false
 	}
-	page := s.rows
-	if page < 1 {
-		page = 1
-	}
-	return (s.pendingPage+1)*page < len(s.pendingOutput)
+	return (s.pendingPage+1)*s.pendingPageSize() < len(s.pendingOutput)
 }
+
+// pendingOutputFirst reports whether the first overlay page is showing, so the
+// frontend draws the divider only where the ex output begins (nvi vs_divider).
+func (s *screen) pendingOutputFirst() bool { return s.pendingPage == 0 }
 
 func (s *screen) pendingOutputPrompt() string {
 	if s.pendingOutput == nil {

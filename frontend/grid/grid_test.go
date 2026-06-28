@@ -41,6 +41,7 @@ func (f *fakeView) List() bool                  { return false }
 func (f *fakeView) ExTranscript() []string      { return f.transcript }
 func (f *fakeView) PendingOutput() []string     { return nil }
 func (f *fakeView) PendingOutputPrompt() string { return "" }
+func (f *fakeView) PendingOutputFirst() bool    { return true }
 func (f *fakeView) MatchHighlight() (engine.Pos, bool) {
 	return engine.Pos{}, false
 }

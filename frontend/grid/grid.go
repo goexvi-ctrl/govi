@@ -93,24 +93,51 @@ func ComposeSel(v engine.View, rows, cols int, sel *Selection) Grid {
 	}
 	g := Grid{Rows: rows, Cols: cols, Cells: make([]Glyph, rows*cols)}
 
-	if out := v.PendingOutput(); out != nil {
-		g.composeOverlay(out, v.PendingOutputPrompt())
-		return g
-	}
 	if v.Mode() == engine.ModeExText {
 		g.composeExMode(v)
 		return g
 	}
 	g.composeEditor(v, sel)
+	// An ex-output overlay is drawn over the bottom of the buffer: a "+=+="
+	// divider, the output lines, and a continue prompt on the last row, with the
+	// buffer still visible above (nvi vs_msg).
+	if out := v.PendingOutput(); out != nil {
+		g.composeOverlay(out, v.PendingOutputPrompt(), v.PendingOutputFirst())
+	}
 	return g
 }
 
-// composeOverlay shows one page of command output with a continue prompt on the
-// bottom row; the cursor is hidden.
-func (g *Grid) composeOverlay(lines []string, prompt string) {
-	avail := g.Rows - 1
-	y := 0
-	for i := 0; i < len(lines) && y < avail; i++ {
+// divideStr is nvi's ex-output divider (vs_divider DIVIDESTR).
+const divideStr = "+=+=+=+=+=+=+=+"
+
+// composeOverlay overlays one page of command output at the bottom: a divider
+// (only where the output begins), the lines, then a continue prompt on the last
+// row. The cursor is hidden.
+func (g *Grid) composeOverlay(lines []string, prompt string, first bool) {
+	n := len(lines)
+	sep := 0
+	if first {
+		sep = 1
+	}
+	top := g.Rows - (n + sep + 1)
+	if top < 0 {
+		top = 0
+	}
+	for y := top; y < g.Rows; y++ {
+		for x := 0; x < g.Cols; x++ {
+			g.set(x, y, ' ', engine.StyleNormal) // clear the block row
+		}
+	}
+	y := top
+	if first {
+		d := divideStr
+		if len(d) > g.Cols {
+			d = d[:g.Cols]
+		}
+		g.drawText(d, y)
+		y++
+	}
+	for i := 0; i < n && y < g.Rows-1; i++ {
 		g.drawText(lines[i], y)
 		y++
 	}

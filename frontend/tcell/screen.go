@@ -286,12 +286,6 @@ func (f *Frontend) paintNow(v engine.View) {
 	f.scr.Clear()
 	w, h := f.scr.Size()
 
-	if out := v.PendingOutput(); out != nil {
-		f.renderOutput(out, v.PendingOutputPrompt(), w, h)
-		f.scr.Show()
-		return
-	}
-
 	if v.Mode() == engine.ModeExText {
 		f.renderExMode(v, w, h)
 		f.scr.Show()
@@ -351,6 +345,13 @@ func (f *Frontend) paintNow(v engine.View) {
 
 	f.drawStatus(v, w, rows)
 	f.placeCursor(v, mapRows, rows, gutter, textW)
+
+	// An ex-output overlay (e.g. :p, :set all) is drawn over the bottom of the
+	// buffer: a "+=+=" divider, the output lines, and a continue prompt on the
+	// last row -- the buffer stays visible above (nvi vs_msg).
+	if out := v.PendingOutput(); out != nil {
+		f.renderOutput(out, v.PendingOutputPrompt(), v.PendingOutputFirst(), w, h)
+	}
 	f.scr.Show()
 }
 
@@ -375,12 +376,40 @@ func (f *Frontend) renderExMode(v engine.View, w, h int) {
 	f.scr.ShowCursor(len([]rune(prompt)), h-1)
 }
 
-// renderOutput shows one page of command output with a continue prompt on the
-// bottom row (nvi msg_cmsg CMSG_CONT_Q / CMSG_CONT_EX).
-func (f *Frontend) renderOutput(lines []string, prompt string, w, h int) {
-	avail := h - 1
-	row := 0
-	for i := 0; i < len(lines) && row < avail; i++ {
+// divideStr is nvi's ex-output divider (vs_divider DIVIDESTR), truncated to the
+// screen width.
+const divideStr = "+=+=+=+=+=+=+=+"
+
+// renderOutput overlays one page of command output at the bottom of the screen:
+// a divider line (only where the output begins), the lines, and a continue
+// prompt on the last row (nvi vs_msg / vs_divider). The buffer drawn above stays
+// visible; the block is anchored to the bottom.
+func (f *Frontend) renderOutput(lines []string, prompt string, first bool, w, h int) {
+	n := len(lines)
+	sep := 0
+	if first {
+		sep = 1
+	}
+	top := h - (n + sep + 1)
+	if top < 0 {
+		top = 0
+	}
+	// Clear the block rows, then draw divider / lines / prompt.
+	for r := top; r < h; r++ {
+		for x := 0; x < w; x++ {
+			f.scr.SetContent(x, r, ' ', nil, tc.StyleDefault)
+		}
+	}
+	row := top
+	if first {
+		d := divideStr
+		if len(d) > w {
+			d = d[:w]
+		}
+		f.drawText(d, row, w)
+		row++
+	}
+	for i := 0; i < n && row < h-1; i++ {
 		f.drawText(lines[i], row, w)
 		row++
 	}
