@@ -255,8 +255,8 @@ func buildReplacement(repl, in []rune, m regex.Match) []rune {
 }
 
 // exGlobal implements :[range]g/pattern/cmd (default range whole file, default
-// cmd print). exVglobal is the inverse (:v).
-func (e *Engine) exGlobal(c *exCmd) error  { return e.global(c, false) }
+// cmd print). :g! inverts to non-matching lines, like :v (exVglobal).
+func (e *Engine) exGlobal(c *exCmd) error  { return e.global(c, c.force) }
 func (e *Engine) exVglobal(c *exCmd) error { return e.global(c, true) }
 
 func (e *Engine) global(c *exCmd, invert bool) error {
@@ -275,7 +275,10 @@ func (e *Engine) global(c *exCmd, invert bool) error {
 	}
 
 	// Collect matching lines first (by current number), then run the command on
-	// each, adjusting for line-count changes the command causes.
+	// each. The matches are tracked in s.gMarks so the line-edit primitives keep
+	// them in sync no matter where a body command (delete, copy, move) adds or
+	// removes lines -- nvi flags each matched line and follows the flag, so a
+	// command that inserts elsewhere (e.g. t$) does not mistrack later matches.
 	var matches []int64
 	for ln := l1; ln <= l2 && ln <= s.lineCount(); ln++ {
 		_, ok := re.MatchAt(s.lineRunes(ln), 0)
@@ -283,23 +286,22 @@ func (e *Engine) global(c *exCmd, invert bool) error {
 			matches = append(matches, ln)
 		}
 	}
+	s.gMarks = matches
+	defer func() { s.gMarks = nil }()
 
 	// Run the whole global as one undo group: nvi undoes an entire :g with a
 	// single u. beginChange/endChange nest, so the per-line sub-commands collapse
 	// into this one change set.
 	e.beginChange()
 	defer e.endChange()
-	var delta int64
-	for _, ln := range matches {
-		target := ln + delta
+	for i := range matches {
+		target := s.gMarks[i]
 		if target < 1 || target > s.lineCount() {
-			continue
+			continue // visited line was deleted by an earlier body command
 		}
-		before := s.lineCount()
 		if err := e.exExecute(fmt.Sprintf("%d%s", target, cmd)); err != nil {
 			return err
 		}
-		delta += s.lineCount() - before
 	}
 	return nil
 }

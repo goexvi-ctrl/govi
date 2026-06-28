@@ -83,6 +83,13 @@ type screen struct {
 	// lastAtBuf is the buffer most recently run with @<buf>; @@ repeats it
 	// (nvi sp->at_lbuf / SC_AT_SET).
 	lastAtBuf rune
+
+	// gMarks tracks the line numbers a running :g/:v still has to visit. The
+	// line-edit primitives keep them in sync across inserts/deletes the same way
+	// marks are, so a body command that adds or moves lines (t/copy/m) cannot
+	// mistrack later matches (nvi flags each matched line in its recno record).
+	// A visited/deleted entry is set to -1. nil when no global is running.
+	gMarks []int64
 }
 
 // lineCount returns the number of lines in the buffer, treating an empty buffer
@@ -157,16 +164,40 @@ func (s *screen) setLine(lno int64, runes []rune) {
 func (s *screen) insertLine(lno int64, runes []rune) {
 	s.log.Insert(lno, runes)
 	s.marks.LinesInserted(lno, 1)
+	s.gMarksInserted(lno)
 }
 
 func (s *screen) appendLine(lno int64, runes []rune) {
 	s.log.Append(lno, runes)
 	s.marks.LinesInserted(lno+1, 1)
+	s.gMarksInserted(lno + 1)
 }
 
 func (s *screen) deleteLine(lno int64) {
 	s.log.Delete(lno)
 	s.marks.LinesDeleted(lno, 1)
+	s.gMarksDeleted(lno)
+}
+
+// gMarksInserted/gMarksDeleted mirror mark.Set's line fixups for the transient
+// :g match list (see gMarks). They are no-ops when no global is running.
+func (s *screen) gMarksInserted(at int64) {
+	for i, ln := range s.gMarks {
+		if ln >= at {
+			s.gMarks[i] = ln + 1
+		}
+	}
+}
+
+func (s *screen) gMarksDeleted(at int64) {
+	for i, ln := range s.gMarks {
+		switch {
+		case ln == at:
+			s.gMarks[i] = -1
+		case ln > at:
+			s.gMarks[i] = ln - 1
+		}
+	}
 }
 
 // clampCursor keeps the cursor within the buffer and within its line. maxCol is
