@@ -94,11 +94,12 @@ Fixed in display.go GutterWidth: return a fixed 8 (nvi O_NUMBER_LENGTH,
 O_NUMBER_FMT "%7lu ") when numbering is on, instead of the dynamic digits+1.
 Updated frontend/grid and frontend/tcell gutter tests to the 8-wide expectation.
 
-## Status: all 13 divergences (#1-13) are FIXED. Every goterm battery is 0
-diverged -- the single-command set (editing/motion/search/ex/paging/registers/
-structure) and the multi-step session sets (sequences 0/10, advanced 0/18, more
-0/18) -- and `go test ./...` passes. The #7-13 group below (found by aggressive
-multi-step "session" testing) is the second wave, now cleared.
+## Status: divergences #1-16 are ALL FIXED. The third mining wave (yank/register/@,
+2026-06-27) found #14-16, now fixed (2026-06-28), plus two accepted differences
+(see "Known/accepted"). The single-command set (editing/motion/search/ex/paging/
+registers/structure) and the multi-step session sets (sequences/advanced/more)
+are 0 diverged and `go test ./...` passes. The #7-13 group was the second wave
+(multi-step "session" testing); #14-16 the third (yank/register/@ probing).
 
 ## Open (found by aggressive multi-step session testing) [2026-06-27]
 
@@ -198,6 +199,59 @@ noOrig sentinel when typing past EOL) in m.overtyped; insertBackspace in replace
 mode pops it and restores the original (or deletes the appended char), stopping at
 the insert start. Verified `RXXXX`+2x backspace -> "XXpha beta gamma", matches nvi.
 
+## Open (yank/register/@-execute mining) [2026-06-27]
+
+Found by goterm yank/put/@ probing (the numbered ring, named/append registers,
+linewise vs charwise put, count-put, and @ execute-register). Most of this area
+MATCHES nvi: the numbered delete ring "1.."9 (incl. that a sub-line delete does
+NOT shift it), named "a / append "A registers, the unnamed register, linewise
+yank/put and linewise count-put (yy3p), marks, q/@ macro record-replay, @@, and a
+counted @ all match. Three real divergences remain (plus two accepted differences
+recorded under "Known/accepted").
+
+### 14. charwise p/P leaves the cursor on the wrong end of the put text  [FIXED 2026-06-28]
+Fixed in viedit.go: putChars now returns the FIRST inserted position while still
+leaving its internal cursor on the last char (so a counted put keeps stacking);
+put() applies that first position as the final cursor for a charwise put,
+matching nvi vi/v_put.c. Verified yw$p/yw$P land on the first put char. Below.
+
+After a CHARACTERWISE put, nvi places the cursor on the FIRST character of the
+inserted text; govi places it on the LAST (vim/POSIX behavior). The body is
+identical; only the cursor differs, and only when the put text is >1 char (a
+single-char put coincides). On "hello world":
+- `yw$p`  -> "hello worldhello "  nvi cursor col 11 (first put char), govi col 16 (last).
+- `yw$P`  -> "hello worlhello d"   nvi col 10 (first), govi col 15 (last).
+Single-char `ylp` matches (both col 1). Linewise put already matches (cursor to
+first non-blank of the first put line). Fix: for a charwise p/P, set the cursor to
+the first column of the inserted text, not the last. (Note: govi matches vim/POSIX
+here and nvi arguably does not -- but the project target is nvi.)
+
+### 15. `@:` corrupts the buffer  [FIXED 2026-06-28]
+Fixed in vi.go execBuffer: it now validates the buffer name (a-z, A-Z, 1-9 only,
+per nvi CBNAME) and bells/no-ops for anything else, so `@:` no longer falls back
+to the unnamed register. Also added @@ / @* repeat of the last executed buffer
+(nvi sp->at_lbuf). Verified `@:` leaves the buffer and cursor unchanged. Below.
+
+`@<x>` executes buffer x as vi input. `:` is not a real buffer name, so nvi treats
+`@:` as a no-op (it is NOT vim's "repeat last ex command"). govi instead injects
+stray text. After `:d` on regLines (deletes "AAA first", cursor on "BBB second" at
+0,0), `@:`:
+- nvi:  buffer unchanged ("BBB second"...), cursor 0,0  (no-op).
+- govi: "BBB second" -> "BBB secondAA first", cursor 0,18  (garbage inserted).
+Make `@:` (and `@` of any undefined/empty buffer) a clean no-op like nvi.
+
+### 16. `@<reg>` of a linewise register drops the trailing-newline cursor move  [FIXED 2026-06-28]
+Fixed in vi.go execBuffer: after replaying the buffer's lines, a linewise
+register (nvi CB_LMODE) gets a trailing <newline> dispatched, replaying as an
+Enter that moves the cursor down -- matching nvi v_at.c (which pushes a newline
+after every line, including the last). Verified `"ayyj@a` ends at 3,0. Below.
+
+Executing a yanked LINE as a macro: a linewise register ends in "\n", which nvi
+replays as an Enter (cursor moves down a line); govi drops it. On cmdLines (line 1
+"3xjdd"), `"ayyj@a` runs 3x / j / dd -- the edits match exactly -- then the
+register's trailing newline: nvi cursor ends at 3,0, govi at 2,0. Replay the
+trailing newline of a linewise register as a <CR> when executing it with @.
+
 ## Inconclusive / needs a cleaner test
 - insert-mode `^D` (dedent): nvi's mid-line behavior is arcane -- when ^D is typed
   after other text it can be stored as a literal `^D` rather than dedenting, so a
@@ -208,6 +262,14 @@ the insert start. Verified `RXXXX`+2x backspace -> "XXpha beta gamma", matches n
 ## Known/accepted (do NOT "fix")
 - `^X` hex input: govi accepts 2, 4, or 6 hex digits; nvi only 2. Intentional
   govi extension.
+- `"0` (yank register) and `"-` (small-delete register): govi implements both
+  (vim); nvi has NEITHER -- `"0p` / `"-p` are no-ops in nvi. govi correctly does
+  not shift the numbered ring "1.."9 on a sub-line delete. These are govi
+  supersets that never change behavior on registers nvi accepts; accepted.
+- count + CHARWISE put (e.g. `ye3p`, `yw3p`): govi replicates the text cleanly
+  (matches vim: "abc" x3 -> "abcabcabc", giving "aabcabcabcbc.def"); nvi produces
+  a garbled interleaving ("aaabcabcbcbc.def"). nvi appears buggy here; govi is
+  correct -- do NOT match nvi. (Linewise count-put `yy3p` matches.)
 - Visual mode `v`/`V`: nvi has NO visual mode (it answers "v isn't a vi command").
   govi appears to accept v/V; there is no nvi reference behavior to match, so this
   is out of scope for the comparison, not a divergence to fix.
