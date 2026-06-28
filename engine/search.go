@@ -132,6 +132,118 @@ func (e *Engine) startSearch(pattern string, dir searchDir) error {
 	return nil
 }
 
+// runSearchLine handles a completed / or ? command line: it resolves the search
+// (with any trailing line offset and ; chaining, nvi vi/v_search.c), then either
+// applies a pending operator (d/pat, y/pat) or moves the cursor. line is the text
+// after the leading prompt delimiter.
+func (e *Engine) runSearchLine(line string, dir searchDir) error {
+	m := e.vi
+	op := m.searchOp
+	m.searchOp = 0
+	target, linewise, err := e.searchLine(line, dir)
+	if err != nil {
+		return err
+	}
+	if op == 0 {
+		e.scr.cursor = target
+		e.scr.clampCursor()
+		return nil
+	}
+	// Apply the deferred operator over [searchStart, target]. A search with no
+	// offset is an exclusive characterwise motion; a line offset makes it
+	// linewise (nvi).
+	e.scr.cursor = m.searchStart
+	mot := motion{to: target, linewise: linewise}
+	m.operate(e, op, m.searchOpReg, mot)
+	m.changed = false
+	m.count, m.haveCount = 0, false
+	return nil
+}
+
+// searchLine parses one or more ;-chained search steps with optional +/- line
+// offsets and returns the final target position. linewise is true when the last
+// step carried a line offset (nvi makes an offset search linewise for operators).
+func (e *Engine) searchLine(line string, dir searchDir) (Pos, bool, error) {
+	s := e.scr
+	rs := []rune(line)
+	i := 0
+	from := s.cursor
+	linewise := false
+	for {
+		delim := '/'
+		if dir == searchBack {
+			delim = '?'
+		}
+		// Read the pattern up to an unescaped delimiter.
+		var pat strings.Builder
+		for i < len(rs) {
+			r := rs[i]
+			if r == '\\' && i+1 < len(rs) {
+				pat.WriteRune(r)
+				pat.WriteRune(rs[i+1])
+				i += 2
+				continue
+			}
+			if r == delim {
+				break
+			}
+			pat.WriteRune(r)
+			i++
+		}
+		if i < len(rs) && rs[i] == delim {
+			i++ // consume closing delimiter
+		}
+		re, err := e.compilePattern(pat.String())
+		if err != nil {
+			return Pos{}, false, err
+		}
+		s.lastSearchDir = dir
+		pos, ok := e.searchFrom(re, from, dir)
+		if !ok {
+			return Pos{}, false, fmt.Errorf("Pattern not found: %s", s.lastPattern)
+		}
+		cur := pos
+		linewise = false
+		// Optional line offset: +N, -N, + or - (default 1).
+		if i < len(rs) && (rs[i] == '+' || rs[i] == '-') {
+			sign := rs[i]
+			i++
+			n := int64(0)
+			hadNum := false
+			for i < len(rs) && rs[i] >= '0' && rs[i] <= '9' {
+				n = n*10 + int64(rs[i]-'0')
+				i++
+				hadNum = true
+			}
+			if !hadNum {
+				n = 1
+			}
+			if sign == '-' {
+				n = -n
+			}
+			cur = Pos{Line: clampLine(s, pos.Line+n), Col: 0}
+			cur.Col = s.firstNonBlank(cur.Line)
+			linewise = true
+		}
+		// A ; chain re-searches from the current match; the char after ; may
+		// change direction.
+		if i < len(rs) && rs[i] == ';' {
+			i++
+			if i < len(rs) && (rs[i] == '/' || rs[i] == '?') {
+				if rs[i] == '?' {
+					dir = searchBack
+				} else {
+					dir = searchFwd
+				}
+				i++
+			}
+			from = cur
+			continue
+		}
+		return cur, linewise, nil
+	}
+}
+
 // fileInfo implements ^G: show the file status (same text as :f).
 func (e *Engine) fileInfo() {
 	e.scr.msg = e.fileStatus()

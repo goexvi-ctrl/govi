@@ -24,6 +24,15 @@ type vimode struct {
 	opReg     rune
 	pending   rune // command awaiting a single char (f F t T r m ` ')
 
+	// search-as-motion: a / or ? typed while an operator is pending defers the
+	// operator until the search line completes (d/pat, y/pat). searchOp holds the
+	// operator (0 = a plain search, just move the cursor); searchStart is the
+	// cursor at the time, the start of the operated range.
+	searchOp      rune
+	searchOpReg   rune
+	searchOpCount int
+	searchStart   Pos
+
 	// z command: [line]z[window][type] (nvi v_z.c).
 	zLine      int64 // count1 line (0 = current line)
 	zCount2    int   // digits after z
@@ -190,6 +199,25 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 	switch r {
 	case '"':
 		m.awaitReg = true
+		return
+	case '/', '?':
+		// A search used as a motion: defer any pending operator until the search
+		// line is entered (d/pat, y/pat). With no operator this is a plain search.
+		if m.op != 0 {
+			m.searchOp = m.op
+			m.searchOpReg = m.opReg
+			m.searchOpCount = effCount(m.opCount) * effCount(m.count)
+			m.searchStart = s.cursor
+			m.op, m.opCount, m.opReg = 0, 0, 0
+			m.count, m.haveCount = 0, false
+		} else {
+			m.searchOp = 0
+		}
+		if r == '/' {
+			e.enterCmdline('/')
+		} else {
+			e.enterCmdline('?')
+		}
 		return
 	case 'd', 'c', 'y', '!', '>', '<':
 		m.startOperator(r)

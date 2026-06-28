@@ -351,6 +351,7 @@ func (e *Engine) cmdlineKey(ev KeyEvent) {
 			s.mode = ModeCommand
 			s.colon = nil
 			s.filterL1, s.filterL2 = 0, 0
+			e.vi.searchOp = 0 // cancel a deferred operator-search (d/pat aborted)
 		},
 	})
 }
@@ -359,11 +360,11 @@ func (e *Engine) cmdlineKey(ev KeyEvent) {
 func (e *Engine) runCmdline(prefix rune, line string) {
 	switch prefix {
 	case '/':
-		if err := e.startSearch(line, searchFwd); err != nil {
+		if err := e.runSearchLine(line, searchFwd); err != nil {
 			e.scr.msg, e.scr.msgKind = err.Error(), MsgError
 		}
 	case '?':
-		if err := e.startSearch(line, searchBack); err != nil {
+		if err := e.runSearchLine(line, searchBack); err != nil {
 			e.scr.msg, e.scr.msgKind = err.Error(), MsgError
 		}
 	case '!':
