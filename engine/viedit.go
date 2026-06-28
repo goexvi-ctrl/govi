@@ -332,6 +332,21 @@ func (e *Engine) replaceChar(c rune, count int, m *vimode) {
 		return
 	}
 	e.beginChange()
+	if c == '\r' || c == '\n' {
+		// r<Enter>: replace the count target chars with a line break, splitting
+		// the line. The replaced chars are dropped; text after them moves to a new
+		// line and the cursor lands at its start (nvi v_replace).
+		before := cloneR(line[:s.cursor.Col])
+		after := cloneR(line[s.cursor.Col+count:])
+		s.setLine(s.cursor.Line, before)
+		s.insertLine(s.cursor.Line+1, after)
+		s.cursor.Line++
+		s.cursor.Col = 0
+		e.endChange()
+		s.clampCursor()
+		m.changed = true
+		return
+	}
 	nl := cloneR(line)
 	for i := 0; i < count; i++ {
 		nl[s.cursor.Col+i] = c
