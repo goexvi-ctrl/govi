@@ -670,7 +670,18 @@ NOTE: two report items turned out ALREADY DONE on re-check and are NOT listed he
 -- ex `:k`/`:ma`/`:mark` set a mark (works; parity.md row was stale) and insert
 `^U` line-erase (works) -- so don't re-implement them.
 
-### 40. vi `z` lacks the `z^` and `z+` screen types  [OPEN, small]
+### 40. vi `z` lacks the `z^` and `z+` screen types  [FIXED 2026-06-28]
+FIX: split `+` out of the `z<CR>` case and added `^` in screenPosition (vi.go),
+threading the vimode through so the bare forms reuse pageDown/pageUp. A bare `z+`
+scrolls forward one screen and a bare `z^` backward one screen, each by `t_rows`
+(the full text-row count) -- nvi's Z_PLUS/Z_CARAT scroll a full screen, unlike
+^F/^B which scroll window-2. `[line]z+` still puts the line at the top (= z<CR>),
+`[line]z^` puts it at the bottom. Verified vs real nvi (12x40, 40 lines): `20Gz+`
+-> top 026 cursor 0,0 and `20Gz^` -> top 004 cursor row 10, both matching nvi
+exactly (and distinct from `^F` top 024 / `^B` top 006). The historic
+"previous-screen" off-by-one of the rare `[line]z^` line form is not replicated.
+
+--- original analysis (retained) ---
 govi implements `z<CR>` (line to top), `z.` (center), `z-` (bottom), `[line]z`,
 and `z[count]`, but ignores the `+`/`^` type modifiers and falls back to
 top-positioning.

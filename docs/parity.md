@@ -78,7 +78,7 @@ no nvi command is silently missing here.
 | `U` | restore line | yes | ✅✔ | ✅✔ | undoes the run of changes on the current line |
 | `u` | undo (toggle) | yes | ✅✔ | ✅✔ | directional `u`/`.` model |
 | `x X` | delete char | yes | ✅✔ | ✅✔ | |
-| `z` | screen positioning (`z↵` `z.` `z-` `[line]z` `z[count]`) | yes | 🟡 | 🟡 | wrap-aware center/bottom; `[line]z[count]` small map (blank below, grows on `j`); `z[count]` types equivalent; no `z^`/`z+` scroll |
+| `z` | screen positioning (`z↵` `z.` `z-` `z+` `z^` `[line]z` `z[count]`) | yes | 🟡 | 🟡 | wrap-aware center/bottom; `z+`/`z^` scroll a full screen fwd/back (GOTERM_DIVERGENCES #40); `[line]z[count]` small map (blank below, grows on `j`); `z[count]` types equivalent |
 | `ZZ` `ZQ` | save-quit / quit | yes | ✅ | ✅ | |
 | `<interrupt>` | interrupt current operation | yes | 🟡 | 🟡 | searches/interrupts; not all operations cancellable |
 
@@ -93,7 +93,7 @@ no nvi command is silently missing here.
 | `^V` | quote next character | yes | ✅ | ✅ | |
 | `^W` | erase last word | yes | ✅✔ | ✅✔ | |
 | `^X` | insert hex character code | yes | ✅ | ✅ | modern divergence: accepts up to 6 hex digits to insert any Unicode code point (ends at 6 digits or a non-hex key); invalid values → U+FFFD |
-| line erase | erase the input line | yes | ❌ | ❌ | |
+| `^U` / line erase | erase typed input back to the insert point | yes | ✅ | ✅ | matches nvi (erases to the insert start, not past it) |
 | `<esc>` | end input | yes | ✅✔ | ✅✔ | |
 | autoindent | leading-whitespace carry | yes | ✅✔ | ✅✔ | `o`/`O` and `↵` |
 | abbreviations | expand on word break | yes | ✅✔ | ✅✔ | |
@@ -130,7 +130,7 @@ no nvi command is silently missing here.
 | `:cd`/`:chdir` | yes | ✅ | ✅ | per-tab cwd; GUI also follows tab focus |
 | `:so[urce]` | yes | ✅ | ✅ | reads ex commands from a file; a leading `:` on a line is tolerated (GOTERM_DIVERGENCES #39) |
 | `:mk[exrc]` | yes | ❌ | ❌ | write current options to an exrc file |
-| `:k`/`:ma` (mark) | yes | ❌ | ❌ | (vi `m` works) |
+| `:k`/`:ma`/`:mark` (mark a line) | yes | ✅ | ✅ | sets a mark usable as an address; vi `m` also works |
 | `:u[ndo]` | yes | ✅ | ✅ | shares the vi `u` undo/redo direction toggle (GOTERM_DIVERGENCES #37) |
 | `:di[splay] b\|c\|s\|t` | yes | ❌ | ❌ | buffers/screens/tags inspector |
 | `:he[lp]` | yes | ✅ | ✅ | points to :viusage / :exusage |

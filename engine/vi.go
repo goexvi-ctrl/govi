@@ -577,7 +577,7 @@ func (m *vimode) charArg(e *Engine, ev KeyEvent) {
 			m.pending = 'z'
 			return
 		}
-		e.screenPosition(c, m.zLine, m.zLine != 0, m.zCount2, m.zCount2Set)
+		e.screenPosition(m, c, m.zLine, m.zLine != 0, m.zCount2, m.zCount2Set)
 		m.zLine = 0
 		m.zCount2, m.zCount2Set = 0, false
 	case '#':
@@ -656,7 +656,7 @@ func validBufferName(name rune) bool {
 // screenPosition implements [line]z[window]<type> (nvi v_z.c / vs_sm_fill).
 // haveLine selects count1; haveWin with win>0 sets a small scroll map (vs_crel)
 // and always places the line at the top — z3., z3-, and z3<enter> are equivalent.
-func (e *Engine) screenPosition(typ rune, line int64, haveLine bool, win int, haveWin bool) {
+func (e *Engine) screenPosition(m *vimode, typ rune, line int64, haveLine bool, win int, haveWin bool) {
 	s := e.scr
 	target := s.cursor.Line
 	if haveLine {
@@ -689,8 +689,27 @@ func (e *Engine) screenPosition(typ rune, line int64, haveLine bool, win int, ha
 	s.mapRows = s.rows
 	s.minMapRows = s.rows
 	switch typ {
-	case '\r', '\n', '+':
+	case '\r', '\n':
 		s.top = target
+	case '+':
+		// nvi v_z.c: [line]z+ puts the line at the top (like z<CR>); a bare z+
+		// scrolls forward one screen (Z_PLUS scrolls t_rows lines, vs. ^F's
+		// window-2), cursor to the new top line.
+		if !haveLine {
+			m.pageDown(e, s.rows, true)
+			return
+		}
+		s.top = target
+	case '^':
+		// nvi v_z.c: a bare z^ scrolls backward one screen (Z_CARAT, t_rows
+		// lines, vs. ^B's window-2), cursor to the new bottom line. [line]z^ puts
+		// the line at the bottom (the historic "previous screen" off-by-one of
+		// the line form is not replicated).
+		if !haveLine {
+			m.pageUp(e, s.rows, true)
+			return
+		}
+		s.top = s.topForBottom(target)
 	case '.':
 		s.top = s.topForMiddle(target)
 	case '-':
