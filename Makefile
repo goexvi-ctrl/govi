@@ -52,25 +52,29 @@ $(IDIR)/GoVi.app: gui/build/GoVi.app $(GOVI_ICNS)
 	ditto gui/build/GoVi.app $@
 	$(LSREGISTER) -f $@   # register file types + the govi:// URL scheme
 
-# release: build a .dmg for upload to a GitHub release. The image holds the
-# GoVi.app bundle, the govi CLI, and an /Applications symlink for drag-install.
-# ditto (not cp) copies the bundle so its symlinks and metadata survive.
-# Version comes from the latest git tag; arch from the build host.
-RELEASE_VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
-RELEASE_ARCH    := $(shell uname -m)
-RELEASE_DMG     := gui/build/GoVi-$(RELEASE_VERSION)-macos-$(RELEASE_ARCH).dmg
-RELEASE_STAGE   := gui/build/dmg-stage
+# release: build a signed macOS .dmg for upload to a GitHub release. The image
+# holds the GoVi.app bundle, the govi CLI, and an /Applications symlink for
+# drag-install. Version comes from the latest git tag; arch from the build host.
+#
+# Default builds are ad-hoc signed: runnable locally, but a download is
+# quarantined and must be de-quarantined by hand. Pass a Developer ID to get a
+# hardened-runtime, notarized, stapled image that opens with no user fiddling:
+#
+#   make release \
+#     CODESIGN_IDENTITY="Developer ID Application: Name (TEAMID)" \
+#     NOTARY_PROFILE=govi-notary
+#
+# NOTARY_PROFILE names a stored `xcrun notarytool store-credentials` profile.
+RELEASE_VERSION   ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+RELEASE_ARCH      := $(shell uname -m)
+RELEASE_DMG       := gui/build/GoVi-$(RELEASE_VERSION)-macos-$(RELEASE_ARCH).dmg
+CODESIGN_IDENTITY ?= -
+NOTARY_PROFILE    ?= govi-notary
 
 release: govi gui/build/GoVi.app
-	rm -rf $(RELEASE_STAGE) $(RELEASE_DMG)
-	mkdir -p $(RELEASE_STAGE)
-	ditto gui/build/GoVi.app $(RELEASE_STAGE)/GoVi.app
-	cp govi $(RELEASE_STAGE)/govi
-	ln -s /Applications $(RELEASE_STAGE)/Applications
-	hdiutil create -quiet -volname "GoVi $(RELEASE_VERSION)" \
-		-srcfolder $(RELEASE_STAGE) -ov -format UDZO $(RELEASE_DMG)
-	rm -rf $(RELEASE_STAGE)
-	@echo "Wrote $(RELEASE_DMG)"
+	APP=gui/build/GoVi.app CLI=govi DMG=$(RELEASE_DMG) \
+	VOLNAME="GoVi $(RELEASE_VERSION)" IDENTITY="$(CODESIGN_IDENTITY)" \
+	NOTARY_PROFILE="$(NOTARY_PROFILE)" ./scripts/macos-release.sh
 
 clean:
 	rm -rf govi gui/build cmd/govi/govi
