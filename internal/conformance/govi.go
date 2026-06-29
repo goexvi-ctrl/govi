@@ -34,6 +34,10 @@ func RunGoviVi(s ViSession) (string, error) {
 		return "", err
 	}
 	eng.Resize(23, 80) // 24-row terminal, one status line
+	// Keep recovery files in this per-test temp dir (removed above on return),
+	// mirroring the local oracle, so a run never writes to the shared system
+	// recovery dir even if it errors out before the closing :wq.
+	eng.RunEx("set recdir=" + dir)
 
 	feedKeys(eng, s.Keys)
 	// Flush and quit: leave any insert mode, then :wq.
@@ -65,6 +69,7 @@ func RunGoviEx(s ExSession) (string, error) {
 		return "", err
 	}
 	eng.Resize(23, 80)
+	eng.RunEx("set recdir=" + dir) // keep recovery local to this temp dir (see RunGoviVi)
 
 	for _, cmd := range s.Commands {
 		feedKeys(eng, ":"+cmd+"\r")
