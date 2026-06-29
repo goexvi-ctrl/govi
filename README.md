@@ -54,23 +54,15 @@ save, **`:q`** to quit. **`:help`** points you at the built-in command lists.
 The quickest way to get **GoVi** is a prebuilt release. Download the latest
 `GoVi-<version>-macos-arm64.dmg` (Apple Silicon) from the
 [releases page](https://github.com/goexvi-ctrl/govi/releases) and open it. Drag
-**GoVi.app** onto the **Applications** shortcut (don't launch it straight from
-the disk image), and copy the bundled **`govi`** terminal tool onto your `PATH`:
+**GoVi.app** onto the **Applications** shortcut, and copy the bundled **`govi`**
+terminal tool onto your `PATH`:
 
 ```sh
 cp "/Volumes/GoVi "*/govi /usr/local/bin/   # or ~/bin
 ```
 
-These builds are **ad-hoc signed but not notarized**, so a downloaded copy is
-quarantined and Gatekeeper blocks it on first launch. Clear the quarantine flag
-once -- on the app, and on the CLI if the terminal refuses to run it:
-
-```sh
-xattr -dr com.apple.quarantine /Applications/GoVi.app /usr/local/bin/govi
-```
-
-(Equivalently, after the first blocked launch open **System Settings ->
-Privacy & Security** and click **Open Anyway**.)
+The release is signed with a Developer ID and notarized by Apple, so it opens
+normally -- no quarantine workaround needed.
 
 Or build it from source:
 
