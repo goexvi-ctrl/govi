@@ -34,8 +34,14 @@ type original struct {
 	// immutable, so cached entries never go stale.
 	cache *origCache
 
-	// scratch is a reused read buffer (avoids a scanChunk allocation per line).
-	scratch []byte
+	// blockBuf caches the most recently read scanChunk-sized block of the
+	// original. blockPos is its byte offset and blockLen its valid length. A run
+	// of nearby line reads is served from this block, so sequential access issues
+	// roughly one syscall per block instead of one per line. The original is
+	// immutable, so a cached block never goes stale.
+	blockBuf []byte
+	blockPos int64
+	blockLen int
 
 	// seqValid/seqLine/seqPos form a one-entry sequential cursor: seqPos is the
 	// byte offset at which line seqLine begins, set after each read so a
@@ -43,6 +49,23 @@ type original struct {
 	seqValid bool
 	seqLine  int64
 	seqPos   int64
+}
+
+// blockAt returns the cached bytes starting at file offset pos, loading a fresh
+// scanChunk-sized block if pos falls outside the currently cached one. The
+// returned slice aliases blockBuf and is only valid until the next blockAt call;
+// callers must copy out anything they keep. An empty result means EOF at pos.
+func (o *original) blockAt(pos int64) []byte {
+	if o.blockLen > 0 && pos >= o.blockPos && pos < o.blockPos+int64(o.blockLen) {
+		return o.blockBuf[pos-o.blockPos : o.blockLen]
+	}
+	if o.blockBuf == nil {
+		o.blockBuf = make([]byte, scanChunk)
+	}
+	n, _ := o.src.ReadAt(o.blockBuf, pos)
+	o.blockPos = pos
+	o.blockLen = n
+	return o.blockBuf[:n]
 }
 
 // newOriginal scans src once to build the sparse line index.
@@ -117,48 +140,38 @@ func (o *original) line(oln int64) ([]rune, error) {
 	}
 	skip := oln - startLine
 
-	if o.scratch == nil {
-		o.scratch = make([]byte, scanChunk)
-	}
-	buf := o.scratch
-
-	// Skip forward over `skip` newlines to reach the start of line oln.
+	// Skip forward over `skip` newlines to reach the start of line oln, reading
+	// through the block cache so a run of nearby lines shares one syscall.
 	for skip > 0 {
-		n, err := o.src.ReadAt(buf, pos)
+		chunk := o.blockAt(pos)
+		if len(chunk) == 0 {
+			break // EOF
+		}
 		consumed := 0
-		for consumed < n && skip > 0 {
-			b := buf[consumed]
-			consumed++
-			if b == '\n' {
+		for consumed < len(chunk) && skip > 0 {
+			if chunk[consumed] == '\n' {
 				skip--
 			}
+			consumed++
 		}
 		pos += int64(consumed)
-		if skip == 0 {
-			break
-		}
-		if err == io.EOF || n == 0 {
-			break
-		}
 	}
 
 	// Read from pos to the next newline or EOF, advancing pos so it ends at the
 	// first byte of the next line.
 	var content []byte
 	for {
-		n, err := o.src.ReadAt(buf, pos)
-		if n > 0 {
-			if idx := bytes.IndexByte(buf[:n], '\n'); idx >= 0 {
-				content = append(content, buf[:idx]...)
-				pos += int64(idx) + 1
-				break
-			}
-			content = append(content, buf[:n]...)
-			pos += int64(n)
+		chunk := o.blockAt(pos)
+		if len(chunk) == 0 {
+			break // EOF
 		}
-		if err == io.EOF || n == 0 {
+		if idx := bytes.IndexByte(chunk, '\n'); idx >= 0 {
+			content = append(content, chunk[:idx]...)
+			pos += int64(idx) + 1
 			break
 		}
+		content = append(content, chunk...)
+		pos += int64(len(chunk))
 	}
 
 	// Leave a sequential cursor at the start of the next line.
