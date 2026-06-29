@@ -29,11 +29,15 @@ type original struct {
 	// lastHasNewline reports whether the file's final line is newline
 	// terminated; informational, mirroring vi's "incomplete last line".
 	lastHasNewline bool
+
+	// cache memoizes decoded lines by original line number. The original is
+	// immutable, so cached entries never go stale.
+	cache *origCache
 }
 
 // newOriginal scans src once to build the sparse line index.
 func newOriginal(src sourceAt) (*original, error) {
-	o := &original{src: src, size: src.Size(), stride: indexStride}
+	o := &original{src: src, size: src.Size(), stride: indexStride, cache: newOrigCache()}
 	o.checkpoints = append(o.checkpoints, 0) // line 0 starts at byte 0
 	if o.size == 0 {
 		return o, nil
@@ -81,6 +85,13 @@ func (o *original) line(oln int64) ([]rune, error) {
 		return nil, ErrNoSuchLine
 	}
 
+	// The original is immutable, so a cached decode is always valid. Hand back a
+	// private copy to preserve the LineStore contract (callers may treat Get's
+	// result as their own) and protect the cached slice from mutation.
+	if r, ok := o.cache.get(oln); ok {
+		return cloneRunes(r), nil
+	}
+
 	cp := oln / o.stride
 	pos := o.checkpoints[cp]
 	skip := oln - cp*o.stride
@@ -123,5 +134,7 @@ func (o *original) line(oln int64) ([]rune, error) {
 			break
 		}
 	}
-	return []rune(string(content)), nil
+	decoded := []rune(string(content))
+	o.cache.put(oln, decoded)
+	return cloneRunes(decoded), nil
 }
