@@ -90,7 +90,16 @@ $(GOVI_ICNS): $(GOVI_ICON_SRC) $(GOVI_ICON_SH) | $(GOVI_APP)/Contents/Resources
 $(GOVI_APP)/Contents/Resources:
 	@mkdir -p $@
 
+# Ad-hoc sign the assembled bundle. swiftc/ld only linker-sign the executable,
+# leaving Info.plist and Resources unbound -- which reads as an invalid (not
+# merely unsigned) signature once a download is quarantined, so Gatekeeper
+# reports the app as "damaged" on Apple Silicon. A full ad-hoc signature
+# (-s -) binds the whole bundle; the app is still unsigned by a Developer ID,
+# so a quarantined copy needs its quarantine cleared, but it is no longer
+# flagged as damaged. Re-run on every build of the bundle (it is cheap).
+.PHONY: $(GOVI_APP)
 $(GOVI_APP): $(GOVI_EXE) $(GOVI_PLIST) $(GOVI_ICNS)
+	codesign --force --sign - --identifier org.govi.editor $(GOVI_APP)
 
 govi-clean:
 	rm -rf $(GOVI_BUILD)
