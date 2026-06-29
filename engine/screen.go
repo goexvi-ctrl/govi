@@ -17,6 +17,19 @@ type screen struct {
 	marks *mark.Set
 	regs  *register.Set
 
+	// dlCache memoizes DisplayLines so a redraw need not recompute every
+	// visible row on each input event (a cursor-only move changes no content).
+	// It is keyed by 1-based line number and valid only while dlGen matches the
+	// undo log's edit generation and the tabstop/list options are unchanged --
+	// the three inputs makeDisplayLine depends on. Any edit (including undo/redo)
+	// bumps the generation; an option change is caught by dlTab/dlList; both
+	// force a rebuild. See displayLine.
+	dlCache map[int64]DisplayLine
+	dlGen   uint64
+	dlTab   int
+	dlList  bool
+	dlReady bool
+
 	name        string // file path, or "" for an unnamed buffer
 	modified    bool
 	nameChanged bool // :f renamed the buffer; cleared on write (nvi FR_NAMECHANGE)
@@ -161,6 +174,20 @@ func (s *screen) setLine(lno int64, runes []rune) {
 	s.log.Set(lno, runes)
 }
 
+// setLineKnown is setLine for callers that already hold the current content of
+// lno (before), letting the undo log skip a redundant store read. before must
+// be the live content of lno; the caller may keep using it afterward.
+func (s *screen) setLineKnown(lno int64, before, runes []rune) {
+	if lno < 1 {
+		return
+	}
+	if s.store.Lines() == 0 {
+		s.log.Insert(1, runes)
+		return
+	}
+	s.log.SetKnown(lno, before, runes)
+}
+
 func (s *screen) insertLine(lno int64, runes []rune) {
 	s.log.Insert(lno, runes)
 	s.marks.LinesInserted(lno, 1)
@@ -237,19 +264,45 @@ func (s *screen) textCols() int {
 	return w
 }
 
+// dlCacheCap bounds the memo so extensive navigation of a very large file
+// (which never edits, so never resets the cache via the generation) cannot grow
+// it without limit. On overflow the cache is cleared; the next paint simply
+// refills the visible rows.
+const dlCacheCap = 1 << 16
+
+// displayLine returns the DisplayLine for line lno, memoized across input events.
+// DisplayLine is a pure function of the line's runes, the tabstop, and the list
+// option; the cache is reset whenever any of those change (edit generation,
+// tabstop, or list), so a returned DisplayLine is always current.
+func (s *screen) displayLine(lno int64) DisplayLine {
+	tab := s.opts.Int("tabstop")
+	list := s.opts.Bool("list")
+	gen := s.log.Gen()
+	if !s.dlReady || s.dlGen != gen || s.dlTab != tab || s.dlList != list {
+		if s.dlCache == nil {
+			s.dlCache = make(map[int64]DisplayLine)
+		} else {
+			clear(s.dlCache)
+		}
+		s.dlGen = gen
+		s.dlTab = tab
+		s.dlList = list
+		s.dlReady = true
+	} else if dl, ok := s.dlCache[lno]; ok {
+		return dl
+	}
+	if len(s.dlCache) >= dlCacheCap {
+		clear(s.dlCache)
+	}
+	dl := makeDisplayLine(s.lineRunes(lno), tab, list)
+	s.dlCache[lno] = dl
+	return dl
+}
+
 // displayWidth returns the total display width (columns) of line lno, with tabs
 // and control characters expanded per the tabstop and list option.
 func (s *screen) displayWidth(lno int64) int {
-	list := s.opts.Bool("list")
-	col := 0
-	tab := s.opts.Int("tabstop")
-	for _, r := range s.lineRunes(lno) {
-		col += runeWidth(r, col, tab, list)
-	}
-	if list {
-		col++
-	}
-	return col
+	return DisplayLineWidth(s.displayLine(lno))
 }
 
 // displayColOf returns the display column at which rune index col begins on line
@@ -268,8 +321,7 @@ func (s *screen) displayColOf(lno int64, col int) int {
 // displayCursorColOf returns the display column where the cursor should appear
 // for rune index col on line lno (see CursorDisplayColumn).
 func (s *screen) displayCursorColOf(lno int64, col int) int {
-	dl := makeDisplayLine(s.lineRunes(lno), s.opts.Int("tabstop"), s.opts.Bool("list"))
-	return CursorDisplayColumn(dl, col, s.mode)
+	return CursorDisplayColumn(s.displayLine(lno), col, s.mode)
 }
 
 // colAtDisplay returns the rune index whose cell span contains display column

@@ -29,14 +29,16 @@ func (m *Mem) Get(lno int64) ([]rune, error) {
 	return m.lines[lno-1], nil
 }
 
-func (m *Mem) Set(lno int64, line []rune) {
+func (m *Mem) Set(lno int64, line []rune) []rune {
 	if lno < 1 || lno > int64(len(m.lines)) {
-		return
+		return nil
 	}
-	m.lines[lno-1] = cloneRunes(line)
+	c := cloneRunes(line)
+	m.lines[lno-1] = c
+	return c
 }
 
-func (m *Mem) Insert(lno int64, line []rune) {
+func (m *Mem) Insert(lno int64, line []rune) []rune {
 	if lno < 1 {
 		lno = 1
 	}
@@ -46,11 +48,13 @@ func (m *Mem) Insert(lno int64, line []rune) {
 	idx := lno - 1
 	m.lines = append(m.lines, nil)
 	copy(m.lines[idx+1:], m.lines[idx:])
-	m.lines[idx] = cloneRunes(line)
+	c := cloneRunes(line)
+	m.lines[idx] = c
+	return c
 }
 
-func (m *Mem) Append(lno int64, line []rune) {
-	m.Insert(lno+1, line)
+func (m *Mem) Append(lno int64, line []rune) []rune {
+	return m.Insert(lno+1, line)
 }
 
 func (m *Mem) Delete(lno int64) {

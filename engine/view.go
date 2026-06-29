@@ -7,9 +7,7 @@ type view struct{ s *screen }
 
 func (v view) LineCount() int64 { return v.s.lineCount() }
 
-func (v view) Line(lno int64) DisplayLine {
-	return makeDisplayLine(v.s.lineRunes(lno), v.s.opts.Int("tabstop"), v.s.opts.Bool("list"))
-}
+func (v view) Line(lno int64) DisplayLine { return v.s.displayLine(lno) }
 
 func (v view) Cursor() Pos { return v.s.cursor }
 

@@ -88,6 +88,7 @@ func (e *Engine) replaceBuffer(store buffer.LineStore, name string) {
 	s := e.scr
 	s.store = store
 	s.log = undo.New(store)
+	s.dlReady = false // new buffer + fresh log (gen restarts at 0): drop the memo
 	s.marks = mark.New()
 	s.name = name
 	s.nameChanged = false

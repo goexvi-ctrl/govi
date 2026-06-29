@@ -95,13 +95,19 @@ func (e *Engine) writeRecovery(path string) {
 	}
 	tmpName := tmp.Name()
 	tmp.Chmod(0o600)
-	w := bufio.NewWriter(tmp)
+	// A large buffer keeps the per-line writes from turning into many small
+	// write(2)s when snapshotting a big buffer.
+	w := bufio.NewWriterSize(tmp, 64<<10)
 	abs := e.resolvePath(e.scr.name) // resolve against the editor's cwd, not the process cwd
 	n := e.scr.store.Lines()
 	fmt.Fprintf(w, "%s\nFile: %s\nTime: %d\nLines: %d\n\n", recoverMagic, abs, time.Now().Unix(), n)
 	for i := int64(1); i <= n; i++ {
 		line, _ := e.scr.store.Get(i)
-		w.WriteString(string(line))
+		// Write the runes straight to the buffer; WriteRune fast-paths ASCII to
+		// a single byte, so this avoids allocating a string per line.
+		for _, r := range line {
+			w.WriteRune(r)
+		}
 		w.WriteByte('\n')
 	}
 	if w.Flush() != nil || tmp.Close() != nil {

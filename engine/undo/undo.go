@@ -42,16 +42,25 @@ type changeset struct {
 type Log struct {
 	store buffer.LineStore
 
-	open    int // nesting depth; Begin/End nest so a command made of sub-commands
+	open    int   // nesting depth; Begin/End nest so a command made of sub-commands
 	cur     []rec // (e.g. :g) records one undo group
 	curFrom Pos
 
 	undo []changeset
 	redo []changeset
+
+	// gen counts content mutations. It increments on every store change
+	// (including undo/redo) so callers can cheaply detect "did the buffer
+	// content change since I last looked" -- e.g. to invalidate a display cache.
+	gen uint64
 }
 
 // New returns a Log that edits store.
 func New(store buffer.LineStore) *Log { return &Log{store: store} }
+
+// Gen returns the current edit generation. It changes whenever any line content
+// is mutated through this log (edits, undo, or redo).
+func (l *Log) Gen() uint64 { return l.gen }
 
 // Begin opens a change set; cursor is where the cursor was before the edits.
 // Begin/End nest: a command implemented by running sub-commands (e.g. :g, which
@@ -96,17 +105,34 @@ func clone(r []rune) []rune {
 	return out
 }
 
-// Set replaces line lno, recording the change.
+// Set replaces line lno, recording the change. The after-image is taken from
+// the store's own immutable copy (Set's return), so it costs no extra clone.
 func (l *Log) Set(lno int64, line []rune) {
 	before, _ := l.store.Get(lno)
-	l.record(rec{recSet, lno, clone(before), clone(line)})
-	l.store.Set(lno, line)
+	beforeCopy := clone(before)
+	stored := l.store.Set(lno, line)
+	l.record(rec{recSet, lno, beforeCopy, stored})
+	l.gen++
 }
 
-// Insert inserts line before lno, recording the change.
+// SetKnown is Set for callers that already hold the current content of lno
+// (e.g. the substitute loop, which just read the line to compute the
+// replacement). before must equal the line being replaced; it is copied into
+// the undo record, so the caller may keep using before. This skips the
+// redundant store.Get that Set performs.
+func (l *Log) SetKnown(lno int64, before, line []rune) {
+	beforeCopy := clone(before)
+	stored := l.store.Set(lno, line)
+	l.record(rec{recSet, lno, beforeCopy, stored})
+	l.gen++
+}
+
+// Insert inserts line before lno, recording the change. The after-image aliases
+// the store's own immutable copy (Insert's return).
 func (l *Log) Insert(lno int64, line []rune) {
-	l.record(rec{recInsert, lno, nil, clone(line)})
-	l.store.Insert(lno, line)
+	stored := l.store.Insert(lno, line)
+	l.record(rec{recInsert, lno, nil, stored})
+	l.gen++
 }
 
 // Append inserts line after lno, recording the change.
@@ -117,6 +143,7 @@ func (l *Log) Delete(lno int64) {
 	before, _ := l.store.Get(lno)
 	l.record(rec{recDelete, lno, clone(before), nil})
 	l.store.Delete(lno)
+	l.gen++
 }
 
 func (l *Log) record(r rec) {
@@ -158,6 +185,7 @@ func (l *Log) Undo() (cursor Pos, ok bool) {
 		}
 	}
 	l.redo = append(l.redo, cs)
+	l.gen++
 	return cs.before, true
 }
 
@@ -197,5 +225,6 @@ func (l *Log) Redo() (cursor Pos, ok bool) {
 		}
 	}
 	l.undo = append(l.undo, cs)
+	l.gen++
 	return cs.after, true
 }

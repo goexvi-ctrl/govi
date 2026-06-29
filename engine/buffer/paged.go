@@ -152,9 +152,14 @@ func newPaged(src sourceAt) *Paged {
 	return p
 }
 
-func (p *Paged) addSpan(line []rune) span {
-	p.add = append(p.add, cloneRunes(line))
-	return span{fromAdd: true, start: int64(len(p.add) - 1), count: 1}
+// addSpan appends a copy of line to the add buffer and returns a single-line
+// span referring to it along with the stored copy. The add buffer is
+// append-only and never mutated, so the returned slice is safe to retain
+// read-only (the undo log keeps it as the record's after-image).
+func (p *Paged) addSpan(line []rune) (span, []rune) {
+	c := cloneRunes(line)
+	p.add = append(p.add, c)
+	return span{fromAdd: true, start: int64(len(p.add) - 1), count: 1}, c
 }
 
 func (p *Paged) Lines() int64 { return lc(p.root) }
@@ -170,16 +175,18 @@ func (p *Paged) Get(lno int64) ([]rune, error) {
 	return p.orig.line(sp.start + off)
 }
 
-func (p *Paged) Set(lno int64, line []rune) {
+func (p *Paged) Set(lno int64, line []rune) []rune {
 	if lno < 1 || lno > p.Lines() {
-		return
+		return nil
 	}
 	left, rest := split(p.root, lno-1)
 	_, right := split(rest, 1) // drop the old single line
-	p.root = merge(merge(left, newNode(p.addSpan(line))), right)
+	sp, stored := p.addSpan(line)
+	p.root = merge(merge(left, newNode(sp)), right)
+	return stored
 }
 
-func (p *Paged) Insert(lno int64, line []rune) {
+func (p *Paged) Insert(lno int64, line []rune) []rune {
 	k := lno - 1
 	if k < 0 {
 		k = 0
@@ -188,10 +195,12 @@ func (p *Paged) Insert(lno int64, line []rune) {
 		k = p.Lines()
 	}
 	left, right := split(p.root, k)
-	p.root = merge(merge(left, newNode(p.addSpan(line))), right)
+	sp, stored := p.addSpan(line)
+	p.root = merge(merge(left, newNode(sp)), right)
+	return stored
 }
 
-func (p *Paged) Append(lno int64, line []rune) { p.Insert(lno+1, line) }
+func (p *Paged) Append(lno int64, line []rune) []rune { return p.Insert(lno+1, line) }
 
 func (p *Paged) Delete(lno int64) {
 	if lno < 1 || lno > p.Lines() {

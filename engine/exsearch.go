@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -48,6 +49,7 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 	s := e.scr
 	s.lastSubstRepl = repl
 	s.lastSubstFlags = flags
+	replRunes := []rune(repl) // decode once, not per line
 	e.beginChange()
 	any := false
 	var lastLine int64
@@ -55,14 +57,14 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 	end := l2
 	for lno <= end {
 		in := s.lineRunes(lno)
-		out, n, replaced := substituteLine(re, in, []rune(repl), global)
+		out, n, replaced := substituteLine(re, in, replRunes, global)
 		if replaced {
 			any = true
 			lastLine = lno
 			// out may contain newlines (from \n in the replacement): split it
 			// into one or more buffer lines.
 			segs := splitRunes(out, '\n')
-			s.setLine(lno, segs[0])
+			s.setLineKnown(lno, in, segs[0])
 			for i := 1; i < len(segs); i++ {
 				s.appendLine(lno+int64(i-1), segs[i])
 			}
@@ -94,13 +96,14 @@ func (e *Engine) repeatSubst() error {
 	}
 	global := strings.ContainsRune(s.lastSubstFlags, 'g')
 	lno := s.cursor.Line
-	out, _, replaced := substituteLine(re, s.lineRunes(lno), []rune(s.lastSubstRepl), global)
+	in := s.lineRunes(lno)
+	out, _, replaced := substituteLine(re, in, []rune(s.lastSubstRepl), global)
 	if !replaced {
 		return fmt.Errorf("No match")
 	}
 	e.beginChange()
 	segs := splitRunes(out, '\n')
-	s.setLine(lno, segs[0])
+	s.setLineKnown(lno, in, segs[0])
 	for i := 1; i < len(segs); i++ {
 		s.appendLine(lno+int64(i-1), segs[i])
 	}
@@ -124,18 +127,20 @@ func (e *Engine) exAmp(c *exCmd) error {
 		return err
 	}
 	global := strings.ContainsRune(s.lastSubstFlags, 'g')
+	replRunes := []rune(s.lastSubstRepl) // decode once, not per line
 	e.beginChange()
 	any := false
 	var last int64
 	lno := l1
 	end := l2
 	for lno <= end {
-		out, _, replaced := substituteLine(re, s.lineRunes(lno), []rune(s.lastSubstRepl), global)
+		in := s.lineRunes(lno)
+		out, _, replaced := substituteLine(re, in, replRunes, global)
 		if replaced {
 			any = true
 			last = lno
 			segs := splitRunes(out, '\n')
-			s.setLine(lno, segs[0])
+			s.setLineKnown(lno, in, segs[0])
 			for i := 1; i < len(segs); i++ {
 				s.appendLine(lno+int64(i-1), segs[i])
 			}
@@ -440,6 +445,12 @@ func splitDelim(r []rune, delim rune, max int) []string {
 }
 
 func splitRunes(r []rune, sep rune) [][]rune {
+	if !slices.Contains(r, sep) {
+		// Common case (replacement has no embedded newline): one segment, and no
+		// need to copy r -- the caller passes it straight to a line-edit
+		// primitive, which makes its own copy.
+		return [][]rune{r}
+	}
 	var out [][]rune
 	var cur []rune
 	for _, c := range r {
