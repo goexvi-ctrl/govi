@@ -278,14 +278,43 @@ func (s *screen) wordAt(lno int64, col int) string {
 	return string(line[start:end])
 }
 
-// searchCurrentWord implements ^A: search for the word under the cursor as a
-// whole word. opposite searches backward.
+// curKeyword returns the ^A search keyword starting at column col, matching
+// nvi's v_curword: skip leading blanks only, then take the char under the
+// cursor plus the following run of word runes. The bool reports whether the
+// keyword's first char is a word rune. ok is false past end-of-line.
+func (s *screen) curKeyword(lno int64, col int) (kw string, firstWord, ok bool) {
+	line := s.lineRunes(lno)
+	for col < len(line) && (line[col] == ' ' || line[col] == '\t') {
+		col++
+	}
+	if col >= len(line) {
+		return "", false, false
+	}
+	start := col
+	firstWord = isWordRune(line[col])
+	end := col + 1
+	for end < len(line) && isWordRune(line[end]) {
+		end++
+	}
+	return string(line[start:end]), firstWord, true
+}
+
+// searchCurrentWord implements ^A: search for the keyword under the cursor.
+// A keyword starting on a word rune is matched as a whole word (\<...\>); one
+// starting on a non-word rune is matched literally followed by a non-keyword
+// (or end-of-line) delimiter, which makes repeated ^A idempotent. opposite
+// searches backward.
 func (e *Engine) searchCurrentWord(opposite bool) error {
-	word := e.scr.wordAt(e.scr.cursor.Line, e.scr.cursor.Col)
-	if word == "" {
+	kw, firstWord, ok := e.scr.curKeyword(e.scr.cursor.Line, e.scr.cursor.Col)
+	if !ok {
 		return fmt.Errorf("Cursor not in a word")
 	}
-	pattern := `\<` + regexEscape(word) + `\>`
+	var pattern string
+	if firstWord {
+		pattern = `\<` + regexEscape(kw) + `\>`
+	} else {
+		pattern = regexEscape(kw) + `\([^[:alnum:]_]\|$\)`
+	}
 	dir := searchFwd
 	if opposite {
 		dir = searchBack
