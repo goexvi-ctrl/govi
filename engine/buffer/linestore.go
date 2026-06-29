@@ -29,17 +29,22 @@ type LineStore interface {
 	// ErrNoSuchLine if lno is not in [1, Lines()].
 	Get(lno int64) ([]rune, error)
 
-	// Set replaces line lno with a copy of line.
-	Set(lno int64, line []rune)
+	// Set replaces line lno with a copy of line and returns that stored copy.
+	// The returned slice is owned by the store and is immutable: later edits
+	// never mutate it in place, so the caller may retain it read-only (the undo
+	// log does this to record the after-image without an extra copy). It must
+	// not be modified.
+	Set(lno int64, line []rune) []rune
 
 	// Insert inserts a copy of line before line lno (so it becomes the new
-	// line lno). Insert at Lines()+1 is equivalent to Append after the last
-	// line.
-	Insert(lno int64, line []rune)
+	// line lno) and returns that stored copy (same ownership rules as Set).
+	// Insert at Lines()+1 is equivalent to Append after the last line.
+	Insert(lno int64, line []rune) []rune
 
-	// Append inserts a copy of line after line lno. Append(0, ...) inserts at
-	// the very beginning.
-	Append(lno int64, line []rune)
+	// Append inserts a copy of line after line lno and returns that stored copy
+	// (same ownership rules as Set). Append(0, ...) inserts at the very
+	// beginning.
+	Append(lno int64, line []rune) []rune
 
 	// Delete removes line lno.
 	Delete(lno int64)

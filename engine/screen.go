@@ -174,6 +174,20 @@ func (s *screen) setLine(lno int64, runes []rune) {
 	s.log.Set(lno, runes)
 }
 
+// setLineKnown is setLine for callers that already hold the current content of
+// lno (before), letting the undo log skip a redundant store read. before must
+// be the live content of lno; the caller may keep using it afterward.
+func (s *screen) setLineKnown(lno int64, before, runes []rune) {
+	if lno < 1 {
+		return
+	}
+	if s.store.Lines() == 0 {
+		s.log.Insert(1, runes)
+		return
+	}
+	s.log.SetKnown(lno, before, runes)
+}
+
 func (s *screen) insertLine(lno int64, runes []rune) {
 	s.log.Insert(lno, runes)
 	s.marks.LinesInserted(lno, 1)
