@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"time"
 
 	"govi/engine"
@@ -37,6 +38,14 @@ var (
 )
 
 func main() {
+	// Editing is bursty: idle most of the time, then a flurry of allocation
+	// during a big command (e.g. :%s over a large file). Raising the GC target
+	// trades a little peak memory for noticeably less GC work during those
+	// bursts. Respect an explicit GOGC (a user editing huge files may want to
+	// cap memory by lowering it).
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(200)
+	}
 	os.Exit(run(os.Args[1:]))
 }
 

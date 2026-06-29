@@ -49,6 +49,7 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 	s := e.scr
 	s.lastSubstRepl = repl
 	s.lastSubstFlags = flags
+	replRunes := []rune(repl) // decode once, not per line
 	e.beginChange()
 	any := false
 	var lastLine int64
@@ -56,7 +57,7 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 	end := l2
 	for lno <= end {
 		in := s.lineRunes(lno)
-		out, n, replaced := substituteLine(re, in, []rune(repl), global)
+		out, n, replaced := substituteLine(re, in, replRunes, global)
 		if replaced {
 			any = true
 			lastLine = lno
@@ -126,6 +127,7 @@ func (e *Engine) exAmp(c *exCmd) error {
 		return err
 	}
 	global := strings.ContainsRune(s.lastSubstFlags, 'g')
+	replRunes := []rune(s.lastSubstRepl) // decode once, not per line
 	e.beginChange()
 	any := false
 	var last int64
@@ -133,7 +135,7 @@ func (e *Engine) exAmp(c *exCmd) error {
 	end := l2
 	for lno <= end {
 		in := s.lineRunes(lno)
-		out, _, replaced := substituteLine(re, in, []rune(s.lastSubstRepl), global)
+		out, _, replaced := substituteLine(re, in, replRunes, global)
 		if replaced {
 			any = true
 			last = lno
