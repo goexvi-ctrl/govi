@@ -8,7 +8,7 @@ COVER_HTML ?= cover.html
 # gui/bridge is cgo (//export); its profile breaks go tool cover.
 COVER_PKGS := $(shell go list ./... | grep -v '/gui/bridge$$')
 
-.PHONY: build govi test coverage coverage-report coverage-html
+.PHONY: build govi test coverage coverage-report coverage-html release
 
 build: govi gui/build/GoVi.app
 
@@ -51,6 +51,18 @@ $(IDIR)/GoVi.app: gui/build/GoVi.app $(GOVI_ICNS)
 	rm -rf $@
 	ditto gui/build/GoVi.app $@
 	$(LSREGISTER) -f $@   # register file types + the govi:// URL scheme
+
+# release: zip the macOS app bundle for upload to a GitHub release. Use ditto
+# (not zip) so the bundle's symlinks and extended attributes survive. The
+# version is taken from the latest git tag; arch from the build host.
+RELEASE_VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+RELEASE_ARCH    := $(shell uname -m)
+RELEASE_ZIP     := gui/build/GoVi-$(RELEASE_VERSION)-macos-$(RELEASE_ARCH).zip
+
+release: gui/build/GoVi.app
+	rm -f $(RELEASE_ZIP)
+	ditto -c -k --keepParent gui/build/GoVi.app $(RELEASE_ZIP)
+	@echo "Wrote $(RELEASE_ZIP)"
 
 clean:
 	rm -rf govi gui/build cmd/govi/govi

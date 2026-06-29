@@ -8,8 +8,8 @@
 	<key>CFBundleIdentifier</key>      <string>org.govi.editor</string>
 	<key>CFBundleExecutable</key>      <string>GoVi</string>
 	<key>CFBundlePackageType</key>     <string>APPL</string>
-	<key>CFBundleVersion</key>         <string>0.1</string>
-	<key>CFBundleShortVersionString</key><string>0.1</string>
+	<key>CFBundleVersion</key>         <string>0.1.1</string>
+	<key>CFBundleShortVersionString</key><string>0.1.1</string>
 	<key>CFBundleIconFile</key>        <string>AppIcon</string>
 	<key>NSHighResolutionCapable</key> <true/>
 	<key>NSPrincipalClass</key>        <string>NSApplication</string>
