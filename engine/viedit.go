@@ -256,7 +256,7 @@ func (e *Engine) insertEmptyLineAt(lno int64) {
 // repeated by the command count.
 func (e *Engine) put(m *vimode, after bool) {
 	s := e.scr
-	txt := s.regs.Get(m.reg)
+	txt := s.regs.Get(m.consumeReg())
 	if txt.Empty() {
 		e.fe.Bell()
 		return
@@ -498,7 +498,8 @@ func (e *Engine) synthOperator(m *vimode, op, motionKey rune) {
 		e.fe.Bell()
 		return
 	}
-	m.operate(e, op, m.reg, mot)
+	reg := m.consumeReg()
+	m.operate(e, op, reg, mot)
 }
 
 // synthLineOperator runs a linewise op over count lines from the cursor. It
@@ -507,7 +508,8 @@ func (e *Engine) synthLineOperator(m *vimode, op rune) {
 	total := effCount(m.count)
 	m.count, m.haveCount = 0, false
 	l2 := e.scr.cursor.Line + int64(total) - 1
-	m.operate(e, op, m.reg, lineMotion(e.scr.cursor.Line, l2))
+	reg := m.consumeReg()
+	m.operate(e, op, reg, lineMotion(e.scr.cursor.Line, l2))
 }
 
 func cloneR(r []rune) []rune {

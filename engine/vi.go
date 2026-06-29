@@ -463,10 +463,14 @@ func clampToViewport(s *screen, line, top int64) int64 {
 	return line
 }
 
+// consumeReg returns the selected register and clears the selection so it does
+// not leak into the next command (vi: "x applies to the next command only).
+func (m *vimode) consumeReg() rune { r := m.reg; m.reg = 0; return r }
+
 func (m *vimode) startOperator(op rune) {
 	m.op = op
 	m.opCount = m.count
-	m.opReg = m.reg
+	m.opReg = m.consumeReg()
 	m.count = 0
 	m.haveCount = false
 }
