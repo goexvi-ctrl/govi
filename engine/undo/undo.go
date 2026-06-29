@@ -48,10 +48,19 @@ type Log struct {
 
 	undo []changeset
 	redo []changeset
+
+	// gen counts content mutations. It increments on every store change
+	// (including undo/redo) so callers can cheaply detect "did the buffer
+	// content change since I last looked" -- e.g. to invalidate a display cache.
+	gen uint64
 }
 
 // New returns a Log that edits store.
 func New(store buffer.LineStore) *Log { return &Log{store: store} }
+
+// Gen returns the current edit generation. It changes whenever any line content
+// is mutated through this log (edits, undo, or redo).
+func (l *Log) Gen() uint64 { return l.gen }
 
 // Begin opens a change set; cursor is where the cursor was before the edits.
 // Begin/End nest: a command implemented by running sub-commands (e.g. :g, which
@@ -101,12 +110,14 @@ func (l *Log) Set(lno int64, line []rune) {
 	before, _ := l.store.Get(lno)
 	l.record(rec{recSet, lno, clone(before), clone(line)})
 	l.store.Set(lno, line)
+	l.gen++
 }
 
 // Insert inserts line before lno, recording the change.
 func (l *Log) Insert(lno int64, line []rune) {
 	l.record(rec{recInsert, lno, nil, clone(line)})
 	l.store.Insert(lno, line)
+	l.gen++
 }
 
 // Append inserts line after lno, recording the change.
@@ -117,6 +128,7 @@ func (l *Log) Delete(lno int64) {
 	before, _ := l.store.Get(lno)
 	l.record(rec{recDelete, lno, clone(before), nil})
 	l.store.Delete(lno)
+	l.gen++
 }
 
 func (l *Log) record(r rec) {
@@ -158,6 +170,7 @@ func (l *Log) Undo() (cursor Pos, ok bool) {
 		}
 	}
 	l.redo = append(l.redo, cs)
+	l.gen++
 	return cs.before, true
 }
 
@@ -197,5 +210,6 @@ func (l *Log) Redo() (cursor Pos, ok bool) {
 		}
 	}
 	l.undo = append(l.undo, cs)
+	l.gen++
 	return cs.after, true
 }
