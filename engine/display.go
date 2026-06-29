@@ -44,6 +44,8 @@ func runeWidth(r rune, col, tabstop int, list bool) int {
 		return 2 // ^A .. ^Z etc.
 	case r == 0x7f:
 		return 2 // ^?
+	case r < 0x80:
+		return 1 // printable ASCII: skip the East Asian width trie (hot path)
 	}
 	switch width.LookupRune(r).Kind() {
 	case width.EastAsianWide, width.EastAsianFullwidth:
