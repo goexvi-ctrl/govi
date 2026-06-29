@@ -52,17 +52,25 @@ $(IDIR)/GoVi.app: gui/build/GoVi.app $(GOVI_ICNS)
 	ditto gui/build/GoVi.app $@
 	$(LSREGISTER) -f $@   # register file types + the govi:// URL scheme
 
-# release: zip the macOS app bundle for upload to a GitHub release. Use ditto
-# (not zip) so the bundle's symlinks and extended attributes survive. The
-# version is taken from the latest git tag; arch from the build host.
+# release: build a .dmg for upload to a GitHub release. The image holds the
+# GoVi.app bundle, the govi CLI, and an /Applications symlink for drag-install.
+# ditto (not cp) copies the bundle so its symlinks and metadata survive.
+# Version comes from the latest git tag; arch from the build host.
 RELEASE_VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
 RELEASE_ARCH    := $(shell uname -m)
-RELEASE_ZIP     := gui/build/GoVi-$(RELEASE_VERSION)-macos-$(RELEASE_ARCH).zip
+RELEASE_DMG     := gui/build/GoVi-$(RELEASE_VERSION)-macos-$(RELEASE_ARCH).dmg
+RELEASE_STAGE   := gui/build/dmg-stage
 
-release: gui/build/GoVi.app
-	rm -f $(RELEASE_ZIP)
-	ditto -c -k --keepParent gui/build/GoVi.app $(RELEASE_ZIP)
-	@echo "Wrote $(RELEASE_ZIP)"
+release: govi gui/build/GoVi.app
+	rm -rf $(RELEASE_STAGE) $(RELEASE_DMG)
+	mkdir -p $(RELEASE_STAGE)
+	ditto gui/build/GoVi.app $(RELEASE_STAGE)/GoVi.app
+	cp govi $(RELEASE_STAGE)/govi
+	ln -s /Applications $(RELEASE_STAGE)/Applications
+	hdiutil create -quiet -volname "GoVi $(RELEASE_VERSION)" \
+		-srcfolder $(RELEASE_STAGE) -ov -format UDZO $(RELEASE_DMG)
+	rm -rf $(RELEASE_STAGE)
+	@echo "Wrote $(RELEASE_DMG)"
 
 clean:
 	rm -rf govi gui/build cmd/govi/govi
