@@ -46,10 +46,13 @@ func (e *Engine) runBangNoRange(cmd string) error {
 	if e.scr.opts.Bool("secure") {
 		return fmt.Errorf("The ! command is not supported when the secure edit option is set")
 	}
+	cmd, err := e.expandShellNames(cmd)
+	if err != nil {
+		return err
+	}
 	cols, rows := e.bangCols(), e.bangRows()
 	e.ensureCwd()
 	var out string
-	var err error
 	if runner, ok := e.fe.(BangRunner); ok {
 		out, err = runner.RunBang(e.shellProg(), cmd, e.cwd, cols, rows)
 	} else {

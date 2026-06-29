@@ -107,7 +107,9 @@ func TestAlternateFile(t *testing.T) {
 func TestShellFilter(t *testing.T) {
 	exCase(t, "sort", "banana\napple\ncherry\n", []string{"%!sort"}, "apple\nbanana\ncherry")
 	exCase(t, "filter-range", "3\n1\n2\nx\n", []string{"1,3!sort"}, "1\n2\n3\nx")
-	exCase(t, "filter-error-output", "package main\n\nnot go\n", []string{"%!sh -c 'printf \"%s\\n\" \"1:3: expected declaration, found not\" >&2; exit 2'"}, "1:3: expected declaration, found not")
+	// The "\%" escapes the % so it is not expanded to the current file name
+	// (nvi argv_fexp does %/# filename substitution on filter commands).
+	exCase(t, "filter-error-output", "package main\n\nnot go\n", []string{"%!sh -c 'printf \"\\%s\\n\" \"1:3: expected declaration, found not\" >&2; exit 2'"}, "1:3: expected declaration, found not")
 }
 
 func TestViFilterOperator(t *testing.T) {

@@ -69,6 +69,39 @@ func setEnvVar(env []string, key, val string) []string {
 	return out
 }
 
+// expandShellNames performs nvi's argv_exp filename substitution on a shell
+// command string: an unescaped '%' becomes the current file name and '#' the
+// alternate file name (ex/ex_argv.c). A backslash escapes either to its literal
+// (the backslash is removed). It errors when '%'/'#' has no file to substitute.
+func (e *Engine) expandShellNames(cmd string) (string, error) {
+	var b strings.Builder
+	r := []rune(cmd)
+	for i := 0; i < len(r); i++ {
+		switch r[i] {
+		case '\\':
+			if i+1 < len(r) && (r[i+1] == '%' || r[i+1] == '#') {
+				b.WriteRune(r[i+1])
+				i++
+				continue
+			}
+			b.WriteRune('\\')
+		case '%':
+			if e.scr.name == "" {
+				return "", fmt.Errorf("No filename to substitute for %%")
+			}
+			b.WriteString(e.scr.name)
+		case '#':
+			if e.altFile == "" {
+				return "", fmt.Errorf("No filename to substitute for #")
+			}
+			b.WriteString(e.altFile)
+		default:
+			b.WriteRune(r[i])
+		}
+	}
+	return b.String(), nil
+}
+
 // exShell implements :sh[ell]: run an interactive shell (ex/ex_shell.c).
 func (e *Engine) exShell(*exCmd) error {
 	if e.scr.opts.Bool("secure") {
@@ -105,6 +138,10 @@ func (e *Engine) filterLines(l1, l2 int64, cmd string) error {
 	s := e.scr
 	if l1 < 1 || l2 > s.lineCount() || l1 > l2 {
 		return fmt.Errorf("Invalid address")
+	}
+	cmd, err := e.expandShellNames(cmd)
+	if err != nil {
+		return err
 	}
 	var in strings.Builder
 	for i := l1; i <= l2; i++ {
@@ -154,6 +191,10 @@ func (e *Engine) writeToCommand(c *exCmd, cmd string) error {
 	if l1 < 1 || l2 > s.lineCount() || l1 > l2 {
 		return fmt.Errorf("Invalid address")
 	}
+	cmd, err := e.expandShellNames(cmd)
+	if err != nil {
+		return err
+	}
 	var in strings.Builder
 	for i := l1; i <= l2; i++ {
 		in.WriteString(string(s.lineRunes(i)))
@@ -177,6 +218,10 @@ func (e *Engine) writeToCommand(c *exCmd, cmd string) error {
 func (e *Engine) readFromCommand(cmd string) ([][]rune, error) {
 	if e.scr.opts.Bool("secure") {
 		return nil, fmt.Errorf("The ! command is not supported when the secure edit option is set")
+	}
+	cmd, err := e.expandShellNames(cmd)
+	if err != nil {
+		return nil, err
 	}
 	out, err := e.runShellCmd(cmd, "", e.bangCols(), e.bangRows())
 	if err != nil {
