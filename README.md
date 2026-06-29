@@ -52,7 +52,7 @@ save, **`:q`** to quit. **`:help`** points you at the built-in command lists.
 ### macOS GUI
 
 The quickest way to get **GoVi** is a prebuilt release. Download the latest
-`GoVi-<version>-macos-arm64.dmg` (Apple Silicon) from the
+`GoVi-<version>-macos-universal.dmg` (Intel + Apple Silicon, macOS 11+) from the
 [releases page](https://github.com/goexvi-ctrl/govi/releases) and open it. Drag
 **GoVi.app** onto the **Applications** shortcut, and copy the bundled **`govi`**
 terminal tool onto your `PATH`:

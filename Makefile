@@ -12,8 +12,24 @@ COVER_PKGS := $(shell go list ./... | grep -v '/gui/bridge$$')
 
 build: govi gui/build/GoVi.app
 
+# Build the govi CLI: one slice per arch in GOVI_ARCHS (defined in gui/govi.mk),
+# lipo'd into a single binary (universal when more than one arch).
 govi:
-	go build -ldflags "$(VERSION_LDFLAGS)" -o govi ./cmd/govi
+	@set -e; slices=""; \
+	for arch in $(GOVI_ARCHS); do \
+	  case $$arch in \
+	    arm64)  goarch=arm64 ;; \
+	    x86_64) goarch=amd64 ;; \
+	    *) echo "Makefile: unsupported GOVI_ARCHS entry '$$arch'" >&2; exit 1 ;; \
+	  esac; \
+	  out=cmd/govi/govi-$$arch; \
+	  MACOSX_DEPLOYMENT_TARGET=$(GOVI_MACOS_MIN) \
+	  CGO_ENABLED=1 GOARCH=$$goarch CC="clang -arch $$arch -mmacosx-version-min=$(GOVI_MACOS_MIN)" \
+	    go build -ldflags "$(VERSION_LDFLAGS)" -o $$out ./cmd/govi; \
+	  slices="$$slices $$out"; \
+	done; \
+	lipo -create $$slices -output govi; \
+	rm -f $$slices
 
 include gui/govi.mk
 
@@ -66,12 +82,17 @@ $(IDIR)/GoVi.app: gui/build/GoVi.app $(GOVI_ICNS)
 #
 # NOTARY_PROFILE names a stored `xcrun notarytool store-credentials` profile.
 RELEASE_VERSION   ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
-RELEASE_ARCH      := $(shell uname -m)
-RELEASE_DMG       := gui/build/GoVi-$(RELEASE_VERSION)-macos-$(RELEASE_ARCH).dmg
+# Architectures in the release. Universal (Intel + Apple Silicon, macOS 11+) by
+# default; set RELEASE_ARCHS=arm64 for a native-only build.
+RELEASE_ARCHS     ?= arm64 x86_64
+# "universal" for a fat binary, otherwise the lone arch name.
+RELEASE_ARCH_LABEL := $(if $(filter-out 1,$(words $(RELEASE_ARCHS))),universal,$(RELEASE_ARCHS))
+RELEASE_DMG       := gui/build/GoVi-$(RELEASE_VERSION)-macos-$(RELEASE_ARCH_LABEL).dmg
 CODESIGN_IDENTITY ?= -
 NOTARY_PROFILE    ?= govi-notary
 
-release: govi gui/build/GoVi.app
+release:
+	$(MAKE) govi gui/build/GoVi.app GOVI_ARCHS="$(RELEASE_ARCHS)"
 	APP=gui/build/GoVi.app CLI=govi DMG=$(RELEASE_DMG) \
 	VOLNAME="GoVi $(RELEASE_VERSION)" IDENTITY="$(CODESIGN_IDENTITY)" \
 	NOTARY_PROFILE="$(NOTARY_PROFILE)" ./scripts/macos-release.sh

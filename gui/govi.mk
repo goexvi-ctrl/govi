@@ -18,6 +18,15 @@ GOVI_APP     := $(GOVI_BUILD)/GoVi.app
 GOVI_PLIST   := $(GOVI_APP)/Contents/Info.plist
 GOVI_EXE     := $(GOVI_APP)/Contents/MacOS/GoVi
 
+# Architectures to build. Default to the build host; set "arm64 x86_64" for a
+# universal (fat) binary:
+#   make GOVI_ARCHS="arm64 x86_64"
+GOVI_ARCHS     ?= $(shell uname -m)
+# Minimum macOS the release targets. 11 (Big Sur) is Go 1.26's supported floor
+# and the lowest the Swift sources compile against cleanly; it reaches Intel
+# Macs back to ~2013. Applied to both the Swift slices and the Go (cgo) builds.
+GOVI_MACOS_MIN ?= 11
+
 GOVI_SWIFT_SRC := $(wildcard $(GOVI_GUI_DIR)/macos/*.swift)
 GOVI_BRIDGE_GO := $(wildcard $(GOVI_GUI_DIR)/bridge/*.go)
 GOVI_PLIST_SRC := $(GOVI_GUI_DIR)/macos/Info.plist
@@ -44,7 +53,7 @@ GOVI_TREE_DIRTY := $(shell cd $(GOVI_ROOT) && rc=0; \
 	git rev-parse -q --verify HEAD >/dev/null 2>&1 && { git diff-index --quiet HEAD -- 2>/dev/null || rc=$$?; }; \
 	test $$rc -eq 1 && echo 1)
 ifneq ($(GOVI_TREE_DIRTY),)
-.PHONY: $(GOVI_LIB) $(GOVI_LIB_HDR)
+.PHONY: $(GOVI_BIN)
 endif
 
 .DEFAULT_GOAL := govi-app
@@ -53,23 +62,39 @@ endif
 
 govi-app: $(GOVI_APP)
 
-$(GOVI_LIB) $(GOVI_LIB_HDR): $(GOVI_VERSION) $(GOVI_GO_SRC) $(GOVI_BRIDGE_GO) $(GOVI_MOD) $(GOVI_GIT)
+# Build the GoVi executable: one Mach-O slice per arch in GOVI_ARCHS, lipo'd
+# into a single binary (universal when GOVI_ARCHS lists more than one). Each
+# slice links the cgo c-archive built for the matching Go arch. The generated
+# libgovi.h is identical for every 64-bit arch, so one copy serves the Bridging
+# header for all slices.
+$(GOVI_BIN): $(GOVI_VERSION) $(GOVI_GO_SRC) $(GOVI_BRIDGE_GO) $(GOVI_MOD) $(GOVI_GIT) $(GOVI_SWIFT_SRC) $(GOVI_GUI_DIR)/macos/Bridging.h
 	@mkdir -p $(GOVI_BUILD)
 	@$(GOVI_VERSION) > $(GOVI_VERSION_FLAGS)
-	cd $(GOVI_ROOT) && go build -ldflags "$$(cat $(GOVI_VERSION_FLAGS))" \
-		-buildmode=c-archive -o $(GOVI_LIB) ./gui/bridge
-
-$(GOVI_BIN): $(GOVI_LIB) $(GOVI_LIB_HDR) $(GOVI_SWIFT_SRC) $(GOVI_GUI_DIR)/macos/Bridging.h
-	@mkdir -p $(GOVI_BUILD)
-	swiftc -O \
-		-import-objc-header $(GOVI_GUI_DIR)/macos/Bridging.h \
-		-I $(GOVI_BUILD) \
-		$(GOVI_SWIFT_SRC) \
-		$(GOVI_LIB) \
-		-framework Cocoa \
-		-framework CoreFoundation \
-		-framework Security \
-		-o $(GOVI_BIN)
+	@set -e; slices=""; \
+	for arch in $(GOVI_ARCHS); do \
+	  case $$arch in \
+	    arm64)  goarch=arm64 ;; \
+	    x86_64) goarch=amd64 ;; \
+	    *) echo "govi.mk: unsupported GOVI_ARCHS entry '$$arch'" >&2; exit 1 ;; \
+	  esac; \
+	  lib=$(GOVI_BUILD)/libgovi-$$arch.a; \
+	  slice=$(GOVI_BUILD)/GoVi-$$arch; \
+	  echo ">> libgovi ($$arch)"; \
+	  ( cd $(GOVI_ROOT) && MACOSX_DEPLOYMENT_TARGET=$(GOVI_MACOS_MIN) \
+	    CGO_ENABLED=1 GOARCH=$$goarch CC="clang -arch $$arch -mmacosx-version-min=$(GOVI_MACOS_MIN)" \
+	    go build -ldflags "$$(cat $(GOVI_VERSION_FLAGS))" \
+	    -buildmode=c-archive -o $$lib ./gui/bridge ); \
+	  cp $(GOVI_BUILD)/libgovi-$$arch.h $(GOVI_LIB_HDR); \
+	  echo ">> GoVi ($$arch)"; \
+	  swiftc -O -target $$arch-apple-macosx$(GOVI_MACOS_MIN) \
+	    -import-objc-header $(GOVI_GUI_DIR)/macos/Bridging.h \
+	    -I $(GOVI_BUILD) \
+	    $(GOVI_SWIFT_SRC) $$lib \
+	    -framework Cocoa -framework CoreFoundation -framework Security \
+	    -o $$slice; \
+	  slices="$$slices $$slice"; \
+	done; \
+	lipo -create $$slices -output $(GOVI_BIN)
 
 $(GOVI_EXE): $(GOVI_BIN) | $(GOVI_APP)/Contents/MacOS
 	cp $(GOVI_BIN) $(GOVI_EXE)
