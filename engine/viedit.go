@@ -408,7 +408,11 @@ func (e *Engine) joinLines(m *vimode) {
 		joinCol := len(a)
 		var sep []rune
 		if len(a) > 0 && a[len(a)-1] != ' ' && a[len(a)-1] != '\t' && (len(b) == 0 || b[0] != ')') {
-			sep = []rune{' '}
+			if c := a[len(a)-1]; c == '.' || c == '?' || c == '!' {
+				sep = []rune{' ', ' '}
+			} else {
+				sep = []rune{' '}
+			}
 		}
 		nl := append(append(a, sep...), b...)
 		s.setLine(s.cursor.Line, nl)

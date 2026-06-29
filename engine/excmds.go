@@ -163,7 +163,11 @@ func (e *Engine) exJoin(c *exCmd) error {
 		b = b[i:]
 		var sep []rune
 		if !c.force && len(a) > 0 && a[len(a)-1] != ' ' && a[len(a)-1] != '\t' && (len(b) == 0 || b[0] != ')') {
-			sep = []rune{' '}
+			if ch := a[len(a)-1]; ch == '.' || ch == '?' || ch == '!' {
+				sep = []rune{' ', ' '}
+			} else {
+				sep = []rune{' '}
+			}
 		}
 		if len(sep) > 0 {
 			joinCol = len(a) // the inserted blank
