@@ -105,6 +105,7 @@ func (e *Engine) tagPop() error {
 // lookupTag scans the tags file(s) for name, returning the target file and ex
 // command.
 func (e *Engine) lookupTag(name string) (file, excmd string, err error) {
+	tl := e.scr.opts.Int("taglength")
 	for _, tagsPath := range strings.Fields(e.scr.opts.Str("tags")) {
 		f, ferr := os.Open(e.resolvePath(tagsPath))
 		if ferr != nil {
@@ -121,7 +122,7 @@ func (e *Engine) lookupTag(name string) (file, excmd string, err error) {
 			if len(parts) < 3 {
 				continue
 			}
-			if parts[0] == name {
+			if sigTag(parts[0], tl) == sigTag(name, tl) {
 				f.Close()
 				return parts[1], stripTagComment(parts[2]), nil
 			}
@@ -129,6 +130,18 @@ func (e *Engine) lookupTag(name string) (file, excmd string, err error) {
 		f.Close()
 	}
 	return "", "", fmt.Errorf("%s: tag not found", name)
+}
+
+// sigTag returns the significant prefix of a tag name under taglength: when
+// tl > 0 only the first tl runes are significant; tl == 0 means all are.
+func sigTag(s string, tl int) string {
+	if tl > 0 {
+		r := []rune(s)
+		if len(r) > tl {
+			return string(r[:tl])
+		}
+	}
+	return s
 }
 
 // stripTagComment removes a trailing ";\"" extension-field comment that modern
