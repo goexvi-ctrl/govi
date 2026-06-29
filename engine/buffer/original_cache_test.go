@@ -96,6 +96,46 @@ func TestOrigCacheLRUBounded(t *testing.T) {
 	}
 }
 
+// TestOrigSeqCursorOrders exercises the sequential read cursor under forward,
+// backward, strided, and random access orders, confirming every original line
+// still decodes to the right content regardless of access pattern.
+func TestOrigSeqCursorOrders(t *testing.T) {
+	const nlines = 5000
+	var b strings.Builder
+	for i := 0; i < nlines; i++ {
+		fmt.Fprintf(&b, "line-%d-content\n", i)
+	}
+	p := NewPagedBytes([]byte(b.String()))
+	want := func(ln int64) string { return fmt.Sprintf("line-%d-content", ln-1) }
+
+	orders := map[string][]int64{}
+	var fwd, bwd, strided []int64
+	for i := int64(1); i <= nlines; i++ {
+		fwd = append(fwd, i)
+		bwd = append(bwd, nlines+1-i)
+	}
+	for i := int64(1); i <= nlines; i += 7 {
+		strided = append(strided, i)
+	}
+	orders["forward"] = fwd
+	orders["backward"] = bwd
+	orders["strided"] = strided
+	// A deterministic pseudo-random order.
+	rnd := []int64{1, nlines, 2500, 2, 4999, 1234, 1235, 1233, 3000, 1}
+	orders["random"] = rnd
+
+	for name, order := range orders {
+		// Fresh store per order so cache/cursor state does not carry over.
+		pp := NewPagedBytes([]byte(b.String()))
+		for _, ln := range order {
+			if got, _ := pp.Get(ln); string(got) != want(ln) {
+				t.Fatalf("%s: Get(%d) = %q, want %q", name, ln, string(got), want(ln))
+			}
+		}
+	}
+	_ = p
+}
+
 // TestOrigCacheReReadsAfterEviction confirms that after the cache evicts a line,
 // re-reading it from the source still returns correct content.
 func TestOrigCacheReReadsAfterEviction(t *testing.T) {

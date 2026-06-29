@@ -33,6 +33,16 @@ type original struct {
 	// cache memoizes decoded lines by original line number. The original is
 	// immutable, so cached entries never go stale.
 	cache *origCache
+
+	// scratch is a reused read buffer (avoids a scanChunk allocation per line).
+	scratch []byte
+
+	// seqValid/seqLine/seqPos form a one-entry sequential cursor: seqPos is the
+	// byte offset at which line seqLine begins, set after each read so a
+	// subsequent forward read can resume without rescanning from a checkpoint.
+	seqValid bool
+	seqLine  int64
+	seqPos   int64
 }
 
 // newOriginal scans src once to build the sparse line index.
@@ -92,11 +102,25 @@ func (o *original) line(oln int64) ([]rune, error) {
 		return cloneRunes(r), nil
 	}
 
-	cp := oln / o.stride
-	pos := o.checkpoints[cp]
-	skip := oln - cp*o.stride
+	// Pick the closest known line start at or before oln: the sparse checkpoint,
+	// or the sequential cursor left by the previous read. The cursor makes a
+	// forward scan O(1) skips for sequential access (the common :g/:%s and
+	// initial-paint pattern), instead of re-scanning from the checkpoint -- which
+	// is O(stride) per line, i.e. quadratic across a stride block. Byte offsets
+	// into the immutable original never go stale, so the cursor needs no
+	// invalidation.
+	startLine := (oln / o.stride) * o.stride
+	pos := o.checkpoints[oln/o.stride]
+	if o.seqValid && o.seqLine <= oln && o.seqLine > startLine {
+		startLine = o.seqLine
+		pos = o.seqPos
+	}
+	skip := oln - startLine
 
-	buf := make([]byte, scanChunk)
+	if o.scratch == nil {
+		o.scratch = make([]byte, scanChunk)
+	}
+	buf := o.scratch
 
 	// Skip forward over `skip` newlines to reach the start of line oln.
 	for skip > 0 {
@@ -118,13 +142,15 @@ func (o *original) line(oln int64) ([]rune, error) {
 		}
 	}
 
-	// Read from pos to the next newline or EOF.
+	// Read from pos to the next newline or EOF, advancing pos so it ends at the
+	// first byte of the next line.
 	var content []byte
 	for {
 		n, err := o.src.ReadAt(buf, pos)
 		if n > 0 {
 			if idx := bytes.IndexByte(buf[:n], '\n'); idx >= 0 {
 				content = append(content, buf[:idx]...)
+				pos += int64(idx) + 1
 				break
 			}
 			content = append(content, buf[:n]...)
@@ -134,6 +160,12 @@ func (o *original) line(oln int64) ([]rune, error) {
 			break
 		}
 	}
+
+	// Leave a sequential cursor at the start of the next line.
+	o.seqValid = true
+	o.seqLine = oln + 1
+	o.seqPos = pos
+
 	decoded := []rune(string(content))
 	o.cache.put(oln, decoded)
 	return cloneRunes(decoded), nil
