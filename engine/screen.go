@@ -65,6 +65,12 @@ type screen struct {
 	altFile       string   // alternate file (^^ / #), the previously edited file
 	tagStack      []tagLoc // tag jump stack for ^T
 
+	// tagMatches holds the candidate locations of the most recent :tag or
+	// :cscope find that produced one or more results (nvi's head TAGQ);
+	// :tagnext/:tagprev step through them and tagMatchIdx is the current one.
+	tagMatches  []tagMatch
+	tagMatchIdx int
+
 	mode          Mode
 	showModeLabel string // showmode text: Command, Insert, Append, Change, Replace
 	msg           string

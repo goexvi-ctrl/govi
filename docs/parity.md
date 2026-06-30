@@ -123,7 +123,7 @@ no nvi command is silently missing here.
 | `:e[dit]` `:n[ext]` `:prev`/`:N` `:rew[ind]` `:ar[gs]` | yes | ✅✔ | ✅✔ | argument list; `:e` file arg does `%`/`#`/glob expansion -- `:e #` re-edits the alternate file (GOTERM_DIVERGENCES #46) |
 | `:f[ile] [name]` | yes | ✅ | ✅ | status line; optional rename sets alternate file |
 | `:ta[g]` | yes | ✅✔ | ✅✔ | |
-| `:tagn[ext]` `:tagp[rev]` `:tagt[op]` | yes | ❌ | ❌ | tag-stack walk (vi `^T`/`^]` work) |
+| `:tagn[ext]` `:tagp[rev]` `:tagt[op]` `:tagp[op]` | yes | ✅ | ✅ | walk the matches of a multi-match `:tag`/`:cscope find`; `:tagtop`/`:tagpop` unwind the stack (vi `^T`/`^]` also work) |
 | `:vi[sual]` | yes | ✅ | ✅ | returns from ex mode |
 | `Q` ex (line) mode | yes | ✅ | ✅ | terminal leaves the full screen for a scrolling line REPL (no banner); GUI shows an equivalent bottom-growing scrolling transcript |
 | `:[range]a[ppend]`/`i[nsert]`/`c[hange]` | yes | ✅ | ✅ | ex input mode; input ends on a sole `.` (works in ex mode and from the colon line) |
@@ -132,7 +132,7 @@ no nvi command is silently missing here.
 | `:mk[exrc]` | yes | ❌ | ❌ | write current options to an exrc file |
 | `:k`/`:ma`/`:mark` (mark a line) | yes | ✅ | ✅ | sets a mark usable as an address; vi `m` also works |
 | `:u[ndo]` | yes | ✅ | ✅ | shares the vi `u` undo/redo direction toggle (GOTERM_DIVERGENCES #37) |
-| `:di[splay] b\|c\|s\|t` | yes | 🟡 | 🟡 | `b[uffers]` (cut buffers) and `s[creens]` (background screens) implemented; cscope/tags lists not yet |
+| `:di[splay] b\|c\|s\|t` | yes | 🟡 | 🟡 | `b[uffers]` (cut buffers), `c[onnections]` (cscope), and `s[creens]` (background screens) implemented; `t[ags]` list not yet |
 | `:he[lp]` | yes | ✅ | ✅ | points to :viusage / :exusage |
 | `:exu[sage] [cmd]` | yes | ✅ | ✅ | lists implemented ex commands |
 | `:viu[sage] [key]` | yes | ✅ | ✅ | lists implemented vi keys |
@@ -140,7 +140,7 @@ no nvi command is silently missing here.
 | `:bg` `:fg`/`:Fg` `:res[ize]` `:vs[plit]` | yes | ✅ | ✅ | background/foreground, grow/shrink, vertical split (nvi vs_*); `:sc[ript]` not implemented; GUI renders panes via the multi-pane grid composer |
 | `:E`/`:N`/`:P`/`:Vi`/`:Tag` (new screen) | yes | ✅ | ✅ | capitalized form opens the target in a new horizontal split (nvi E_NEWSCREEN) |
 | `:su[spend]`/`:st[op]` | yes | ✅ | — | terminal only; `!` skips autowrite; blocked when `secure` |
-| `:cs[cope]` | yes | — | — | cscope integration; out of scope |
+| `:cs[cope]` | yes | ✅✔ | ✅✔ | `add`/`find`/`help`/`kill`/`reset`; drives real `cscope -dl` subprocesses; `find` jumps integrate with the tag stack and `:tagnext`/`:tagprev` |
 | `:pre[serve]` `:rec[over]` | yes | ✅ | ✅ | crash recovery (govi format) |
 | `:ve[rsion]` | yes | ✅ | ✅ | git-derived build metadata (`govi-0.1`, date, hash) |
 | `:[range]w[rite] >>file` (append) | yes | ✅ | ✅ | appends to file; "appended" message on status line, not paginated into body |
@@ -214,7 +214,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | Signals (SIGHUP/SIGTERM/…) | yes | ✅ | — | terminal: trap, restore cooked tty, print signal name; `^\` vi→ex; GUI uses the AppKit lifecycle |
 | Split screens / windows (`^W` `:bg`/`:fg`/`:resize` `:vsplit`) | yes | ✅ | ✅ | horizontal + vertical splits, ^W switch, new-screen ex commands, background/foreground, resize; the GUI lays out every pane via the multi-pane grid composer (byte-for-byte with the terminal) |
 | Job control (`^Z` `:suspend`/`:stop`) | yes | ✅ | — | terminal frontend (`tcell`); not GoVi.app |
-| Cscope integration | yes | — | — | out of scope |
+| Cscope integration | yes | ✅✔ | ✅✔ | `:cscope add/find/help/kill/reset` over real `cscope -dl` subprocesses; `find` results drive the tag stack (`^T`) and `:tagnext`/`:tagprev`; verified byte-for-byte vs nvi |
 | Message catalogs (i18n) | yes | — | — | English only; out of scope |
 | File encodings | iconv | 🟡 | 🟡 | UTF-8 only |
 | Perl / Tcl scripting | yes | — | — | non-objective (see below) |

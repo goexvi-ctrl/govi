@@ -94,6 +94,13 @@ Fixed in display.go GutterWidth: return a fixed 8 (nvi O_NUMBER_LENGTH,
 O_NUMBER_FMT "%7lu ") when numbering is on, instead of the dynamic digits+1.
 Updated frontend/grid and frontend/tcell gutter tests to the 8-wide expectation.
 
+## Status: divergences #1-48 are addressed. #48 (2026-06-30) FIXED: cscope
+integration -- `:cscope` (`:cs`) `add`/`find`/`help`/`kill`/`reset`, `:display
+c[onnections]`, and `:tagnext`/`:tagprev`/`:tagtop`/`:tagpop`. govi drives real
+`cscope -dl` subprocesses and `cs find` results jump like tags (^T returns).
+Verified byte-for-byte vs nvi against the database in /Users/claude/src/nvi. See
+entry #48.
+
 ## Status: divergences #1-47 are addressed. #47 (2026-06-30) FIXED: split
 screens -- `^W` switch, capitalized new-screen ex commands (`:E`/`:N`/`:P`/`:Vi`/
 `:Tag`), `:vsplit`, `:bg`/`:fg`/`:Fg`, `:resize`, `:display s[creens]`/`b[uffers]`,
@@ -927,6 +934,47 @@ Verified: new engine tests (exfile_test.go) cover `:e #`, `:w %`, unique prefix
 match, no-match, and too-many for both `:e` (Usage) and `:w` (file-count); all
 pass. The `secure` option suppresses the shell-fork path (argv_sexp) only, like
 nvi -- internal prefix completion still works under `secure`.
+
+### 48. cscope integration was unimplemented (`:cscope`/`:cs`, `:tagnext`/`:tagprev`/`:tagtop`/`:tagpop`, `:display connections`)  [FIXED 2026-06-30]
+FIX (engine): implemented nvi's cscope subsystem (ex/ex_cscope.c) plus the tag
+navigation commands it depends on (ex/ex_tag.c ex_tag_next/prev/top/pop).
+
+`:cscope` (abbreviation `:cs`) dispatches to `add`, `find`, `help`, `kill`, and
+`reset` (prefix-matched, nvi lookup_ccmd). `add file|dir` starts a real cscope
+subprocess -- `cscope -dl -f cscope.out` run in the database directory -- and
+talks to it over pipes exactly as nvi does: write "<n><pattern>\n" (n is the
+query number, the index of the find-type letter in "sgdct efi"), read
+"cscope: <count> lines", that many "<file> <context> <lineno> <pattern>" result
+lines, and the ">> " prompt. The CSCOPE_DIRS environment variable is consulted
+once (nvi EXTENSION #1); cscope.tpath search paths are honored (EXTENSION #2).
+
+`find c|d|e|f|g|i|s|t pattern` queries every connection and turns the matches
+into a tag jump: the source-line pattern is converted to a vi-magic regex with
+each blank standing for any run of whitespace/comments (nvi re_cscope_conv's
+CSCOPE_RE_SPACE, here `\([[:blank:]]\|/\*\([^*]\|\*/\)*\*/\)*`), the file is
+loaded, and the cursor lands on the first non-blank of the match (falling back to
+the recorded line number when the file is newer than the database). The current
+location is pushed so `^T` returns; multiple matches become the active group that
+`:tagnext`/`:tagprev` step through, and `:tagtop`/`:tagpop` unwind the stack.
+`:tag` now collects all ctags matches too, so its results are likewise walkable.
+`:display c[onnections]` lists the running connections; connections are killed on
+:cscope kill / reset and on engine Close.
+
+One environment note: this cscope build reports a failed search as "Unable to
+search database" with no count line, going straight to the ">> " prompt (which
+has no trailing newline). The reader peeks for that prompt as an alternate
+terminator so a zero-match query does not block.
+
+Verified against nvi via goterm (run sequentially so the two editors don't fight
+over nvi's per-file edit lock): `:cs find g` definition jumps (centered,
+byte-for-byte identical screens), `:cs find c` + `:tagnext` (same match order),
+and a no-match query all match nvi exactly. Engine unit tests in
+engine/cscope_test.go build a throwaway database with the real cscope binary and
+exercise find/definition, multi-match navigation, ^T return, no-connections,
+unknown-search-type, no-match, :display connections, kill, and help. (Running
+both editors concurrently on the same source tree triggers nvi's "already
+locked, session is read-only" pager -- a harness artifact of shared files, not a
+divergence; see entry #47's note on the same message.)
 
 ### 47. split screens were unimplemented (`^W`, `:E`/`:N`/..., `:vsplit`, `:bg`/`:fg`, `:resize`, `:display screens`)  [FIXED 2026-06-30]
 FIX (engine + tcell): implemented nvi's multi-window subsystem (vi/vs_split.c,

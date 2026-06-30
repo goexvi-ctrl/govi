@@ -45,6 +45,12 @@ type Engine struct {
 
 	mapPending []rune // runes accumulating toward a possible map LHS
 
+	// cscopes are the running cscope subprocess connections (nvi exp->cscq),
+	// shared across all screens; cscopeInit records whether the CSCOPE_DIRS
+	// environment variable has been consulted yet.
+	cscopes    []*cscopeConn
+	cscopeInit bool
+
 	lockF   *os.File // dedicated fd holding the advisory edit lock (nvi ep->fd)
 	quit    bool
 	exitMsg string // set when a signal caused the exit; printed by the host
@@ -190,6 +196,7 @@ func (e *Engine) OpenArgs(args []string) error {
 // Close releases any file handles held by the engine's screens.
 func (e *Engine) Close() error {
 	e.releaseLock()
+	e.cscopeReset() // terminate any running cscope subprocesses
 	var firstErr error
 	for _, s := range e.screens {
 		if s.file != nil {

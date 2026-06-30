@@ -238,16 +238,19 @@ const minScreenRows = 1
 // the screens list is presented as a screen overlay; buffers fall back to the
 // cut-buffer display.
 func (e *Engine) exDisplay(c *exCmd) error {
+	const usage = "Usage: display b[uffers] | c[onnections] | s[creens] | t[ags]"
 	arg := strings.TrimSpace(c.arg)
 	switch {
 	case arg == "":
-		return fmt.Errorf("Usage: display b[uffers] | s[creens] | t[ags]")
+		return fmt.Errorf("%s", usage)
 	case strings.HasPrefix("screens", arg):
 		return e.displayScreens()
 	case strings.HasPrefix("buffers", arg):
 		return e.displayBuffers()
+	case strings.HasPrefix("connections", arg):
+		return e.cscopeDisplay()
 	default:
-		return fmt.Errorf("Usage: display b[uffers] | s[creens] | t[ags]")
+		return fmt.Errorf("%s", usage)
 	}
 }
 
