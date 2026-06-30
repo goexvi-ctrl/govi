@@ -87,7 +87,10 @@ $(IDIR)/GoVi.app: gui/build/GoVi.app $(GOVI_ICNS)
 #     NOTARY_PROFILE=govi-notary
 #
 # NOTARY_PROFILE names a stored `xcrun notarytool store-credentials` profile.
-RELEASE_VERSION   ?= $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+#
+# Version is the single source of truth (the same file drives engine/version.go
+# and scripts/version-ldflags.sh); tag the tree with that value prefixed by 'v'.
+RELEASE_VERSION   ?= $(shell cat Version)
 # Architectures in the release. Universal (Intel + Apple Silicon, macOS 11+) by
 # default; set RELEASE_ARCHS=arm64 for a native-only build.
 RELEASE_ARCHS     ?= arm64 x86_64
