@@ -21,6 +21,7 @@ set -eu
 : "${VOLNAME:?set VOLNAME}" "${IDENTITY:?set IDENTITY}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-govi-notary}"
 STAGE="$(dirname "$DMG")/dmg-stage"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Hardened runtime and a secure timestamp need a real certificate; an ad-hoc
 # signature supports neither, so only request them for a Developer ID build.
@@ -39,13 +40,18 @@ codesign --force $runtime $timestamp --sign "$IDENTITY" "$CLI"
 codesign --force $runtime $timestamp --sign "$IDENTITY" "$APP"
 codesign --verify --strict "$APP"
 
-# 2. Stage the image contents and build a compressed disk image. ditto (not cp)
-#    preserves the bundle's symlinks and metadata.
+# 2. Stage the image contents and build a compressed disk image: the app, the
+#    CLI, an /Applications symlink and a /usr/local/bin symlink to drag each onto,
+#    and a README. ditto (not cp) preserves the bundle's symlinks and metadata.
 rm -rf "$STAGE" "$DMG"
 mkdir -p "$STAGE"
 ditto "$APP" "$STAGE/$(basename "$APP")"
 cp "$CLI" "$STAGE/$(basename "$CLI")"
+# Drag targets: GoVi.app -> Applications, and the govi CLI -> /usr/local/bin
+# (already on the default PATH). A short README explains both.
 ln -s /Applications "$STAGE/Applications"
+ln -s /usr/local/bin "$STAGE/usr-local-bin"
+cp "$SCRIPT_DIR/dmg-README.txt" "$STAGE/README.txt"
 hdiutil create -quiet -volname "$VOLNAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 rm -rf "$STAGE"
 

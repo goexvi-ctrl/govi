@@ -73,8 +73,9 @@ $(IDIR)/GoVi.app: gui/build/GoVi.app $(GOVI_ICNS)
 	$(LSREGISTER) -f $@   # register file types + the govi:// URL scheme
 
 # release: build a signed macOS .dmg for upload to a GitHub release. The image
-# holds the GoVi.app bundle, the govi CLI, and an /Applications symlink for
-# drag-install. Version comes from the latest git tag; arch from the build host.
+# holds the GoVi.app bundle, the govi CLI, an /Applications symlink and a
+# /usr/local/bin symlink to drag each onto, and a README. Version comes from the
+# latest git tag; arch from the build host.
 #
 # Default builds are ad-hoc signed: runnable locally, but a download is
 # quarantined and must be de-quarantined by hand. Pass a Developer ID to get a
