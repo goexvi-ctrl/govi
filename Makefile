@@ -37,9 +37,9 @@ govi:
 
 include gui/govi.mk
 
-gui/build/GoVi.app: govi-app
+gui/build/GoVi.app: engine/version.go govi-app
 
-test:
+test: engine/version.go
 	go test ./...
 
 # coverage runs all tests and writes $(COVER_PROFILE). coverage-report prints
