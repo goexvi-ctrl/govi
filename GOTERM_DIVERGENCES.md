@@ -94,6 +94,12 @@ Fixed in display.go GutterWidth: return a fixed 8 (nvi O_NUMBER_LENGTH,
 O_NUMBER_FMT "%7lu ") when numbering is on, instead of the dynamic digits+1.
 Updated frontend/grid and frontend/tcell gutter tests to the 8-wide expectation.
 
+## Status: divergences #1-47 are addressed. #47 (2026-06-30) FIXED: split
+screens -- `^W` switch, capitalized new-screen ex commands (`:E`/`:N`/`:P`/`:Vi`/
+`:Tag`), `:vsplit`, `:bg`/`:fg`/`:Fg`, `:resize`, `:display s[creens]`/`b[uffers]`,
+per-screen `:q`/`ZZ` close. Terminal frontend renders multi-pane with reverse
+status dividers; matches nvi via goterm. See entry #47.
+
 ## Status: divergences #1-46 are addressed. #46 (2026-06-29) FIXED: file-name
 arguments to `:e`/`:w`/`:r` now do nvi's argv_exp2 expansion (`%`->current,
 `#`->alternate, trailing-`*` internal prefix completion, other metachars via the
@@ -613,7 +619,7 @@ differs, which is the known message-pagination note). The residue is one cluster
 unimplemented ex commands (#37) and one undocumented-but-working vi command (noted
 under "Undocumented but functional").
 
-### 37. several ex commands nvi lists in :exusage are no-ops in govi  [FIXED 2026-06-28, :z/:display deferred]
+### 37. several ex commands nvi lists in :exusage are no-ops in govi  [FIXED 2026-06-28, :z deferred; :display done in #47]
 FIX: implemented the data-affecting and trivial commands. `:undo` (ex.go table +
 exUndo, sharing the vi-mode undo/redo direction toggle, nvi ex_undo.c). `:@`/`:*`
 (parseName now accepts `@`; exAt executes the named buffer's lines as EX commands,
@@ -920,6 +926,35 @@ Verified: new engine tests (exfile_test.go) cover `:e #`, `:w %`, unique prefix
 match, no-match, and too-many for both `:e` (Usage) and `:w` (file-count); all
 pass. The `secure` option suppresses the shell-fork path (argv_sexp) only, like
 nvi -- internal prefix completion still works under `secure`.
+
+### 47. split screens were unimplemented (`^W`, `:E`/`:N`/..., `:vsplit`, `:bg`/`:fg`, `:resize`, `:display screens`)  [FIXED 2026-06-30]
+FIX (engine + tcell): implemented nvi's multi-window subsystem (vi/vs_split.c,
+vi/v_screen.c, ex/ex_screen.c, ex/ex_display.c, the E_NEWSCREEN path in ex/ex.c).
+The Engine now holds a list of displayed screens plus a background queue; `e.scr`
+tracks the active one, so existing per-screen code is unchanged. Each screen
+carries its own geometry (roff/coff/rows/cols), paged-file handle, argument list,
+alternate file, and tag stack; registers and maps are shared, options copied.
+New `engine/split.go` + `engine/screencmds.go`; the tcell frontend renders each
+screen in its own band with a reverse-video status divider (and a `|` column for
+vertical splits).
+
+Commands: `^W` cycles screens; capitalized `:E`/`:N`/`:P`/`:Vi`/`:Tag` open the
+target in a new horizontal split; `:vsplit` splits vertically; `:bg`/`:fg`/`:Fg`
+background/foreground; `:resize [+-]rows`; `:display s[creens]`/`b[uffers]`;
+`:q`/`:wq`/`:x`/`ZZ`/`ZQ` close just the active screen until the last one exits.
+Removed the divergent `:Next`->previous mapping (oracle: `:N` edits the *next*
+file in a new screen).
+
+Verified against nvi via goterm (text + cursor + reverse attributes): split
+geometry, `^W`, per-screen `:` commands, editing both sections, three-way splits,
+close/join (both axes), `:bg`/`:fg`/`:Fg`, `:resize` grow/shrink, `:display`, and
+per-screen arglist navigation all match. Engine unit tests in
+`engine/split_test.go`. Known cosmetic edge cases, all on the dropped status row
+or only with pathologically long (>80-col) temp paths: the one-keystroke
+transient status line truncates a hair differently in a 3-way split, and
+`:display screens` wraps a >80-col name one column off. nvi's `:s`/`:d` "N lines
+changed" report is still unimplemented (pre-existing, surfaces on a vsplit's
+shared bottom status row).
 
 ## Undocumented but functional (note, not a divergence)
 - vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes
