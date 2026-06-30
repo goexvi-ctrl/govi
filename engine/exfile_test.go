@@ -233,8 +233,8 @@ func TestExFileRename(t *testing.T) {
 	if e.scr.name != newPath {
 		t.Fatalf("name = %q, want %q", e.scr.name, newPath)
 	}
-	if e.altFile != path {
-		t.Fatalf("altFile = %q, want %q", e.altFile, path)
+	if e.scr.altFile != path {
+		t.Fatalf("altFile = %q, want %q", e.scr.altFile, path)
 	}
 	msg, _ := (view{e.scr}).Message()
 	if !strings.Contains(msg, "name changed") {
@@ -281,8 +281,8 @@ func TestEditAlternateFileExpansion(t *testing.T) {
 	if bufText(e) != "BBB" {
 		t.Fatalf("after :n: %q", bufText(e))
 	}
-	if e.altFile != a {
-		t.Fatalf("altFile = %q, want %q", e.altFile, a)
+	if e.scr.altFile != a {
+		t.Fatalf("altFile = %q, want %q", e.scr.altFile, a)
 	}
 	if err := e.exExecute("e #"); err != nil { // :e # -> back to a.txt
 		t.Fatal(err)

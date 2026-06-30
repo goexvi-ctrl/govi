@@ -429,7 +429,7 @@ func (e *Engine) SaveAs(path string) error {
 	}
 	old := e.scr.name
 	if old != "" && old != path {
-		e.altFile = old
+		e.scr.altFile = old
 		e.scr.nameChanged = true
 	}
 	e.scr.name = path // as given; Save resolves it at write time
@@ -507,14 +507,14 @@ func (e *Engine) exWriteQuit(c *exCmd) error {
 // exWriteNext implements :wn[ext] -- write the current file, then edit the next
 // file in the argument list (nvi ex_next.c, the write-and-advance form).
 func (e *Engine) exWriteNext(c *exCmd) error {
-	if e.argIdx+1 >= len(e.argv) {
+	if e.scr.argIdx+1 >= len(e.scr.argv) {
 		return fmt.Errorf("No more files to edit")
 	}
 	if err := e.exWrite(c); err != nil {
 		return err
 	}
-	e.argIdx++
-	return e.Open(e.argv[e.argIdx])
+	e.scr.argIdx++
+	return e.Open(e.scr.argv[e.scr.argIdx])
 }
 
 // exUndo implements :u[ndo] -- undo the last change. Like nvi's ex_undo, this

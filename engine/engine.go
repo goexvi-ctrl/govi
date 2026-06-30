@@ -45,12 +45,6 @@ type Engine struct {
 
 	mapPending []rune // runes accumulating toward a possible map LHS
 
-	argv          []string // file argument list
-	argIdx        int      // index of the current file in argv
-	showFileCount bool     // next :f/^G shows "N files to edit" (nvi SC_STATUS_CNT)
-	altFile       string   // alternate file (^^ / #), the previously edited file
-	tagStack      []tagLoc // tag jump stack for ^T
-
 	lockF   *os.File // dedicated fd holding the advisory edit lock (nvi ep->fd)
 	quit    bool
 	exitMsg string // set when a signal caused the exit; printed by the host
@@ -138,14 +132,14 @@ func (e *Engine) Open(path string) error {
 	resolved := e.canonicalPath(name)
 	// Remember the file we are leaving as the alternate file.
 	if e.scr != nil && e.scr.name != "" && e.scr.name != name {
-		e.altFile = e.scr.name
+		e.scr.altFile = e.scr.name
 	}
 	store, fh, err := buffer.NewPagedFile(resolved)
 	if err != nil {
 		if os.IsNotExist(err) {
 			e.replaceBuffer(buffer.NewMem(), name)
-			if len(e.argv) > 1 {
-				e.showFileCount = true
+			if len(e.scr.argv) > 1 {
+				e.scr.showFileCount = true
 			}
 			e.scr.msg = fmt.Sprintf("%s: new file: line %d", e.scr.name, e.scr.cursor.Line)
 			e.scr.msgKind = MsgInfo
@@ -156,8 +150,8 @@ func (e *Engine) Open(path string) error {
 	e.releaseLock() // drop any lock held on the previous file
 	e.replaceBuffer(store, name) // closes the previous per-screen file handle
 	e.scr.file = fh
-	if len(e.argv) > 1 {
-		e.showFileCount = true
+	if len(e.scr.argv) > 1 {
+		e.scr.showFileCount = true
 	}
 	chars := int64(0)
 	if fi, err := os.Stat(resolved); err == nil {
@@ -185,8 +179,8 @@ func (e *Engine) Open(path string) error {
 // OpenArgs sets the file argument list and opens the first file. With no
 // arguments it leaves the initial empty buffer.
 func (e *Engine) OpenArgs(args []string) error {
-	e.argv = args
-	e.argIdx = 0
+	e.scr.argv = args
+	e.scr.argIdx = 0
 	if len(args) == 0 {
 		return nil
 	}

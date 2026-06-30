@@ -56,6 +56,15 @@ type screen struct {
 	// per-screen EXF). nil for an in-memory buffer.
 	file *os.File
 
+	// Per-screen file-list and navigation state (nvi keeps argv/cargv, the
+	// alternate name, and the tag stack in each SCR). A new split screen starts
+	// with an empty argument list and no alternate/tag history.
+	argv          []string // file argument list
+	argIdx        int      // index of the current file in argv
+	showFileCount bool     // next :f/^G shows "N files to edit" (nvi SC_STATUS_CNT)
+	altFile       string   // alternate file (^^ / #), the previously edited file
+	tagStack      []tagLoc // tag jump stack for ^T
+
 	mode          Mode
 	showModeLabel string // showmode text: Command, Insert, Append, Change, Replace
 	msg           string

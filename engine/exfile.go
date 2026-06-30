@@ -29,9 +29,9 @@ func (e *Engine) fileStatus() string {
 	var b strings.Builder
 	b.WriteString(name)
 	b.WriteString(": ")
-	if e.showFileCount && len(e.argv) > 1 {
-		fmt.Fprintf(&b, "%d files to edit: ", len(e.argv))
-		e.showFileCount = false
+	if e.scr.showFileCount && len(e.scr.argv) > 1 {
+		fmt.Fprintf(&b, "%d files to edit: ", len(e.scr.argv))
+		e.scr.showFileCount = false
 	}
 	needSep := false
 	if s.name == "" && s.dirty() {
@@ -85,7 +85,7 @@ func (e *Engine) exFile(c *exCmd) error {
 	if name != "" {
 		old := e.scr.name
 		if old != "" && old != name {
-			e.altFile = old
+			e.scr.altFile = old
 			e.scr.nameChanged = true
 		}
 		e.scr.name = name
@@ -138,35 +138,46 @@ func (e *Engine) exEdit(c *exCmd) error {
 // exNext implements :n[!] -- edit the next file in the argument list. :N
 // (capitalized) edits the next file in a new split screen.
 func (e *Engine) exNext(c *exCmd) error {
-	if e.argIdx+1 >= len(e.argv) {
+	if e.scr.argIdx+1 >= len(e.scr.argv) {
 		return fmt.Errorf("No more files to edit")
 	}
 	if c.newScreen {
-		e.argIdx++
-		return e.editNewScreen(e.argv[e.argIdx])
+		// :N edits the parent's next file in a new screen, which inherits the
+		// arglist positioned at that file; the parent screen is left untouched.
+		return e.editArgNewScreen(e.scr.argIdx + 1)
 	}
 	if e.scr.dirty() && !c.force {
 		return fmt.Errorf("No write since last change (use :n! to override)")
 	}
-	e.argIdx++
-	return e.Open(e.argv[e.argIdx])
+	e.scr.argIdx++
+	return e.Open(e.scr.argv[e.scr.argIdx])
 }
 
 // exPrev implements :prev[!] -- edit the previous file in the list. :Prev
 // (capitalized) edits it in a new split screen.
 func (e *Engine) exPrev(c *exCmd) error {
-	if e.argIdx <= 0 {
+	if e.scr.argIdx <= 0 {
 		return fmt.Errorf("No previous files to edit")
 	}
 	if c.newScreen {
-		e.argIdx--
-		return e.editNewScreen(e.argv[e.argIdx])
+		return e.editArgNewScreen(e.scr.argIdx - 1)
 	}
 	if e.scr.dirty() && !c.force {
 		return fmt.Errorf("No write since last change (use :prev! to override)")
 	}
-	e.argIdx--
-	return e.Open(e.argv[e.argIdx])
+	e.scr.argIdx--
+	return e.Open(e.scr.argv[e.scr.argIdx])
+}
+
+// editArgNewScreen opens the parent's argv[idx] file in a new horizontal split
+// (nvi :N/:P in a new screen). Like :E, the new screen starts with an empty
+// argument list; the parent screen keeps its own arglist position untouched.
+func (e *Engine) editArgNewScreen(idx int) error {
+	parentArgv := e.scr.argv
+	if idx < 0 || idx >= len(parentArgv) {
+		return fmt.Errorf("No more files to edit")
+	}
+	return e.editNewScreen(parentArgv[idx])
 }
 
 // exRewind implements :rewind[!] -- edit the first file in the list.
@@ -174,24 +185,24 @@ func (e *Engine) exRewind(c *exCmd) error {
 	if e.scr.dirty() && !c.force {
 		return fmt.Errorf("No write since last change (use :rewind! to override)")
 	}
-	if len(e.argv) == 0 {
+	if len(e.scr.argv) == 0 {
 		return fmt.Errorf("No files to edit")
 	}
-	e.argIdx = 0
-	return e.Open(e.argv[0])
+	e.scr.argIdx = 0
+	return e.Open(e.scr.argv[0])
 }
 
 // exArgs implements :args -- show the argument list with the current file in
 // brackets.
 func (e *Engine) exArgs(c *exCmd) error {
-	if len(e.argv) == 0 {
+	if len(e.scr.argv) == 0 {
 		e.scr.msg, e.scr.msgKind = "No files", MsgInfo
 		return nil
 	}
-	parts := make([]string, len(e.argv))
-	for i, a := range e.argv {
+	parts := make([]string, len(e.scr.argv))
+	for i, a := range e.scr.argv {
 		name := filepath.Base(a)
-		if i == e.argIdx {
+		if i == e.scr.argIdx {
 			name = "[" + name + "]"
 		}
 		parts[i] = name

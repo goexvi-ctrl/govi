@@ -108,10 +108,10 @@ func (e *Engine) expandShellNames(cmd string) (string, error) {
 			}
 			b.WriteString(e.scr.name)
 		case '#':
-			if e.altFile == "" {
+			if e.scr.altFile == "" {
 				return "", fmt.Errorf("No filename to substitute for #")
 			}
-			b.WriteString(e.altFile)
+			b.WriteString(e.scr.altFile)
 		default:
 			b.WriteRune(r[i])
 		}

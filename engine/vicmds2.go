@@ -47,11 +47,11 @@ func (e *Engine) editIncrement(delta int64, count int) error {
 
 // editAlternate implements ^^: switch to the alternate (previously edited) file.
 func (e *Engine) editAlternate() error {
-	if e.altFile == "" {
+	if e.scr.altFile == "" {
 		return fmt.Errorf("No alternate file")
 	}
 	if e.scr.modified {
 		return fmt.Errorf("No write since last change")
 	}
-	return e.Open(e.altFile)
+	return e.Open(e.scr.altFile)
 }

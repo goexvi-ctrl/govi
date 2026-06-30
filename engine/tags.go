@@ -38,7 +38,7 @@ func (e *Engine) tagJumpNewScreen(name string) error {
 	if err != nil {
 		return err
 	}
-	e.tagStack = append(e.tagStack, tagLoc{
+	e.scr.tagStack = append(e.scr.tagStack, tagLoc{
 		file: e.scr.name,
 		line: e.scr.cursor.Line,
 		col:  e.scr.cursor.Col,
@@ -68,7 +68,7 @@ func (e *Engine) tagJump(name string) error {
 		return fmt.Errorf("No write since last change")
 	}
 	// Push the current location for ^T.
-	e.tagStack = append(e.tagStack, tagLoc{
+	e.scr.tagStack = append(e.scr.tagStack, tagLoc{
 		file: e.scr.name,
 		line: e.scr.cursor.Line,
 		col:  e.scr.cursor.Col,
@@ -106,11 +106,11 @@ func (e *Engine) applyTagAddress(excmd string) {
 // tagPop implements ^T: return to the location saved by the most recent tag
 // jump.
 func (e *Engine) tagPop() error {
-	if len(e.tagStack) == 0 {
+	if len(e.scr.tagStack) == 0 {
 		return fmt.Errorf("Tags stack empty")
 	}
-	loc := e.tagStack[len(e.tagStack)-1]
-	e.tagStack = e.tagStack[:len(e.tagStack)-1]
+	loc := e.scr.tagStack[len(e.scr.tagStack)-1]
+	e.scr.tagStack = e.scr.tagStack[:len(e.scr.tagStack)-1]
 	if e.scr.modified {
 		return fmt.Errorf("No write since last change")
 	}
