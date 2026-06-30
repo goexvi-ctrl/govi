@@ -20,8 +20,9 @@ set -eu
 : "${APP:?set APP}" "${CLI:?set CLI}" "${DMG:?set DMG}"
 : "${VOLNAME:?set VOLNAME}" "${IDENTITY:?set IDENTITY}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-govi-notary}"
-STAGE="$(dirname "$DMG")/dmg-stage"
+BUILD_DIR="$(dirname "$DMG")"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DMG_ASSETS="$SCRIPT_DIR/dmg"
 
 # Hardened runtime and a secure timestamp need a real certificate; an ad-hoc
 # signature supports neither, so only request them for a Developer ID build.
@@ -40,20 +41,36 @@ codesign --force $runtime $timestamp --sign "$IDENTITY" "$CLI"
 codesign --force $runtime $timestamp --sign "$IDENTITY" "$APP"
 codesign --verify --strict "$APP"
 
-# 2. Stage the image contents and build a compressed disk image: the app, the
-#    CLI, an /Applications symlink and a /usr/local/bin symlink to drag each onto,
-#    and a README. ditto (not cp) preserves the bundle's symlinks and metadata.
-rm -rf "$STAGE" "$DMG"
-mkdir -p "$STAGE"
-ditto "$APP" "$STAGE/$(basename "$APP")"
-cp "$CLI" "$STAGE/$(basename "$CLI")"
-# Drag targets: GoVi.app -> Applications, and the govi CLI -> /usr/local/bin
-# (already on the default PATH). A short README explains both.
-ln -s /Applications "$STAGE/Applications"
-ln -s /usr/local/bin "$STAGE/usr-local-bin"
-cp "$SCRIPT_DIR/dmg-README.txt" "$STAGE/README.txt"
-hdiutil create -quiet -volname "$VOLNAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
-rm -rf "$STAGE"
+# 2. Build a styled disk image with dmgbuild: the app and CLI, an /Applications
+#    and a /usr/local/bin symlink to drag each onto, and a background showing an
+#    arrow from each item to its destination (no README needed). dmgbuild writes
+#    the .DS_Store directly, so no Finder/GUI session is required.
+#
+#    dmgbuild is a Python tool; use it from PATH if present, otherwise provision
+#    it into a local venv (python3 ships with the Xcode command line tools that a
+#    Swift/codesign build already needs).
+DMGBUILD="$(command -v dmgbuild || true)"
+if [ -z "$DMGBUILD" ]; then
+	VENV="$BUILD_DIR/dmgbuild-venv"
+	if [ ! -x "$VENV/bin/dmgbuild" ]; then
+		echo "macos-release: provisioning dmgbuild into $VENV"
+		python3 -m venv "$VENV"
+		"$VENV/bin/pip" install --quiet --upgrade pip
+		"$VENV/bin/pip" install --quiet dmgbuild
+	fi
+	DMGBUILD="$VENV/bin/dmgbuild"
+fi
+
+# Combine the 1x and 2x backgrounds into a single Retina-aware TIFF.
+BG_TIFF="$BUILD_DIR/dmg-background.tiff"
+tiffutil -cathidpicheck \
+	"$DMG_ASSETS/dmg-background.png" "$DMG_ASSETS/dmg-background@2x.png" \
+	-out "$BG_TIFF" >/dev/null
+
+rm -f "$DMG"
+APP="$APP" CLI="$CLI" BG="$BG_TIFF" \
+	"$DMGBUILD" -s "$DMG_ASSETS/settings.py" "$VOLNAME" "$DMG"
+rm -f "$BG_TIFF"
 
 # 3. Sign the disk image itself.
 codesign --force $timestamp --sign "$IDENTITY" "$DMG"
