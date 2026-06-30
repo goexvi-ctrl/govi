@@ -95,6 +95,38 @@ func (e *Engine) splitHoriz(ns *screen) error {
 	return nil
 }
 
+// vsplitVert divides the active screen vertically, placing ns (already loaded
+// with its buffer) in a new screen to the right and making it active. It follows
+// vi/vs_split.c vs_vsplit: the screen is split in half by columns with one column
+// sacrificed as a divider, and the new screen always goes to the right.
+func (e *Engine) vsplitVert(ns *screen) error {
+	s := e.scr
+	if s.cols/2 <= minScreenCols {
+		return fmt.Errorf("Screen must be larger than %d columns to split", minScreenCols*2)
+	}
+	cols := s.cols / 2
+	ns.cols = s.cols - cols - 1 // right part, less the divider column
+	ns.coff = s.coff + cols + 1
+	ns.roff = s.roff
+	ns.rows = s.rows
+	s.cols = cols // left part
+	s.cursor.Col = 0
+
+	for _, sc := range []*screen{s, ns} {
+		sc.mapRows = sc.rows
+		sc.minMapRows = sc.rows
+		sc.defScroll = 0
+		sc.clampCursor()
+		sc.scrollToCursor()
+	}
+	e.insertScreen(ns)
+	return nil
+}
+
+// minScreenCols mirrors nvi's MINIMUM_SCREEN_COLS: a vertical split needs each
+// half to be wider than this.
+const minScreenCols = 20
+
 // insertScreen adds ns to the displayed-screen list, re-sorts the list into
 // display order (top-to-bottom, then left-to-right), and makes ns active.
 func (e *Engine) insertScreen(ns *screen) {
@@ -240,6 +272,24 @@ func (e *Engine) horizNeighbors(s *screen) (above, below *screen) {
 	return
 }
 
+// vertNeighbors returns the screens whose full right/left border touches s's
+// left/right border (sharing the same row span). For a vertical split these are
+// the screens directly to the left and right of s.
+func (e *Engine) vertNeighbors(s *screen) (left, right *screen) {
+	for _, t := range e.screens {
+		if t == s || t.roff != s.roff || t.rows != s.rows {
+			continue
+		}
+		if t.coff+t.cols+1 == s.coff {
+			left = t
+		}
+		if t.coff == s.coff+s.cols+1 {
+			right = t
+		}
+	}
+	return
+}
+
 // closeCurrentScreen discards the active screen and folds its display space into
 // a neighbor, then makes that neighbor active (vi/vs_split.c vs_discard/vs_join,
 // horizontal axis). It must only be called when more than one screen is
@@ -249,10 +299,20 @@ func (e *Engine) closeCurrentScreen() {
 		return
 	}
 	s := e.scr
+	// nvi vs_join checks the vertical axis (left/right neighbors) before the
+	// horizontal axis (above/below).
+	left, right := e.vertNeighbors(s)
 	above, below := e.horizNeighbors(s)
 
 	var target *screen
 	switch {
+	case left != nil: // VERT_PRECEDE: the screen on the left grows rightward
+		left.cols += s.cols + 1
+		target = left
+	case right != nil: // VERT_FOLLOW: the screen on the right moves left and grows
+		right.coff = s.coff
+		right.cols += s.cols + 1
+		target = right
 	case above != nil: // HORIZ_PRECEDE: the screen above grows downward
 		above.rows += s.rows + 1
 		target = above
@@ -310,6 +370,17 @@ func (e *Engine) finishQuit() {
 // path of nvi's :edit/:Edit). An empty name re-edits the current screen's file
 // in the new screen.
 func (e *Engine) editNewScreen(name string) error {
+	return e.newScreenEdit(name, (*Engine).splitHoriz)
+}
+
+// vsplitNewScreen opens name in a new vertically split screen (nvi :vsplit).
+func (e *Engine) vsplitNewScreen(name string) error {
+	return e.newScreenEdit(name, (*Engine).vsplitVert)
+}
+
+// newScreenEdit loads name into a new sibling screen and places it with the
+// given split function, then sets both screens' transient status line.
+func (e *Engine) newScreenEdit(name string, split func(*Engine, *screen) error) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = e.scr.name
@@ -317,7 +388,7 @@ func (e *Engine) editNewScreen(name string) error {
 	parent := e.scr
 	ns := e.newSiblingScreen()
 	e.loadScreenFile(ns, name)
-	if err := e.splitHoriz(ns); err != nil {
+	if err := split(e, ns); err != nil {
 		// Splitting failed (screen too small): drop the new screen and report.
 		if ns.file != nil {
 			ns.file.Close()

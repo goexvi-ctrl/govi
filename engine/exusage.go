@@ -81,6 +81,7 @@ var exCmdMeta = map[string]exCmdUsage{
 	"version":      {"display the editor version", ":ve[rsion]"},
 	"vglobal":      {"execute commands on non-matching lines", ":[range] v /pattern/ commands"},
 	"visual":       {"enter vi (visual) mode", ":vi[sual]"},
+	"vsplit":       {"split the screen vertically", ":vs[plit] [file]"},
 	"viusage":      {"display vi key usage", ":viu[sage] [key]"},
 	"write":        {"write the buffer", ":[range] w[rite][!] [file]"},
 	"wn":           {"write the file and switch to the next file", ":[range] wn[!] [file]"},

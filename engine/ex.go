@@ -88,6 +88,7 @@ func init() {
 		{full: "number", min: 2, fn: (*Engine).exNumber},
 		{full: "list", min: 1, fn: (*Engine).exList},
 		{full: "visual", min: 2, fn: (*Engine).exVisual, newScreen: true},
+		{full: "vsplit", min: 2, fn: (*Engine).exVsplit},
 		{full: "append", min: 1, fn: (*Engine).exAppend},
 		{full: "insert", min: 1, fn: (*Engine).exInsert},
 		{full: "change", min: 1, fn: (*Engine).exChange},

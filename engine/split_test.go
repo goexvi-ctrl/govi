@@ -145,6 +145,79 @@ func TestSplitSharesRegisters(t *testing.T) {
 	}
 }
 
+func twoFileVsplit(t *testing.T) (*Engine, string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	a := filepath.Join(dir, "aaa.txt")
+	b := filepath.Join(dir, "bbb.txt")
+	os.WriteFile(a, []byte("a1\na2\na3\n"), 0o644)
+	os.WriteFile(b, []byte("b1\nb2\n"), 0o644)
+	e := New(&captureFrontend{}, Options{})
+	if err := e.Open(a); err != nil {
+		t.Fatal(err)
+	}
+	e.Resize(23, 80)
+	if err := e.vsplitNewScreen(b); err != nil {
+		t.Fatal(err)
+	}
+	return e, a, b
+}
+
+func TestVsplitGeometry(t *testing.T) {
+	e, _, _ := twoFileVsplit(t)
+	if len(e.screens) != 2 {
+		t.Fatalf("screens = %d, want 2", len(e.screens))
+	}
+	left, right := e.screens[0], e.screens[1]
+	if filepath.Base(left.name) != "aaa.txt" || filepath.Base(right.name) != "bbb.txt" {
+		t.Fatalf("order: left=%s right=%s", left.name, right.name)
+	}
+	if e.scr != right {
+		t.Fatalf("focus should be on the new (right) screen")
+	}
+	// 80 cols -> left=40, divider col 40, right=39 at coff 41. Rows unchanged.
+	if left.coff != 0 || left.cols != 40 {
+		t.Fatalf("left: coff=%d cols=%d, want 0/40", left.coff, left.cols)
+	}
+	if right.coff != 41 || right.cols != 39 {
+		t.Fatalf("right: coff=%d cols=%d, want 41/39", right.coff, right.cols)
+	}
+	if left.rows != right.rows || left.roff != 0 || right.roff != 0 {
+		t.Fatalf("rows/roff: left %d/%d right %d/%d", left.rows, left.roff, right.rows, right.roff)
+	}
+}
+
+func TestVsplitTooNarrow(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.txt")
+	os.WriteFile(a, []byte("x\n"), 0o644)
+	e := New(&captureFrontend{}, Options{})
+	if err := e.Open(a); err != nil {
+		t.Fatal(err)
+	}
+	e.Resize(23, 40) // 40 cols: cols/2 == 20 == minimum, cannot vsplit
+	if err := e.vsplitNewScreen(a); err == nil {
+		t.Fatalf("expected vsplit-too-narrow error")
+	}
+	if len(e.screens) != 1 {
+		t.Fatalf("screens = %d after failed vsplit, want 1", len(e.screens))
+	}
+}
+
+func TestVsplitCloseJoinsHorizontally(t *testing.T) {
+	e, _, _ := twoFileVsplit(t)
+	// Focus is the right screen; closing it gives its columns (and the divider)
+	// to the left screen (VERT_PRECEDE), which becomes active and full width.
+	left := e.screens[0]
+	e.closeCurrentScreen()
+	if len(e.screens) != 1 || e.scr != left {
+		t.Fatalf("after closing right: screens=%d active==left=%v", len(e.screens), e.scr == left)
+	}
+	if left.coff != 0 || left.cols != 80 {
+		t.Fatalf("left should fill width: coff=%d cols=%d, want 0/80", left.coff, left.cols)
+	}
+}
+
 func TestSplitCopiesOptions(t *testing.T) {
 	e, _, _ := twoFileSplit(t)
 	// Options are per-screen: changing one screen's option must not affect the

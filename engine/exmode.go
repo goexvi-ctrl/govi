@@ -117,6 +117,23 @@ func (e *Engine) exVisual(c *exCmd) error {
 	return nil
 }
 
+// exVsplit implements :vsplit [file] -- split the screen vertically and edit the
+// file (or the current file) in the new screen to the right (nvi vs_vsplit).
+func (e *Engine) exVsplit(c *exCmd) error {
+	path := strings.TrimSpace(c.arg)
+	if path != "" {
+		names, err := e.expandFileArgs(path)
+		if err != nil {
+			return err
+		}
+		if len(names) != 1 {
+			return c.usageError()
+		}
+		path = names[0]
+	}
+	return e.vsplitNewScreen(path)
+}
+
 // exEcho emits a line of ex output: to the line-host buffer when one is driving
 // (Q line mode), otherwise appended to the in-screen transcript.
 func (e *Engine) exEcho(s string) {

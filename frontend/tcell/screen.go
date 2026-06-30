@@ -296,7 +296,7 @@ func (f *Frontend) paintNow(v engine.View) {
 
 	split := v.Split()
 	for _, sv := range v.Screens() {
-		f.paintScreen(sv, split)
+		f.paintScreen(sv, split, w)
 	}
 
 	// An ex-output overlay (e.g. :p, :set all) is drawn over the bottom of the
@@ -311,7 +311,7 @@ func (f *Frontend) paintNow(v engine.View) {
 // paintScreen draws one screen (split pane): its text band [roff, roff+rows),
 // its status/colon/message line at roff+rows, and the cursor when it is the
 // active pane. split selects the reverse-video status divider.
-func (f *Frontend) paintScreen(sv engine.ScreenView, split bool) {
+func (f *Frontend) paintScreen(sv engine.ScreenView, split bool, termW int) {
 	roff := sv.Roff()
 	coff := sv.Coff()
 	rows := sv.Rows()
@@ -369,6 +369,16 @@ func (f *Frontend) paintScreen(sv engine.ScreenView, split bool) {
 	}
 
 	f.drawStatus(sv, coff, statusRow, cols, split)
+
+	// Vertical-split divider: a '|' in the sacrificed column to the right of this
+	// pane, on the text rows only (nvi vs_vsplit). A full-width screen ends at the
+	// terminal edge and gets none.
+	if coff+cols < termW {
+		for r := roff; r < statusRow; r++ {
+			f.scr.SetContent(coff+cols, r, '|', nil, tc.StyleDefault)
+		}
+	}
+
 	if sv.Active() {
 		f.placeCursor(sv, coff, roff, statusRow, gutter, textW, mapRows)
 	}
@@ -472,20 +482,21 @@ func (f *Frontend) drawGutter(lno int64, coff, row, gutter int) {
 }
 
 // drawStatus draws a screen's status/colon/message line at (coff, row), cols
-// wide. In a split every status line is the inter-screen divider and is drawn in
-// reverse video across its full width (nvi standout modeline).
+// wide. In a split the line is the inter-screen divider: its text is drawn in
+// reverse video (standout) while the trailing pad stays normal, matching nvi's
+// vs_modeline (standout text + clrtoeol). The blank divider column between
+// vertically split screens is left untouched.
 func (f *Frontend) drawStatus(sv engine.ScreenView, coff, row, cols int, split bool) {
 	msg, _ := sv.Message()
-	st := tc.StyleDefault
-	if split {
-		st = st.Reverse(true)
-	}
-	x := 0
 	rs := []rune(msg)
-	for ; x < cols; x++ {
+	for x := 0; x < cols; x++ {
+		st := tc.StyleDefault
 		r := ' '
 		if x < len(rs) {
 			r = rs[x]
+			if split {
+				st = st.Reverse(true)
+			}
 		}
 		f.scr.SetContent(coff+x, row, r, nil, st)
 	}
