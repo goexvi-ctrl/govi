@@ -11,7 +11,7 @@ COVER_HTML ?= cover.html
 # gui/bridge is cgo (//export); its profile breaks go tool cover.
 COVER_PKGS := $(shell go list ./... | grep -v '/gui/bridge$$')
 
-.PHONY: build govi test coverage coverage-report coverage-html release tag
+.PHONY: build govi test coverage coverage-report coverage-html release tag push-tag
 
 build: govi gui/build/GoVi.app
 
@@ -114,6 +114,15 @@ tag:
 		echo "tag $$v already exists; bump the Version file first" >&2; exit 1; \
 	fi; \
 	git tag -a "$$v" -m "GoVi $(RELEASE_VERSION)" && echo "tagged $$v"
+
+# push-tag: push the v<Version> tag to origin (tags are not pushed by a plain
+# `git push`). Fails if the tag does not exist locally yet (run `make tag` first).
+push-tag:
+	@v="v$(RELEASE_VERSION)"; \
+	if ! git rev-parse -q --verify "refs/tags/$$v" >/dev/null; then \
+		echo "tag $$v does not exist; run 'make tag' first" >&2; exit 1; \
+	fi; \
+	git push origin "$$v" && echo "pushed $$v"
 
 clean:
 	rm -rf govi gui/build cmd/govi/govi engine/version.go
