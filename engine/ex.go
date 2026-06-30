@@ -89,6 +89,10 @@ func init() {
 		{full: "list", min: 1, fn: (*Engine).exList},
 		{full: "visual", min: 2, fn: (*Engine).exVisual, newScreen: true},
 		{full: "vsplit", min: 2, fn: (*Engine).exVsplit},
+		{full: "bg", min: 2, fn: (*Engine).exBg},
+		{full: "fg", min: 2, fn: (*Engine).exFg, newScreen: true},
+		{full: "resize", min: 3, fn: (*Engine).exResize},
+		{full: "display", min: 2, fn: (*Engine).exDisplay},
 		{full: "append", min: 1, fn: (*Engine).exAppend},
 		{full: "insert", min: 1, fn: (*Engine).exInsert},
 		{full: "change", min: 1, fn: (*Engine).exChange},
@@ -202,7 +206,7 @@ func (e *Engine) parseEx(line string) (*exCmd, error) {
 	// should happen in a new screen."). Lower-case it, then look it up.
 	newScreen := false
 	switch name[0] {
-	case 'E', 'N', 'P', 'T', 'V':
+	case 'E', 'F', 'N', 'P', 'T', 'V':
 		newScreen = true
 		name = strings.ToLower(name[:1]) + name[1:]
 	}

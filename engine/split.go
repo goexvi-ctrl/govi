@@ -291,10 +291,16 @@ func (e *Engine) vertNeighbors(s *screen) (left, right *screen) {
 }
 
 // closeCurrentScreen discards the active screen and folds its display space into
-// a neighbor, then makes that neighbor active (vi/vs_split.c vs_discard/vs_join,
-// horizontal axis). It must only be called when more than one screen is
-// displayed.
-func (e *Engine) closeCurrentScreen() {
+// a neighbor, then makes that neighbor active (vi/vs_split.c vs_discard).
+func (e *Engine) closeCurrentScreen() { e.discardCurrentScreen(false) }
+
+// discardCurrentScreen removes the active screen from the display and folds its
+// space into a covering neighbor (vs_join: vertical axis before horizontal),
+// then makes that neighbor active. When toBackground is true the screen is moved
+// to the background queue (kept editable) instead of having its file closed
+// (:bg); otherwise its file handle is released (:q). Must only be called when
+// more than one screen is displayed.
+func (e *Engine) discardCurrentScreen(toBackground bool) {
 	if len(e.screens) <= 1 {
 		return
 	}
@@ -322,7 +328,9 @@ func (e *Engine) closeCurrentScreen() {
 		target = below
 	}
 
-	if s.file != nil {
+	if toBackground {
+		e.bg = append(e.bg, s)
+	} else if s.file != nil {
 		s.file.Close()
 		s.file = nil
 	}

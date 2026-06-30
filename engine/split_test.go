@@ -218,6 +218,74 @@ func TestVsplitCloseJoinsHorizontally(t *testing.T) {
 	}
 }
 
+func TestBgBackgroundsAndFgSwaps(t *testing.T) {
+	e, _, _ := twoFileSplit(t) // aaa top, bbb bottom (active)
+	bbb := e.scr
+	aaa := e.screens[0]
+	// :bg backgrounds the active (bbb) and folds space into aaa.
+	if err := e.exBg(&exCmd{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.screens) != 1 || e.scr != aaa || len(e.bg) != 1 || e.bg[0] != bbb {
+		t.Fatalf("after :bg screens=%d active==aaa=%v bg=%d", len(e.screens), e.scr == aaa, len(e.bg))
+	}
+	if aaa.rows != 23 {
+		t.Fatalf("aaa should fill the terminal after :bg, rows=%d", aaa.rows)
+	}
+	// :fg swaps aaa out and brings bbb back at aaa's geometry.
+	if err := e.exFg(&exCmd{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.screens) != 1 || e.scr != bbb || len(e.bg) != 1 || e.bg[0] != aaa {
+		t.Fatalf("after :fg active==bbb=%v bg has aaa=%v", e.scr == bbb, len(e.bg) == 1 && e.bg[0] == aaa)
+	}
+	if bbb.rows != 23 || bbb.roff != 0 {
+		t.Fatalf("bbb should take aaa's geometry: rows=%d roff=%d", bbb.rows, bbb.roff)
+	}
+}
+
+func TestBgOnlyScreenErrors(t *testing.T) {
+	e, _, _ := newTestEngine(t, "one\n")
+	if err := e.exBg(&exCmd{}); err == nil {
+		t.Fatalf(":bg with one screen should error")
+	}
+}
+
+func TestFgNewScreenSplits(t *testing.T) {
+	e, _, _ := twoFileSplit(t)
+	bbb := e.scr
+	_ = e.exBg(&exCmd{}) // background bbb; one screen (aaa) shown
+	if len(e.screens) != 1 {
+		t.Fatalf("setup: screens=%d", len(e.screens))
+	}
+	// :Fg brings bbb back as a new split.
+	if err := e.exFg(&exCmd{newScreen: true}); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.screens) != 2 || len(e.bg) != 0 || e.scr != bbb {
+		t.Fatalf("after :Fg screens=%d bg=%d active==bbb=%v", len(e.screens), len(e.bg), e.scr == bbb)
+	}
+}
+
+func TestResizeGrowShrink(t *testing.T) {
+	e, _, _ := twoFileSplit(t) // top rows 11, bottom rows 11
+	e.switchScreen()           // focus the top screen
+	top := e.scr
+	bottom := e.screens[1]
+	if err := e.resizeScreen(3, aIncrease); err != nil {
+		t.Fatal(err)
+	}
+	if top.rows != 14 || bottom.rows != 8 || bottom.roff != 15 {
+		t.Fatalf("grow: top.rows=%d bottom.rows=%d bottom.roff=%d, want 14/8/15", top.rows, bottom.rows, bottom.roff)
+	}
+	if err := e.resizeScreen(3, aDecrease); err != nil {
+		t.Fatal(err)
+	}
+	if top.rows != 11 || bottom.rows != 11 || bottom.roff != 12 {
+		t.Fatalf("shrink back: top.rows=%d bottom.rows=%d bottom.roff=%d, want 11/11/12", top.rows, bottom.rows, bottom.roff)
+	}
+}
+
 func TestSplitCopiesOptions(t *testing.T) {
 	e, _, _ := twoFileSplit(t)
 	// Options are per-screen: changing one screen's option must not affect the

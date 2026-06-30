@@ -32,6 +32,11 @@ type Engine struct {
 	screens []*screen
 	cur     int
 
+	// bg holds backgrounded screens (nvi's GS hidden queue gp->hq): screens
+	// removed from the display by :bg or a :fg swap, kept editable and
+	// restorable by :fg/:Fg.
+	bg []*screen
+
 	// termH/termCols are the full terminal geometry last given to Resize: termH
 	// is the total number of display rows (text rows of all screens plus one
 	// status row per screen), termCols the width.
