@@ -11,7 +11,7 @@ COVER_HTML ?= cover.html
 # gui/bridge is cgo (//export); its profile breaks go tool cover.
 COVER_PKGS := $(shell go list ./... | grep -v '/gui/bridge$$')
 
-.PHONY: build govi test coverage coverage-report coverage-html release
+.PHONY: build govi test coverage coverage-report coverage-html release tag
 
 build: govi gui/build/GoVi.app
 
@@ -105,6 +105,15 @@ release:
 	APP=gui/build/GoVi.app CLI=govi DMG=$(RELEASE_DMG) \
 	VOLNAME="GoVi $(RELEASE_VERSION)" IDENTITY="$(CODESIGN_IDENTITY)" \
 	NOTARY_PROFILE="$(NOTARY_PROFILE)" ./scripts/macos-release.sh
+
+# tag: create the annotated git tag v<Version> for the current commit. Fails if
+# that tag already exists (bump the Version file first).
+tag:
+	@v="v$(RELEASE_VERSION)"; \
+	if git rev-parse -q --verify "refs/tags/$$v" >/dev/null; then \
+		echo "tag $$v already exists; bump the Version file first" >&2; exit 1; \
+	fi; \
+	git tag -a "$$v" -m "GoVi $(RELEASE_VERSION)" && echo "tagged $$v"
 
 clean:
 	rm -rf govi gui/build cmd/govi/govi engine/version.go
