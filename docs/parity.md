@@ -47,7 +47,7 @@ no nvi command is silently missing here.
 | `^L` `^R` | repaint screen | yes | 🟡 | — | terminal: no-op (frontend repaints every input); GUI repaints automatically |
 | `^M` `+` / `-` | next / prev line, first non-blank | yes | ✅ | ✅ | |
 | `^T` `^]` | tag pop / tag push | yes | ✅✔ | ✅✔ | ctags `tags` file |
-| `^W` | switch screens | yes | ✅ | ❌ | terminal: cycles split screens (nvi v_screen); GUI renders only the active screen so far |
+| `^W` | switch screens | yes | ✅ | ✅ | cycles split screens (nvi v_screen); the GUI lays out every pane via the multi-pane grid composer |
 | `^Z` | suspend | yes | ✅ | — | terminal job control only; blocked when `secure` |
 | `^^` | alternate file | yes | ✅✔ | ✅✔ | |
 | `^\` | switch to ex mode | yes | ✅ | ✅ | works (like `Q`); **absent from govi's `:viusage`** — usage-text gap, not a behavior gap |
@@ -137,8 +137,8 @@ no nvi command is silently missing here.
 | `:exu[sage] [cmd]` | yes | ✅ | ✅ | lists implemented ex commands |
 | `:viu[sage] [key]` | yes | ✅ | ✅ | lists implemented vi keys |
 | `:o[pen]` | yes | — | — | non-objective (also unimplemented in nvi); distinct from vi `o` |
-| `:bg` `:fg`/`:Fg` `:res[ize]` `:vs[plit]` | yes | ✅ | ❌ | terminal: background/foreground, grow/shrink, vertical split (nvi vs_*); `:sc[ript]` not implemented; GUI has no split rendering yet |
-| `:E`/`:N`/`:P`/`:Vi`/`:Tag` (new screen) | yes | ✅ | ❌ | terminal: capitalized form opens the target in a new horizontal split (nvi E_NEWSCREEN) |
+| `:bg` `:fg`/`:Fg` `:res[ize]` `:vs[plit]` | yes | ✅ | ✅ | background/foreground, grow/shrink, vertical split (nvi vs_*); `:sc[ript]` not implemented; GUI renders panes via the multi-pane grid composer |
+| `:E`/`:N`/`:P`/`:Vi`/`:Tag` (new screen) | yes | ✅ | ✅ | capitalized form opens the target in a new horizontal split (nvi E_NEWSCREEN) |
 | `:su[spend]`/`:st[op]` | yes | ✅ | — | terminal only; `!` skips autowrite; blocked when `secure` |
 | `:cs[cope]` | yes | — | — | cscope integration; out of scope |
 | `:pre[serve]` `:rec[over]` | yes | ✅ | ✅ | crash recovery (govi format) |
@@ -212,7 +212,7 @@ manual's Set Options section) — all are settable, queryable, and shown by
 | Crash recovery (`-r`) | yes | ✅ | ✅ | `govi -r` lists recoverable files; `govi -r file` restores; `:preserve`/`:recover`; govi format (GUI syncs after idle) |
 | Startup files (`/etc/vi.exrc`, `~/.nexrc`/`.exrc`, `EXINIT`/`NEXINIT`) | yes | ✅ | ✅ | read at startup unless `-s`; ownership/permission checked; honors `exrc`; `:source` |
 | Signals (SIGHUP/SIGTERM/…) | yes | ✅ | — | terminal: trap, restore cooked tty, print signal name; `^\` vi→ex; GUI uses the AppKit lifecycle |
-| Split screens / windows (`^W` `:bg`/`:fg`/`:resize` `:vsplit`) | yes | ✅ | ❌ | terminal: horizontal + vertical splits, ^W switch, new-screen ex commands, background/foreground, resize; GUI renders only the active screen so far |
+| Split screens / windows (`^W` `:bg`/`:fg`/`:resize` `:vsplit`) | yes | ✅ | ✅ | horizontal + vertical splits, ^W switch, new-screen ex commands, background/foreground, resize; the GUI lays out every pane via the multi-pane grid composer (byte-for-byte with the terminal) |
 | Job control (`^Z` `:suspend`/`:stop`) | yes | ✅ | — | terminal frontend (`tcell`); not GoVi.app |
 | Cscope integration | yes | — | — | out of scope |
 | Message catalogs (i18n) | yes | — | — | English only; out of scope |

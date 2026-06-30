@@ -1,6 +1,9 @@
 package grid_test
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"govi/engine"
@@ -67,6 +70,109 @@ func TestEngineThroughGrid(t *testing.T) {
 	}
 	if got := row(&g, 1); got != "~" {
 		t.Errorf("after dd, row 1 = %q, want tilde filler", got)
+	}
+}
+
+// rowReverse reports whether cell (x, y) is drawn in reverse video.
+func rowReverse(g *grid.Grid, x, y int) bool {
+	return g.At(x, y).Style&engine.StyleReverse != 0
+}
+
+// TestSplitThroughGrid drives a real engine into a horizontal split (the path
+// GoVi.app uses) and checks the composed grid paints both panes, a reverse-video
+// status divider between them, and the cursor in the active (lower) pane. Before
+// multi-pane grid rendering, only the active screen was drawn (top half only).
+func TestSplitThroughGrid(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "aaa.txt")
+	b := filepath.Join(dir, "bbb.txt")
+	if err := os.WriteFile(a, []byte("a1\na2\na3\na4\na5\na6\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(b, []byte("b1\nb2\nb3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := engine.New(noopFrontend{}, engine.Options{})
+	if err := e.Open(a); err != nil {
+		t.Fatal(err)
+	}
+	e.Resize(23, 80) // 24-row terminal: 23 text rows + status
+	// :E (capital) opens bbb in a new horizontal split, focusing the lower pane.
+	if err := e.RunEx("E " + b); err != nil {
+		t.Fatal(err)
+	}
+
+	g := compose(e, 24, 80)
+
+	// Display height 24 -> half 12: top pane rows 0..10 (status at 11), lower pane
+	// rows 12..22 (status at 23).
+	if got := row(&g, 0); got != "a1" {
+		t.Errorf("top pane row 0 = %q, want %q", got, "a1")
+	}
+	if got := row(&g, 12); got != "b1" {
+		t.Errorf("lower pane row 0 = %q, want %q", got, "b1")
+	}
+	if got := row(&g, 13); got != "b2" {
+		t.Errorf("lower pane row 1 = %q, want %q", got, "b2")
+	}
+	// The top pane's status line (row 11) is the reverse-video divider naming aaa.
+	if !rowReverse(&g, 0, 11) {
+		t.Errorf("top status row 11 not reverse video")
+	}
+	if got := row(&g, 11); !strings.Contains(got, "aaa") {
+		t.Errorf("top status row 11 = %q, want it to name aaa", got)
+	}
+	// The lower pane's status line (row 23) is reverse video and names bbb.
+	if !rowReverse(&g, 0, 23) {
+		t.Errorf("lower status row 23 not reverse video")
+	}
+	if got := row(&g, 23); !strings.Contains(got, "bbb") {
+		t.Errorf("lower status row 23 = %q, want it to name bbb", got)
+	}
+	// The cursor is in the active (lower) pane: rows 12..22.
+	if !g.CursorVisible || g.CursorY < 12 || g.CursorY > 22 {
+		t.Errorf("cursor = (%d,%d) vis=%v, want it in the lower pane (rows 12..22)",
+			g.CursorX, g.CursorY, g.CursorVisible)
+	}
+}
+
+// TestVsplitThroughGrid drives a real engine into a vertical split and checks
+// the composed grid paints both side-by-side panes with a '|' divider column
+// between them.
+func TestVsplitThroughGrid(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "aaa.txt")
+	b := filepath.Join(dir, "bbb.txt")
+	if err := os.WriteFile(a, []byte("a1\na2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(b, []byte("b1\nb2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := engine.New(noopFrontend{}, engine.Options{})
+	if err := e.Open(a); err != nil {
+		t.Fatal(err)
+	}
+	e.Resize(23, 80)
+	if err := e.RunEx("vsplit " + b); err != nil {
+		t.Fatal(err)
+	}
+
+	g := compose(e, 24, 80)
+
+	// Left pane occupies columns 0..39, a '|' divider at column 40, right pane to
+	// its right. The new (focused) screen is on the right.
+	if got := g.At(0, 0).Rune; got != 'a' && got != 'b' {
+		t.Errorf("left pane top-left = %q, want a buffer glyph", got)
+	}
+	if got := g.At(40, 0).Rune; got != '|' {
+		t.Errorf("divider at col 40 row 0 = %q, want '|'", got)
+	}
+	// The right pane has buffer text starting just past the divider.
+	if got := g.At(41, 0).Rune; got == 0 || got == ' ' {
+		t.Errorf("right pane top-left (col 41) = %q, want a buffer glyph", got)
 	}
 }
 

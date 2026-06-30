@@ -9,6 +9,7 @@ import (
 	tc "github.com/gdamore/tcell/v2"
 
 	"govi/engine"
+	"govi/frontend/grid"
 )
 
 // rowsOf reads the simulation screen back into trimmed row strings.
@@ -169,6 +170,89 @@ func TestFrontendShowmatchFlash(t *testing.T) {
 	x, _, _ = sim.GetCursor()
 	if x != 5 {
 		t.Fatalf("after timeout cursor x = %d, want 5", x)
+	}
+}
+
+// gridRowsOf lays out the same view through the grid composer (the GoVi.app
+// path) and reads it back into trimmed row strings, like rowsOf does for tcell.
+func gridRowsOf(g grid.Grid) []string {
+	out := make([]string, g.Rows)
+	for y := 0; y < g.Rows; y++ {
+		var b strings.Builder
+		for x := 0; x < g.Cols; x++ {
+			r := g.At(x, y).Rune
+			if r == 0 {
+				r = ' '
+			}
+			b.WriteRune(r)
+		}
+		out[y] = strings.TrimRight(b.String(), " ")
+	}
+	return out
+}
+
+// TestSplitGridMatchesTcell is the parity proof for GoVi.app's split rendering:
+// it drives the engine into a horizontal then a vertical split and asserts the
+// grid composer (the GUI path) lays out exactly the same rows -- and places the
+// cursor in the same cell -- as the terminal frontend, for identical engine
+// state. Before multi-pane grid rendering the grid drew only the active screen.
+func TestSplitGridMatchesTcell(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "aaa.txt")
+	b := filepath.Join(dir, "bbb.txt")
+	if err := os.WriteFile(a, []byte("a1\na2\na3\na4\na5\na6\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(b, []byte("b1\nb2\nb3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tt := range []struct {
+		name string
+		cmd  string
+	}{
+		{"horizontal", "E " + b},
+		{"vertical", "vsplit " + b},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w, h := 80, 24
+			sim := tc.NewSimulationScreen("")
+			fe, err := NewWithScreen(sim)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sim.SetSize(w, h)
+			eng := engine.New(fe, engine.Options{})
+			fe.Attach(eng)
+			if err := eng.Open(a); err != nil {
+				t.Fatal(err)
+			}
+			eng.Resize(textRows(h), w)
+			if err := eng.RunEx(tt.cmd); err != nil {
+				t.Fatal(err)
+			}
+
+			// Render both frontends from the *same* View instant, so a one-shot
+			// transient status (e.g. a lock message that reverts to the modeline on
+			// the next refresh) cannot differ between them.
+			var g grid.Grid
+			eng.WithView(func(v engine.View) {
+				g = grid.Compose(v, h, w)
+				fe.paintNow(v)
+			})
+			tcRows := rowsOf(t, sim)
+			tcx, tcy, _ := sim.GetCursor()
+			gRows := gridRowsOf(g)
+
+			for y := 0; y < h; y++ {
+				if tcRows[y] != gRows[y] {
+					t.Errorf("row %d differs:\n tcell=%q\n grid =%q", y, tcRows[y], gRows[y])
+				}
+			}
+			if g.CursorX != tcx || g.CursorY != tcy {
+				t.Errorf("cursor differs: tcell=(%d,%d) grid=(%d,%d)", tcx, tcy, g.CursorX, g.CursorY)
+			}
+		})
 	}
 }
 

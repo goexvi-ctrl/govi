@@ -98,7 +98,8 @@ Updated frontend/grid and frontend/tcell gutter tests to the 8-wide expectation.
 screens -- `^W` switch, capitalized new-screen ex commands (`:E`/`:N`/`:P`/`:Vi`/
 `:Tag`), `:vsplit`, `:bg`/`:fg`/`:Fg`, `:resize`, `:display s[creens]`/`b[uffers]`,
 per-screen `:q`/`ZZ` close. Terminal frontend renders multi-pane with reverse
-status dividers; matches nvi via goterm. See entry #47.
+status dividers; matches nvi via goterm. GoVi.app (grid composer) now renders
+multi-pane too, byte-for-byte with the terminal. See entry #47.
 
 ## Status: divergences #1-46 are addressed. #46 (2026-06-29) FIXED: file-name
 arguments to `:e`/`:w`/`:r` now do nvi's argv_exp2 expansion (`%`->current,
@@ -937,6 +938,19 @@ alternate file, and tag stack; registers and maps are shared, options copied.
 New `engine/split.go` + `engine/screencmds.go`; the tcell frontend renders each
 screen in its own band with a reverse-video status divider (and a `|` column for
 vertical splits).
+
+GUI (GoVi.app) [2026-06-30]: the grid composer (`frontend/grid`, the layout the
+GUI bridge pulls) was multi-pane-aware-extended to mirror the tcell `paintScreen`
+path: when `View.Split()`, `ComposeSel` iterates `View.Screens()` and lays out
+each pane into its `roff/coff/rows/cols` band -- text, gutter, tilde/blank fill,
+the reverse-video status/modeline divider, the `|` vsplit column, and the cursor
+in the active pane. No C/Swift change was needed: GoVi.app already renders purely
+from the composed grid rows + cursor, so it now shows every split pane. Parity is
+locked by `TestSplitGridMatchesTcell` (frontend/tcell), which renders the same
+engine `View` instant through both frontends and asserts identical rows + cursor
+for horizontal and vertical splits; `frontend/grid` adds `TestSplitThroughGrid`
+and `TestVsplitThroughGrid`. Previously the GUI drew only the active screen (one
+file in the top half).
 
 Commands: `^W` cycles screens; capitalized `:E`/`:N`/`:P`/`:Vi`/`:Tag` open the
 target in a new horizontal split; `:vsplit` splits vertically; `:bg`/`:fg`/`:Fg`

@@ -97,7 +97,22 @@ func ComposeSel(v engine.View, rows, cols int, sel *Selection) Grid {
 		g.composeExMode(v)
 		return g
 	}
-	g.composeEditor(v, sel)
+	if v.Split() {
+		// Multiple screens: draw each pane in its own row/column band, every pane
+		// carrying its own status-line divider, with the cursor in the active pane.
+		// This mirrors the terminal frontend's paintScreen so a GUI split renders
+		// identically. The buffer selection is in the active screen's coordinates,
+		// so it is applied only to the active pane.
+		for _, sv := range v.Screens() {
+			var paneSel *Selection
+			if sv.Active() {
+				paneSel = sel
+			}
+			g.composeScreen(sv, cols, paneSel)
+		}
+	} else {
+		g.composeEditor(v, sel)
+	}
 	// An ex-output overlay is drawn over the bottom of the buffer: a "+=+="
 	// divider, the output lines, and a continue prompt on the last row, with the
 	// buffer still visible above (nvi vs_msg).
@@ -105,6 +120,142 @@ func ComposeSel(v engine.View, rows, cols int, sel *Selection) Grid {
 		g.composeOverlay(out, v.PendingOutputPrompt(), v.PendingOutputFirst())
 	}
 	return g
+}
+
+// composeScreen draws one split pane (engine.ScreenView) into its band of the
+// grid: the text rows at [roff, roff+rows), the line-number gutter, tilde and
+// blank filler, the per-screen status/modeline divider at roff+rows (reverse
+// video, like nvi's vs_modeline), the vertical-split '|' divider in the
+// sacrificed column to its right, and -- for the active pane -- the cursor. It
+// mirrors the terminal frontend's paintScreen so a GUI split renders the same.
+// sel, if non-nil, highlights a buffer selection on this pane.
+func (g *Grid) composeScreen(sv engine.ScreenView, termW int, sel *Selection) {
+	roff := sv.Roff()
+	coff := sv.Coff()
+	rows := sv.Rows()
+	cols := sv.Cols()
+	statusRow := roff + rows
+
+	gutter := engine.GutterWidth(sv.LineCount(), sv.Number())
+	textW := cols - gutter
+	if textW < 1 {
+		textW = 1
+	}
+	vp := sv.Viewport()
+	top := vp.Top
+	mapRows := vp.MapRows
+	if mapRows <= 0 || mapRows > rows {
+		mapRows = rows
+	}
+
+	row := 0
+	lno := top
+	for row < mapRows && lno <= sv.LineCount() {
+		dl := sv.Line(lno)
+		cells := engine.DisplayCells(dl)
+		ds, de := selSpan(dl, lno, sel) // selected display-column interval
+		first := true
+		for i := 0; (i < len(cells) || first) && row < mapRows; i += textW {
+			if gutter > 0 && first {
+				g.drawGutter(lno, coff, roff+row, gutter)
+			}
+			x := coff + gutter
+			for j := i; j < i+textW && j < len(cells); j++ {
+				st := cells[j].Style
+				if j >= ds && j < de {
+					st |= engine.StyleReverse
+				}
+				// Continuation cells (Rune == 0) follow a wide glyph; leave them
+				// blank but advance the column so wrap math stays aligned.
+				if cells[j].Rune != 0 {
+					g.set(x, roff+row, cells[j].Rune, st)
+				} else if st&engine.StyleReverse != 0 {
+					g.set(x, roff+row, ' ', st)
+				}
+				x++
+			}
+			row++
+			first = false
+		}
+		lno++
+	}
+	// Tilde filler for map rows past the end of the buffer.
+	for ; row < mapRows; row++ {
+		g.set(coff, roff+row, '~', engine.StyleNormal)
+	}
+	// Blank filler below a reduced z[count] map.
+	for ; row < rows; row++ {
+		for x := 0; x < cols; x++ {
+			g.set(coff+x, roff+row, ' ', engine.StyleNormal)
+		}
+	}
+
+	g.drawStatus(sv, coff, statusRow, cols)
+
+	// Vertical-split divider: a '|' in the sacrificed column to the right of this
+	// pane, on the text rows only (nvi vs_vsplit). A full-width screen ends at the
+	// terminal edge and gets none.
+	if coff+cols < termW {
+		for r := roff; r < statusRow; r++ {
+			g.set(coff+cols, r, '|', engine.StyleNormal)
+		}
+	}
+
+	if sv.Active() {
+		g.placeCursorPane(sv, coff, roff, statusRow, gutter, textW, mapRows)
+	}
+}
+
+// drawStatus draws a split pane's status/colon/message line at (coff, row), cols
+// wide, as the inter-screen divider: the text is drawn in reverse video while
+// the trailing pad stays normal, matching nvi's vs_modeline (standout text +
+// clrtoeol). The blank divider column between vertically split screens is left
+// untouched.
+func (g *Grid) drawStatus(sv engine.ScreenView, coff, row, cols int) {
+	msg, _ := sv.Message()
+	rs := []rune(msg)
+	for x := 0; x < cols; x++ {
+		st := engine.StyleNormal
+		r := ' '
+		if x < len(rs) {
+			r = rs[x]
+			st = engine.StyleReverse
+		}
+		g.set(coff+x, row, r, st)
+	}
+}
+
+// placeCursorPane positions the cursor for the active split pane, offsetting the
+// single-pane placeCursor math by the pane's row/column origin.
+func (g *Grid) placeCursorPane(sv engine.ScreenView, coff, roff, statusRow, gutter, textW, mapRows int) {
+	if sv.Mode() == engine.ModeExColon {
+		msg, _ := sv.Message()
+		g.CursorX = coff + engine.DisplayStringColumns(msg, 8)
+		g.CursorY = statusRow
+		g.CursorVisible = true
+		return
+	}
+	cur := sv.Cursor()
+	if mp, ok := sv.MatchHighlight(); ok {
+		cur = mp // showmatch: flash the cursor at the matching bracket
+	}
+	top := sv.Viewport().Top
+
+	y := 0
+	for ln := top; ln < cur.Line; ln++ {
+		y += wrapRowsOf(sv.Line(ln), textW)
+	}
+	dx := engine.CursorDisplayColumn(sv.Line(cur.Line), cur.Col, sv.Mode())
+	y += dx / textW
+	x := coff + gutter + dx%textW
+
+	if y < 0 || y >= mapRows {
+		g.CursorVisible = false
+		return
+	}
+	g.CursorX = x
+	g.CursorY = roff + y
+	g.CursorVisible = true
 }
 
 // divideStr is nvi's ex-output divider (vs_divider DIVIDESTR).
@@ -197,7 +348,7 @@ func (g *Grid) composeEditor(v engine.View, sel *Selection) {
 		first := true
 		for i := 0; (i < len(cells) || first) && row < mapRows; i += textW {
 			if gutter > 0 && first {
-				g.drawGutter(lno, row, gutter)
+				g.drawGutter(lno, 0, row, gutter)
 			}
 			x := gutter
 			for j := i; j < i+textW && j < len(cells); j++ {
@@ -237,12 +388,13 @@ func (g *Grid) composeEditor(v engine.View, sel *Selection) {
 	g.placeCursor(v, mapRows, rows, gutter, textW)
 }
 
-func (g *Grid) drawGutter(lno int64, row, gutter int) {
+func (g *Grid) drawGutter(lno int64, coff, row, gutter int) {
 	label := strconv.FormatInt(lno, 10)
 	pad := gutter - 1 - len(label)
-	x := 0
-	for ; x < pad; x++ {
+	x := coff
+	for i := 0; i < pad; i++ {
 		g.set(x, row, ' ', engine.StyleNormal)
+		x++
 	}
 	for _, r := range label {
 		g.set(x, row, r, engine.StyleNormal)
