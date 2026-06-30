@@ -79,7 +79,7 @@ no nvi command is silently missing here.
 | `u` | undo (toggle) | yes | ✅✔ | ✅✔ | directional `u`/`.` model |
 | `x X` | delete char | yes | ✅✔ | ✅✔ | |
 | `z` | screen positioning (`z↵` `z.` `z-` `z+` `z^` `[line]z` `z[count]`) | yes | 🟡 | 🟡 | wrap-aware center/bottom; `z+`/`z^` scroll a full screen fwd/back (GOTERM_DIVERGENCES #40); `[line]z[count]` small map (blank below, grows on `j`); `z[count]` types equivalent |
-| `ZZ` `ZQ` | save-quit / quit | yes | ✅ | ✅ | |
+| `ZZ` | save-quit | yes | ✅ | ✅ | `ZQ` is not an nvi command (nvi has only `ZZ`); govi bells on it like nvi |
 | `<interrupt>` | interrupt current operation | yes | 🟡 | 🟡 | searches/interrupts; not all operations cancellable |
 
 ## Vi text-input-mode commands

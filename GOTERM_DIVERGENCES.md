@@ -1003,7 +1003,7 @@ file in the top half).
 Commands: `^W` cycles screens; capitalized `:E`/`:N`/`:P`/`:Vi`/`:Tag` open the
 target in a new horizontal split; `:vsplit` splits vertically; `:bg`/`:fg`/`:Fg`
 background/foreground; `:resize [+-]rows`; `:display s[creens]`/`b[uffers]`;
-`:q`/`:wq`/`:x`/`ZZ`/`ZQ` close just the active screen until the last one exits.
+`:q`/`:wq`/`:x`/`ZZ` close just the active screen until the last one exits.
 Removed the divergent `:Next`->previous mapping (oracle: `:N` edits the *next*
 file in a new screen).
 

@@ -395,19 +395,16 @@ func TestZZWritesAndQuits(t *testing.T) {
 	}
 }
 
-func TestZQQuitsNoWrite(t *testing.T) {
+// nvi has only ZZ; ZQ is not an nvi command (it bells), so govi must not quit on
+// it (matching the oracle, verified via goterm).
+func TestZQIsNotACommand(t *testing.T) {
 	dir := t.TempDir()
 	a := writeTemp(t, dir, "a.txt", "hello\n")
 	e := New(&captureFrontend{}, Options{})
 	e.OpenArgs([]string{a})
 	e.Resize(10, 40)
-	drive(e, "xx") // modify
-	drive(e, "ZQ") // quit without writing
-	if !e.ShouldQuit() {
-		t.Fatal("ZQ should quit")
-	}
-	got, _ := os.ReadFile(a)
-	if string(got) != "hello\n" {
-		t.Fatalf("ZQ should not write; file = %q", string(got))
+	drive(e, "ZQ")
+	if e.ShouldQuit() {
+		t.Fatal("ZQ is not an nvi command; it must not quit")
 	}
 }

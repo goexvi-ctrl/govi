@@ -556,9 +556,8 @@ func (m *vimode) charArg(e *Engine, ev KeyEvent) {
 			if err := e.exExecute("x"); err != nil {
 				e.scr.msg, e.scr.msgKind = err.Error(), MsgError
 			}
-		case 'Q': // ZQ: quit without writing (close this screen, or exit if last)
-			e.finishQuit()
 		default:
+			// nvi has only ZZ; any other Z<x> (e.g. ZQ) is an unknown command.
 			e.fe.Bell()
 		}
 	case '[':

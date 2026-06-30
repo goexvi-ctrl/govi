@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,6 +28,11 @@ func (e *Engine) cscopeFind(arg string, force bool) error {
 	}
 
 	num, pattern, err := parseCscopeQuery(arg)
+	if err == errCscopeFindUsage {
+		// nvi's create_cs_cmd shows the "find" help (csc_help) on a usage error,
+		// not an error message.
+		return e.cscopeHelp("find")
+	}
 	if err != nil {
 		return err
 	}
@@ -54,6 +60,10 @@ func (e *Engine) cscopeFind(arg string, force bool) error {
 	return e.gotoTagMatch(matches[0], force)
 }
 
+// errCscopeFindUsage signals that "cscope find" was given no/!malformed type or
+// no pattern; nvi responds by printing the find help (csc_help), not an error.
+var errCscopeFindUsage = errors.New("cscope find usage")
+
 // parseCscopeQuery parses "<type> <pattern>" into the cscope query number and
 // the search pattern (nvi create_cs_cmd). The type letter must be one of
 // cscopeQueries and be followed by a blank.
@@ -65,7 +75,7 @@ func parseCscopeQuery(arg string) (num int, pattern string, err error) {
 		i++
 	}
 	if i >= len(r) || i+1 >= len(r) || !(r[i+1] == ' ' || r[i+1] == '\t') {
-		return 0, "", fmt.Errorf("%s", findHelp)
+		return 0, "", errCscopeFindUsage
 	}
 	typ := r[i]
 	idx := strings.IndexRune(cscopeQueries, typ)
@@ -78,7 +88,7 @@ func parseCscopeQuery(arg string) (num int, pattern string, err error) {
 		j++
 	}
 	if j >= len(r) {
-		return 0, "", fmt.Errorf("%s", findHelp)
+		return 0, "", errCscopeFindUsage
 	}
 	return idx, string(r[j:]), nil
 }

@@ -36,6 +36,7 @@ type tagMatch struct {
 // a cscope match searches for its source line, a ctags match applies its ex
 // address. force allows leaving a modified buffer.
 func (e *Engine) gotoTagMatch(m tagMatch, force bool) error {
+	switched := false
 	if m.file != "" && m.file != e.scr.name {
 		if e.scr.modified && !force {
 			return fmt.Errorf("No write since last change")
@@ -43,11 +44,20 @@ func (e *Engine) gotoTagMatch(m tagMatch, force bool) error {
 		if err := e.Open(m.file); err != nil {
 			return err
 		}
+		switched = true
 	}
 	if m.cscope {
-		return e.cscopeSearch(m)
+		if err := e.cscopeSearch(m); err != nil {
+			return err
+		}
+	} else {
+		e.applyTagAddress(m.addr)
 	}
-	e.applyTagAddress(m.addr)
+	// nvi centers the target line in the screen when the jump changes files
+	// (ex_tag_nswitch sets SC_SCR_CENTER; a same-file jump just moves the cursor).
+	if switched {
+		e.scr.top = e.scr.topForMiddle(e.scr.cursor.Line)
+	}
 	return nil
 }
 
