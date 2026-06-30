@@ -104,7 +104,20 @@ func (e *Engine) exFile(c *exCmd) error {
 // With no name it re-edits the current file (discarding changes with !).
 func (e *Engine) exEdit(c *exCmd) error {
 	path := strings.TrimSpace(c.arg)
-	if path == "" {
+	if path != "" {
+		// Expand %/# and shell metacharacters: ":e #" re-edits the alternate
+		// file, ":e %" the current one, ":e f*" the unique match (nvi
+		// argv_exp2). :edit takes exactly one file, so a glob matching several
+		// is a usage error, like nvi.
+		names, err := e.expandFileArgs(path)
+		if err != nil {
+			return err
+		}
+		if len(names) != 1 {
+			return c.usageError()
+		}
+		path = names[0]
+	} else {
 		path = e.scr.name
 		if path == "" {
 			return fmt.Errorf("No current filename")

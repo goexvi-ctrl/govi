@@ -94,6 +94,13 @@ Fixed in display.go GutterWidth: return a fixed 8 (nvi O_NUMBER_LENGTH,
 O_NUMBER_FMT "%7lu ") when numbering is on, instead of the dynamic digits+1.
 Updated frontend/grid and frontend/tcell gutter tests to the 8-wide expectation.
 
+## Status: divergences #1-46 are addressed. #46 (2026-06-29) FIXED: file-name
+arguments to `:e`/`:w`/`:r` now do nvi's argv_exp2 expansion (`%`->current,
+`#`->alternate, trailing-`*` internal prefix completion, other metachars via the
+shell). `:e #` used to open a file literally named `#`. Oracle-verified incl. the
+per-command too-many-match errors (`:e` -> Usage, `:w`/`:r` -> "too many file
+names"). See entry #46.
+
 ## Status: divergences #1-45 are addressed. #45 (2026-06-28, DATA-SAFETY) FIXED:
 implemented the `lock` option (advisory `flock` on a dedicated fd, read-only
 fallback when another process -- including nvi -- holds it, re-locked across the
@@ -877,6 +884,42 @@ Verify (cross-process, oracle = a second nvi):
   can drive two Terms on one temp file and diff instance 2's status/readonly state
   and whether a no-force `:w` changed the file on disk (cf. the #42 disk-based
   guard in goterm coverage_test.go `TestCoverageRecentFixes`).
+
+## Open (file-name argument expansion, 2026-06-29)
+
+### 46. `:e`/`:w`/`:r` do not expand `%`, `#`, or shell globs in file arguments  [FIXED 2026-06-29]
+FIX (engine): file-name arguments now go through nvi's `argv_exp2` expansion
+(ex/ex_argv.c) instead of being used verbatim. New `engine/argvexp.go`
+(`expandFileArgs` + `globPrefix` + `shellExpand`), wired into `exEdit`
+(exfile.go), `exWrite` and `exRead` (excmds.go); stdout-only shell capture
+`runShellStdout` added to shell.go; `usageError` helper added to exusage.go.
+
+Originally `:e #` opened a file literally named `#` instead of re-editing the
+alternate file; `:w %` / `:r #` likewise took the metacharacter literally, and no
+form did glob expansion. Found by user report (`:n` then `:e #`).
+
+Rule (verified against the nvi oracle binary at build.unix/.libs/vi, not just the
+source). After `%`->current / `#`->alternate substitution (argv_fexp; the `\`
+escape is honored), nvi scans the result for the first `shellmeta` char (default
+`` ~{[*?$`'"\ ``) and dispatches three ways:
+- no metachar: split on whitespace (argv_exp3).
+- a bare TRAILING `*` (sole metachar, last char): INTERNAL filename-PREFIX
+  completion (argv_lexp) -- it truncates at the `*` and matches by prefix, NOT a
+  real glob, and no shell is forked. Empty result -> "Shell expansion failed".
+- any other metachar (`?`, `*.c`, `[`, `\`, ...): fork the `shell` option and
+  capture `echo <pattern>`'s stdout (argv_sexp), discarding stderr. Behavior
+  therefore tracks the user's shell: e.g. zsh errors on an unmatched glob
+  ("Shell expansion failed") while /bin/sh passes it through literally.
+
+Arg-count handling differs by command (also oracle-verified):
+- `:e` takes exactly one file; >1 match -> `Usage: ...` (the parser's `f1o`).
+- `:w`/`:r` call argv_exp2 internally (ex_write.c:206, ex_read.c:195); >1 match
+  -> `<pattern>: expanded into too many file names` (EXM_FILECOUNT), NOT Usage.
+
+Verified: new engine tests (exfile_test.go) cover `:e #`, `:w %`, unique prefix
+match, no-match, and too-many for both `:e` (Usage) and `:w` (file-count); all
+pass. The `secure` option suppresses the shell-fork path (argv_sexp) only, like
+nvi -- internal prefix completion still works under `secure`.
 
 ## Undocumented but functional (note, not a divergence)
 - vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes

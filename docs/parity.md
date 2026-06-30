@@ -113,14 +113,14 @@ no nvi command is silently missing here.
 | `:[line]=` | yes | ✅ | ✅ | |
 | `:[range]p[rint]`/`nu[mber]`/`l[ist]` | yes | ✅ | ✅ | output via overlay/transcript |
 | `:[range]#` (synonym for `:nu[mber]`) | yes | ✅ | ✅ | implemented as a synonym for `:number` (GOTERM_DIVERGENCES #37) |
-| `:w[rite]` `:wq` `:x[it]` `:q[uit]` | yes | ✅✔ | ✅✔ | `!`, `:[range]w !cmd`, dirty guard (incl. insert-mode pending edits); temporary-buffer exit warning |
-| `:r[ead] file` `:r !cmd` | yes | ✅✔ | ✅✔ | |
+| `:w[rite]` `:wq` `:x[it]` `:q[uit]` | yes | ✅✔ | ✅✔ | `!`, `:[range]w !cmd`, dirty guard (incl. insert-mode pending edits); temporary-buffer exit warning; file arg does `%`/`#`/glob expansion (GOTERM_DIVERGENCES #46) |
+| `:r[ead] file` `:r !cmd` | yes | ✅✔ | ✅✔ | file arg does `%`/`#`/glob expansion (GOTERM_DIVERGENCES #46) |
 | `:[range]!cmd` / `:!cmd` | yes | ✅✔ | ✅✔ | |
 | `:set` / `:set all` / `:set opt` | yes | ✅✔ | ✅✔ | full option registry, grid display |
 | `:map` `:map!` `:unmap` | yes | ✅✔ | ✅✔ | non-recursive |
 | `:ab[breviate]` `:unabbreviate` | yes | ✅✔ | ✅✔ | full forms work |
 | `:una` (abbrev of `:unabbreviate`) | yes | ✅ | ✅ | abbreviation now resolves (GOTERM_DIVERGENCES #38) |
-| `:e[dit]` `:n[ext]` `:prev`/`:N` `:rew[ind]` `:ar[gs]` | yes | ✅✔ | ✅✔ | argument list |
+| `:e[dit]` `:n[ext]` `:prev`/`:N` `:rew[ind]` `:ar[gs]` | yes | ✅✔ | ✅✔ | argument list; `:e` file arg does `%`/`#`/glob expansion -- `:e #` re-edits the alternate file (GOTERM_DIVERGENCES #46) |
 | `:f[ile] [name]` | yes | ✅ | ✅ | status line; optional rename sets alternate file |
 | `:ta[g]` | yes | ✅✔ | ✅✔ | |
 | `:tagn[ext]` `:tagp[rev]` `:tagt[op]` | yes | ❌ | ❌ | tag-stack walk (vi `^T`/`^]` work) |

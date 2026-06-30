@@ -265,6 +265,119 @@ func TestEditModifiedGuard(t *testing.T) {
 	}
 }
 
+// TestEditAlternateFileExpansion checks that ":e #" re-edits the alternate file
+// (the previously edited one) instead of opening a file literally named "#".
+func TestEditAlternateFileExpansion(t *testing.T) {
+	dir := t.TempDir()
+	a := writeTemp(t, dir, "a.txt", "AAA\n")
+	b := writeTemp(t, dir, "b.txt", "BBB\n")
+	e := New(&captureFrontend{}, Options{})
+	e.OpenArgs([]string{a, b})
+	e.Resize(10, 40)
+
+	if err := e.exExecute("n"); err != nil { // :n -> b.txt, alternate becomes a.txt
+		t.Fatal(err)
+	}
+	if bufText(e) != "BBB" {
+		t.Fatalf("after :n: %q", bufText(e))
+	}
+	if e.altFile != a {
+		t.Fatalf("altFile = %q, want %q", e.altFile, a)
+	}
+	if err := e.exExecute("e #"); err != nil { // :e # -> back to a.txt
+		t.Fatal(err)
+	}
+	if e.scr.name != a {
+		t.Fatalf(":e # opened %q, want %q", e.scr.name, a)
+	}
+	if bufText(e) != "AAA" {
+		t.Fatalf("after :e #: %q", bufText(e))
+	}
+}
+
+// TestWriteCurrentFileExpansion checks that ":w %" writes to the current file.
+func TestWriteCurrentFileExpansion(t *testing.T) {
+	dir := t.TempDir()
+	a := writeTemp(t, dir, "a.txt", "hello\n")
+	e := New(&captureFrontend{}, Options{})
+	e.OpenArgs([]string{a})
+	e.Resize(10, 40)
+	drive(e, "x") // "ello", modified
+	if err := e.exExecute("w %"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(a)
+	if string(got) != "ello\n" {
+		t.Fatalf(":w %% wrote %q, want %q", string(got), "ello\n")
+	}
+}
+
+// TestEditGlobPrefixUnique checks that ":e prefix*" with a single matching file
+// opens it via internal prefix completion (nvi argv_lexp), no shell involved.
+func TestEditGlobPrefixUnique(t *testing.T) {
+	dir := t.TempDir()
+	writeTemp(t, dir, "unique.txt", "U\n")
+	writeTemp(t, dir, "other.dat", "O\n")
+	e, _, _ := newTestEngine(t, "")
+	e.Resize(10, 200)
+	if err := e.exExecute("e " + filepath.Join(dir, "uniq") + "*"); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(dir, "unique.txt")
+	if e.scr.name != want {
+		t.Fatalf(":e uniq* opened %q, want %q", e.scr.name, want)
+	}
+	if bufText(e) != "U" {
+		t.Fatalf("buffer = %q", bufText(e))
+	}
+}
+
+// TestEditGlobPrefixNoMatch checks nvi's "Shell expansion failed" when a trailing
+// '*' prefix matches nothing.
+func TestEditGlobPrefixNoMatch(t *testing.T) {
+	dir := t.TempDir()
+	writeTemp(t, dir, "a.txt", "A\n")
+	e, _, _ := newTestEngine(t, "")
+	e.Resize(10, 200)
+	err := e.exExecute("e " + filepath.Join(dir, "zzz") + "*")
+	if err == nil || !strings.Contains(err.Error(), "Shell expansion failed") {
+		t.Fatalf(":e zzz* err = %v, want Shell expansion failed", err)
+	}
+}
+
+// TestEditGlobPrefixTooMany checks that a prefix matching several files is a usage
+// error for :edit, which takes exactly one file (nvi).
+func TestEditGlobPrefixTooMany(t *testing.T) {
+	dir := t.TempDir()
+	writeTemp(t, dir, "aa.txt", "1\n")
+	writeTemp(t, dir, "ab.txt", "2\n")
+	e, _, _ := newTestEngine(t, "")
+	e.Resize(10, 200)
+	err := e.exExecute("e " + filepath.Join(dir, "a") + "*")
+	if err == nil || !strings.HasPrefix(err.Error(), "Usage:") {
+		t.Fatalf(":e a* err = %v, want Usage", err)
+	}
+}
+
+// TestWriteGlobTooMany checks the "expanded into too many file names" error for
+// :w when the shell-forked glob yields several names (nvi ex_write.c).
+func TestWriteGlobTooMany(t *testing.T) {
+	dir := t.TempDir()
+	a := writeTemp(t, dir, "a.txt", "A\n")
+	writeTemp(t, dir, "b.txt", "B\n")
+	e := New(&captureFrontend{}, Options{})
+	e.OpenArgs([]string{a})
+	e.Resize(10, 40)
+	if err := e.exExecute("set shell=/bin/sh"); err != nil { // deterministic glob
+		t.Fatal(err)
+	}
+	pat := filepath.Join(dir, "*.txt")
+	err := e.exExecute("w " + pat)
+	if err == nil || !strings.Contains(err.Error(), "expanded into too many file names") {
+		t.Fatalf(":w %s err = %v, want too-many-file-names", pat, err)
+	}
+}
+
 func TestZZWritesAndQuits(t *testing.T) {
 	dir := t.TempDir()
 	a := writeTemp(t, dir, "a.txt", "hello\n")

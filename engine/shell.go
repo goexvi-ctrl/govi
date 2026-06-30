@@ -38,6 +38,21 @@ func (e *Engine) runShellCmd(cmd, input string, cols, rows int) (string, error) 
 	return string(out), err
 }
 
+// runShellStdout runs cmd through the shell and returns only its standard output.
+// Used for filename expansion (nvi argv_sexp), which discards standard error so
+// that an unmatched pattern's diagnostics don't leak into the expanded names.
+func (e *Engine) runShellStdout(cmd string) (string, error) {
+	shell := e.shellProg()
+	c := exec.Command(shell, "-c", cmd)
+	e.ensureCwd()
+	if e.cwd != "" {
+		c.Dir = e.cwd
+	}
+	c.Env = shellEnv(e.bangCols(), e.bangRows())
+	out, err := c.Output()
+	return string(out), err
+}
+
 func shellEnv(cols, rows int) []string {
 	env := os.Environ()
 	if cols < 1 {
@@ -69,10 +84,12 @@ func setEnvVar(env []string, key, val string) []string {
 	return out
 }
 
-// expandShellNames performs nvi's argv_exp filename substitution on a shell
-// command string: an unescaped '%' becomes the current file name and '#' the
-// alternate file name (ex/ex_argv.c). A backslash escapes either to its literal
-// (the backslash is removed). It errors when '%'/'#' has no file to substitute.
+// expandShellNames performs nvi's argv_fexp filename substitution: an unescaped
+// '%' becomes the current file name and '#' the alternate file name
+// (ex/ex_argv.c). A backslash escapes either to its literal (the backslash is
+// removed). It errors when '%'/'#' has no file to substitute. The same
+// substitution applies to shell command strings and to file-name arguments of
+// commands like :e, :w and :r.
 func (e *Engine) expandShellNames(cmd string) (string, error) {
 	var b strings.Builder
 	r := []rune(cmd)

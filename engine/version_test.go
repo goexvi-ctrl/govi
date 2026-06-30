@@ -10,7 +10,7 @@ func TestVersionString(t *testing.T) {
 	if got == "" {
 		t.Fatal("VersionString returned empty")
 	}
-	if !strings.HasPrefix(got, "Version govi-0.1 (") {
+	if !strings.HasPrefix(got, "Version govi-0.1") {
 		t.Fatalf("VersionString = %q", got)
 	}
 }

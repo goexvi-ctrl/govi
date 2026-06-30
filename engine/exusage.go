@@ -13,6 +13,19 @@ type exCmdUsage struct {
 	usage   string
 }
 
+// usageError reports a command-usage error for c, matching nvi's behavior when an
+// argument count is wrong (e.g. a glob that expanded to more than one file name).
+func (c *exCmd) usageError() error {
+	name := ""
+	if c.def != nil {
+		name = c.def.full
+	}
+	if u, ok := exCmdMeta[name]; ok && u.usage != "" {
+		return fmt.Errorf("Usage: %s", u.usage)
+	}
+	return fmt.Errorf("Usage: %s", name)
+}
+
 // exCmdMeta maps canonical ex command names to usage strings.
 var exCmdMeta = map[string]exCmdUsage{
 	"!":            {"filter lines through a shell command", ":[range] !cmd\n:!cmd"},

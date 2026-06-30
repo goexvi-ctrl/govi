@@ -333,6 +333,20 @@ func (e *Engine) exWrite(c *exCmd) error {
 		}
 		return e.writeToCommand(c, cmd)
 	}
+	if arg != "" {
+		// Expand %/#/glob characters in the target name (nvi ex_write.c calls
+		// argv_exp2). :w takes one file, so several matches is an error.
+		names, err := e.expandFileArgs(arg)
+		if err != nil {
+			return err
+		}
+		if len(names) > 1 {
+			return fmt.Errorf("%s: expanded into too many file names", arg)
+		}
+		if len(names) == 1 {
+			arg = names[0]
+		}
+	}
 	named := arg != ""
 	// nvi readonly guard (common/exf.c file_write): writing the buffer's own file
 	// is refused when `readonly` is set (set by the user, or by the lock option
@@ -592,6 +606,18 @@ func (e *Engine) exRead(c *exCmd) error {
 		}
 		data = lines
 	} else {
+		// Expand %/#/glob characters in the source name (nvi ex_read.c calls
+		// argv_exp2). :r reads one file, so several matches is an error.
+		names, err := e.expandFileArgs(arg)
+		if err != nil {
+			return err
+		}
+		if len(names) > 1 {
+			return fmt.Errorf("%s: expanded into too many file names", arg)
+		}
+		if len(names) == 1 {
+			arg = names[0]
+		}
 		lines, err := readFileLines(e.resolvePath(arg))
 		if err != nil {
 			return err
