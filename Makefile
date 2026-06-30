@@ -1,7 +1,10 @@
 # Build govi binaries with git-derived version metadata.
 VERSION_LDFLAGS := $(shell ./scripts/version-ldflags.sh)
 
-all: build
+all: engine/version.go build
+
+engine/version.go: engine/version.gox Version
+	sed < engine/version.gox "s/{{VERSION}}/govi-$(shell cat Version)/" > engine/version.go
 
 COVER_PROFILE ?= cover.out
 COVER_HTML ?= cover.html
@@ -15,6 +18,7 @@ build: govi gui/build/GoVi.app
 # Build the govi CLI: one slice per arch in GOVI_ARCHS (defined in gui/govi.mk),
 # lipo'd into a single binary (universal when more than one arch).
 govi:
+	$(MAKE) engine/version.go
 	@set -e; slices=""; \
 	for arch in $(GOVI_ARCHS); do \
 	  case $$arch in \
@@ -98,5 +102,5 @@ release:
 	NOTARY_PROFILE="$(NOTARY_PROFILE)" ./scripts/macos-release.sh
 
 clean:
-	rm -rf govi gui/build cmd/govi/govi
+	rm -rf govi gui/build cmd/govi/govi engine/version.go
 	rm -f $(COVER_PROFILE) $(COVER_HTML)

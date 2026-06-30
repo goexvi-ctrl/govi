@@ -20,4 +20,6 @@ if [ "$rc" -eq 1 ]; then
 	buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 fi
 
-printf '%s' "-X govi/engine.versionName=govi-0.1.1 -X govi/engine.commitDate=${commitDate} -X govi/engine.commitHash=${hash} -X govi/engine.treeState=${state} -X govi/engine.buildTime=${buildTime}"
+tag="$(< Version)"
+
+printf '%s' "-X govi/engine.versionName=govi-${tag#v} -X govi/engine.commitDate=${commitDate} -X govi/engine.commitHash=${hash} -X govi/engine.treeState=${state} -X govi/engine.buildTime=${buildTime}"

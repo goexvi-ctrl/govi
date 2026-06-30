@@ -6,7 +6,7 @@
 #   APP            path to the built .app bundle       (e.g. gui/build/GoVi.app)
 #   CLI            path to the built CLI binary         (e.g. govi)
 #   DMG            output disk image path
-#   VOLNAME        mounted volume name                  (e.g. "GoVi 0.1.1")
+#   VOLNAME        mounted volume name                  (e.g. "GoVi 0.1.2")
 #   IDENTITY       codesign identity, or "-" for ad-hoc
 #   NOTARY_PROFILE stored notarytool keychain profile   (Developer ID only)
 #
