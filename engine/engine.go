@@ -22,8 +22,21 @@ type Options struct{}
 // drives the Frontend via Render. It has no terminal or GUI dependency.
 type Engine struct {
 	fe  Frontend
-	scr *screen
+	scr *screen // the active screen; always == screens[cur]
 	vi  *vimode
+
+	// screens are the displayed editor screens (split windows), ordered
+	// top-to-bottom then left-to-right (nvi's WIN scrq, kept sorted by roff,coff).
+	// A single unsplit session has exactly one. cur is the index of the active
+	// screen; scr is kept pointing at screens[cur].
+	screens []*screen
+	cur     int
+
+	// termH/termCols are the full terminal geometry last given to Resize: termH
+	// is the total number of display rows (text rows of all screens plus one
+	// status row per screen), termCols the width.
+	termH    int
+	termCols int
 
 	mapPending []rune // runes accumulating toward a possible map LHS
 
@@ -33,7 +46,6 @@ type Engine struct {
 	altFile       string   // alternate file (^^ / #), the previously edited file
 	tagStack      []tagLoc // tag jump stack for ^T
 
-	file    *os.File // open handle backing a paged buffer, if any
 	lockF   *os.File // dedicated fd holding the advisory edit lock (nvi ep->fd)
 	quit    bool
 	exitMsg string // set when a signal caused the exit; printed by the host
@@ -78,6 +90,8 @@ func (e *Engine) setBuffer(store buffer.LineStore, name string) {
 		opts:          defaultOptions(),
 		maps:          newMapTable(),
 	}
+	e.screens = []*screen{e.scr}
+	e.cur = 0
 	e.vi = newVimode()
 }
 
@@ -86,6 +100,10 @@ func (e *Engine) setBuffer(store buffer.LineStore, name string) {
 func (e *Engine) replaceBuffer(store buffer.LineStore, name string) {
 	e.removeRecovery() // discard the previous file's recovery state
 	s := e.scr
+	if s.file != nil {
+		s.file.Close()
+		s.file = nil
+	}
 	s.store = store
 	s.log = undo.New(store)
 	s.dlReady = false // new buffer + fresh log (gen restarts at 0): drop the memo
@@ -130,12 +148,9 @@ func (e *Engine) Open(path string) error {
 		}
 		return err
 	}
-	if e.file != nil {
-		e.file.Close()
-	}
 	e.releaseLock() // drop any lock held on the previous file
-	e.file = fh
-	e.replaceBuffer(store, name)
+	e.replaceBuffer(store, name) // closes the previous per-screen file handle
+	e.scr.file = fh
 	if len(e.argv) > 1 {
 		e.showFileCount = true
 	}
@@ -173,15 +188,19 @@ func (e *Engine) OpenArgs(args []string) error {
 	return e.Open(args[0])
 }
 
-// Close releases any file handle held by the engine.
+// Close releases any file handles held by the engine's screens.
 func (e *Engine) Close() error {
 	e.releaseLock()
-	if e.file != nil {
-		err := e.file.Close()
-		e.file = nil
-		return err
+	var firstErr error
+	for _, s := range e.screens {
+		if s.file != nil {
+			if err := s.file.Close(); err != nil && firstErr == nil {
+				firstErr = err
+			}
+			s.file = nil
+		}
 	}
-	return nil
+	return firstErr
 }
 
 // acquireLock takes the advisory edit lock on resolved using a dedicated fd
@@ -236,11 +255,21 @@ func (e *Engine) ClearQuit() { e.quit = false }
 // configuration), as if typed on the colon line without the leading ':'.
 func (e *Engine) RunEx(cmd string) error { return e.exExecute(cmd) }
 
+// curView builds the read-only View over the editor state: a plain single-screen
+// view when unsplit, or a renderView enumerating every screen when split. All
+// Render calls and WithView use it.
+func (e *Engine) curView() View {
+	if len(e.screens) <= 1 {
+		return view{s: e.scr}
+	}
+	return renderView{view: view{s: e.scr}, all: e.screens, cur: e.cur}
+}
+
 // WithView calls fn with the read-only View of the current editor state. A host
 // that pulls state on demand (rather than reacting to Render) uses this to lay
 // out a frame between inputs. The View is valid only for the duration of the
 // call; the engine is quiescent while fn runs (it must not feed input from fn).
-func (e *Engine) WithView(fn func(View)) { fn(view{e.scr}) }
+func (e *Engine) WithView(fn func(View)) { fn(e.curView()) }
 
 // MapPending reports whether input is buffered awaiting more keys to resolve a
 // possible map. A host can use this to arm a key-timeout (sending a
@@ -264,19 +293,73 @@ func (e *Engine) RefreshInterval() time.Duration {
 	return d
 }
 
-// Resize sets the viewport geometry (text rows and columns) and repaints fully.
+// Resize sets the viewport geometry and repaints fully. rows is the number of
+// text rows for a single full-screen session (terminal height minus the one
+// status row); cols the width. The engine tracks the full terminal height
+// (rows+1) so it can lay out split screens, each of which carries its own status
+// row.
 func (e *Engine) Resize(rows, cols int) {
-	e.scr.rows = rows
-	e.scr.mapRows = rows
-	e.scr.minMapRows = rows
-	e.scr.cols = cols
-	e.scr.defScroll = 0 // re-derive the half-page size from the new height
-	// Keep the columns/lines options in step with the terminal geometry.
-	e.scr.opts.i["columns"] = cols
-	e.scr.opts.i["lines"] = rows + 1
-	e.scr.clampCursor()
-	e.scr.scrollToCursor()
-	e.fe.Render(view{e.scr}, ChangeSet{Full: true})
+	e.termH = rows + 1
+	e.termCols = cols
+	if len(e.screens) <= 1 {
+		s := e.scr
+		s.roff, s.coff = 0, 0
+		s.rows = rows
+		s.cols = cols
+		s.mapRows = rows
+		s.minMapRows = rows
+		s.defScroll = 0 // re-derive the half-page size from the new height
+		// Keep the columns/lines options in step with the terminal geometry.
+		s.opts.i["columns"] = cols
+		s.opts.i["lines"] = rows + 1
+		s.clampCursor()
+		s.scrollToCursor()
+	} else {
+		e.relayout()
+	}
+	e.fe.Render(e.curView(), ChangeSet{Full: true})
+}
+
+// relayout redistributes the full terminal height across the currently displayed
+// (horizontally stacked) screens, in proportion to their previous heights, and
+// gives every screen the full terminal width. Exact nvi resize parity is a later
+// refinement; this keeps a split layout valid across a terminal resize.
+func (e *Engine) relayout() {
+	n := len(e.screens)
+	tot := 0
+	for _, s := range e.screens {
+		tot += s.rows + 1
+	}
+	if tot <= 0 {
+		tot = 1
+	}
+	roff := 0
+	for i, s := range e.screens {
+		var disp int
+		if i == n-1 {
+			disp = e.termH - roff // remainder to the last screen
+		} else {
+			disp = (s.rows + 1) * e.termH / tot
+			if disp < 2 {
+				disp = 2
+			}
+		}
+		if disp < 2 {
+			disp = 2
+		}
+		s.roff = roff
+		s.coff = 0
+		s.cols = e.termCols
+		s.rows = disp - 1
+		s.mapRows = s.rows
+		s.minMapRows = s.rows
+		s.defScroll = 0
+		s.opts.i["columns"] = e.termCols
+		s.opts.i["lines"] = e.termH
+		s.clampCursor()
+		s.scrollToCursor()
+		roff += disp
+	}
 }
 
 // snapshot of the presentation-relevant fields, used to compute a ChangeSet.
@@ -337,7 +420,7 @@ func (e *Engine) Input(ev Event) {
 
 	e.scr.clampCursor()
 	e.scr.scrollToCursor()
-	e.fe.Render(view{e.scr}, e.diff(before))
+	e.fe.Render(e.curView(), e.diff(before))
 }
 
 func (e *Engine) diff(b snap) ChangeSet {

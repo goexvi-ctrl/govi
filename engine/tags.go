@@ -25,7 +25,29 @@ func (e *Engine) exTag(c *exCmd) error {
 	if name == "" {
 		return fmt.Errorf("tag: missing tag name")
 	}
+	if c.newScreen {
+		return e.tagJumpNewScreen(name)
+	}
 	return e.tagJump(name)
+}
+
+// tagJumpNewScreen implements :Tag -- open the tag's file in a new split screen
+// and position the cursor there (nvi ex_tag with E_NEWSCREEN).
+func (e *Engine) tagJumpNewScreen(name string) error {
+	file, excmd, err := e.lookupTag(name)
+	if err != nil {
+		return err
+	}
+	e.tagStack = append(e.tagStack, tagLoc{
+		file: e.scr.name,
+		line: e.scr.cursor.Line,
+		col:  e.scr.cursor.Col,
+	})
+	if err := e.editNewScreen(file); err != nil {
+		return err
+	}
+	e.applyTagAddress(excmd)
+	return nil
 }
 
 // tagJumpWord implements ^]: jump to the tag named by the word under the cursor.

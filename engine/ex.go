@@ -18,16 +18,18 @@ type exCmd struct {
 	buffer       rune  // register name, or 0
 	arg          string
 	def          *exCmdDef
+	newScreen    bool // command was given capitalized: act in a new split screen
 }
 
 // exCmdDef describes one ex command: its full name, the minimum number of
 // leading characters needed to abbreviate it, and its handler.
 type exCmdDef struct {
-	full    string
-	min     int
-	summary string // short description for :exusage
-	usage   string // usage template for :exusage cmd
-	fn      func(*Engine, *exCmd) error
+	full      string
+	min       int
+	summary   string // short description for :exusage
+	usage     string // usage template for :exusage cmd
+	fn        func(*Engine, *exCmd) error
+	newScreen bool // capable of acting in a new screen when capitalized (nvi E_NEWSCREEN)
 }
 
 // exCmds is populated in init() rather than as a static initializer: some
@@ -62,16 +64,15 @@ func init() {
 		{full: "unmap", min: 3, fn: (*Engine).exUnmap},
 		{full: "abbreviate", min: 2, fn: (*Engine).exAbbreviate},
 		{full: "unabbreviate", min: 3, fn: (*Engine).exUnabbreviate},
-		{full: "edit", min: 1, fn: (*Engine).exEdit},
-		{full: "next", min: 1, fn: (*Engine).exNext},
-		{full: "previous", min: 4, fn: (*Engine).exPrev},
-		{full: "Next", min: 1, fn: (*Engine).exPrev},
+		{full: "edit", min: 1, fn: (*Engine).exEdit, newScreen: true},
+		{full: "next", min: 1, fn: (*Engine).exNext, newScreen: true},
+		{full: "previous", min: 4, fn: (*Engine).exPrev, newScreen: true},
 		{full: "rewind", min: 3, fn: (*Engine).exRewind},
 		{full: "args", min: 2, fn: (*Engine).exArgs},
 		{full: "cd", min: 2, fn: (*Engine).exCd},
 		{full: "chdir", min: 2, fn: (*Engine).exCd},
 		{full: "file", min: 1, fn: (*Engine).exFile},
-		{full: "tag", min: 2, fn: (*Engine).exTag},
+		{full: "tag", min: 2, fn: (*Engine).exTag, newScreen: true},
 		{full: "preserve", min: 3, fn: (*Engine).exPreserve},
 		{full: "recover", min: 3, fn: (*Engine).exRecover},
 		{full: "shell", min: 2, fn: (*Engine).exShell},
@@ -86,7 +87,7 @@ func init() {
 		{full: "print", min: 1, fn: (*Engine).exPrint},
 		{full: "number", min: 2, fn: (*Engine).exNumber},
 		{full: "list", min: 1, fn: (*Engine).exList},
-		{full: "visual", min: 2, fn: (*Engine).exVisual},
+		{full: "visual", min: 2, fn: (*Engine).exVisual, newScreen: true},
 		{full: "append", min: 1, fn: (*Engine).exAppend},
 		{full: "insert", min: 1, fn: (*Engine).exInsert},
 		{full: "change", min: 1, fn: (*Engine).exChange},
@@ -194,11 +195,29 @@ func (e *Engine) parseEx(line string) (*exCmd, error) {
 		return c, nil // address-only: goto
 	}
 
+	// A capital first letter on one of the screen commands requests that the
+	// command act in a new split screen (nvi ex.c: "Capital letters beginning the
+	// command names ex, edit, next, previous, tag and visual indicate the command
+	// should happen in a new screen."). Lower-case it, then look it up.
+	newScreen := false
+	switch name[0] {
+	case 'E', 'N', 'P', 'T', 'V':
+		newScreen = true
+		name = strings.ToLower(name[:1]) + name[1:]
+	}
+
 	def, err := findCmd(name)
 	if err != nil {
 		return nil, err
 	}
+	// The capitalized form resolved to a command that cannot open a new screen
+	// (e.g. :P -> print); run it normally, like nvi (which drops the new-screen
+	// request for print/preserve).
+	if newScreen && !def.newScreen {
+		newScreen = false
+	}
 	c.def = def
+	c.newScreen = newScreen
 
 	if p.peek() == '!' {
 		p.next()

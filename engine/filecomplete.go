@@ -128,7 +128,7 @@ func (e *Engine) colonDoFileComplete() {
 				trydir = true
 				continue
 			}
-			e.fe.Render(view{e.scr}, ChangeSet{MessageChanged: true})
+			e.fe.Render(e.curView(), ChangeSet{MessageChanged: true})
 			return
 		default:
 			// Ambiguous: stay on the colon line; user types more to narrow it.

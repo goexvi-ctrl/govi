@@ -117,7 +117,13 @@ func (e *Engine) exEdit(c *exCmd) error {
 			return c.usageError()
 		}
 		path = names[0]
-	} else {
+	}
+	// :E[dit] (capitalized) opens the file -- or the current file when no name is
+	// given -- in a new split screen, leaving the current screen untouched.
+	if c.newScreen {
+		return e.editNewScreen(path)
+	}
+	if path == "" {
 		path = e.scr.name
 		if path == "" {
 			return fmt.Errorf("No current filename")
@@ -129,25 +135,35 @@ func (e *Engine) exEdit(c *exCmd) error {
 	return e.Open(path)
 }
 
-// exNext implements :n[!] -- edit the next file in the argument list.
+// exNext implements :n[!] -- edit the next file in the argument list. :N
+// (capitalized) edits the next file in a new split screen.
 func (e *Engine) exNext(c *exCmd) error {
-	if e.scr.dirty() && !c.force {
-		return fmt.Errorf("No write since last change (use :n! to override)")
-	}
 	if e.argIdx+1 >= len(e.argv) {
 		return fmt.Errorf("No more files to edit")
+	}
+	if c.newScreen {
+		e.argIdx++
+		return e.editNewScreen(e.argv[e.argIdx])
+	}
+	if e.scr.dirty() && !c.force {
+		return fmt.Errorf("No write since last change (use :n! to override)")
 	}
 	e.argIdx++
 	return e.Open(e.argv[e.argIdx])
 }
 
-// exPrev implements :prev[!] / :N -- edit the previous file in the list.
+// exPrev implements :prev[!] -- edit the previous file in the list. :Prev
+// (capitalized) edits it in a new split screen.
 func (e *Engine) exPrev(c *exCmd) error {
-	if e.scr.dirty() && !c.force {
-		return fmt.Errorf("No write since last change (use :prev! to override)")
-	}
 	if e.argIdx <= 0 {
 		return fmt.Errorf("No previous files to edit")
+	}
+	if c.newScreen {
+		e.argIdx--
+		return e.editNewScreen(e.argv[e.argIdx])
+	}
+	if e.scr.dirty() && !c.force {
+		return fmt.Errorf("No write since last change (use :prev! to override)")
 	}
 	e.argIdx--
 	return e.Open(e.argv[e.argIdx])

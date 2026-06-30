@@ -121,6 +121,27 @@ type View interface {
 	// (showmatch) and whether one is active; while active the frontend shows the
 	// cursor there instead of at the insertion point.
 	MatchHighlight() (Pos, bool)
+	// Split reports whether more than one screen is displayed. When true the
+	// frontend draws each screen's status line in reverse video as a divider.
+	Split() bool
+	// Screens enumerates every displayed screen (split window) in display order
+	// with its geometry and active state. A single-screen session returns one
+	// active pane. The single-screen View accessors above report the active
+	// screen, so a frontend that ignores splits still renders correctly.
+	Screens() []ScreenView
+}
+
+// ScreenView is one screen (split window) within the display: a per-screen View
+// plus its placement (Roff/Coff row/column offsets, Rows/Cols extent) and
+// whether it currently has the cursor (Active). Its View accessors report that
+// screen's own buffer, cursor, viewport, and status line.
+type ScreenView interface {
+	View
+	Roff() int
+	Coff() int
+	Rows() int
+	Cols() int
+	Active() bool
 }
 
 // LineRange is an inclusive 1-based range of buffer lines.

@@ -57,7 +57,6 @@ var exCmdMeta = map[string]exCmdUsage{
 	"list":         {"print lines with visible characters", ":[range] list"},
 	"map":          {"map keys in command mode", ":map[!] lhs rhs"},
 	"move":         {"move lines", ":[range] move address"},
-	"Next":         {"edit previous file in the argument list", ":Next[!]"},
 	"next":         {"edit next file in the argument list", ":n[ext][!]"},
 	"number":       {"print lines with line numbers", ":[range] number"},
 	"preserve":     {"preserve file in recovery directory", ":pre[serve]"},

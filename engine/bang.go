@@ -36,7 +36,7 @@ func (e *Engine) presentBangOutput(out string) {
 		return
 	}
 	e.showOutput(strings.Split(out, "\n"))
-	e.fe.Render(view{e.scr}, ChangeSet{Full: true})
+	e.fe.Render(e.curView(), ChangeSet{Full: true})
 }
 
 // runBangNoRange executes :!cmd without a line range. Output is captured in a

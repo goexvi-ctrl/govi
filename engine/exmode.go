@@ -105,8 +105,12 @@ func (e *Engine) exitExMode() {
 	e.scr.exTranscript = nil
 }
 
-// exVisual implements :visual / :vi -- return to vi mode from ex mode.
+// exVisual implements :visual / :vi -- return to vi mode from ex mode. :Vi
+// (capitalized) opens the current file in a new split screen.
 func (e *Engine) exVisual(c *exCmd) error {
+	if c.newScreen {
+		return e.editNewScreen("")
+	}
 	if e.scr.mode == ModeExText {
 		e.exitExMode()
 	}

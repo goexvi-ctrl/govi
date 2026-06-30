@@ -298,6 +298,8 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 		if err := e.tagPop(); err != nil {
 			s.msg, s.msgKind = err.Error(), MsgError
 		}
+	case 'w': // ^W: switch to the next split screen (nvi v_screen)
+		e.switchScreen()
 	case 'r': // redraw the screen (no-op here; the frontend repaints each input)
 	case '\\': // ^\ switch to ex mode (nvi v_cmd.c 034)
 		e.handleCtrlBackslash()
@@ -554,9 +556,8 @@ func (m *vimode) charArg(e *Engine, ev KeyEvent) {
 			if err := e.exExecute("x"); err != nil {
 				e.scr.msg, e.scr.msgKind = err.Error(), MsgError
 			}
-		case 'Q': // ZQ: quit without writing
-			e.removeRecovery()
-			e.quit = true
+		case 'Q': // ZQ: quit without writing (close this screen, or exit if last)
+			e.finishQuit()
 		default:
 			e.fe.Bell()
 		}

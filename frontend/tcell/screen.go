@@ -281,7 +281,9 @@ func (f *Frontend) Render(v engine.View, cs engine.ChangeSet) {
 }
 
 // paintNow performs a full-screen repaint. Phase 2 always clears and redraws;
-// ChangeSet incremental drawing is a later phase.
+// ChangeSet incremental drawing is a later phase. With split screens it draws
+// each pane in its own row/column band, every pane carrying its own status line
+// (reverse video as a divider when split); the cursor goes in the active pane.
 func (f *Frontend) paintNow(v engine.View) {
 	f.scr.Clear()
 	w, h := f.scr.Size()
@@ -292,38 +294,61 @@ func (f *Frontend) paintNow(v engine.View) {
 		return
 	}
 
-	rows := textRows(h)
-	vp := v.Viewport()
+	split := v.Split()
+	for _, sv := range v.Screens() {
+		f.paintScreen(sv, split)
+	}
+
+	// An ex-output overlay (e.g. :p, :set all) is drawn over the bottom of the
+	// buffer: a "+=+=" divider, the output lines, and a continue prompt on the
+	// last row -- the buffer stays visible above (nvi vs_msg).
+	if out := v.PendingOutput(); out != nil {
+		f.renderOutput(out, v.PendingOutputPrompt(), v.PendingOutputFirst(), w, h)
+	}
+	f.scr.Show()
+}
+
+// paintScreen draws one screen (split pane): its text band [roff, roff+rows),
+// its status/colon/message line at roff+rows, and the cursor when it is the
+// active pane. split selects the reverse-video status divider.
+func (f *Frontend) paintScreen(sv engine.ScreenView, split bool) {
+	roff := sv.Roff()
+	coff := sv.Coff()
+	rows := sv.Rows()
+	cols := sv.Cols()
+	statusRow := roff + rows
+
+	gutter := engine.GutterWidth(sv.LineCount(), sv.Number())
+	textW := cols - gutter
+	if textW < 1 {
+		textW = 1
+	}
+	vp := sv.Viewport()
 	top := vp.Top
 	mapRows := vp.MapRows
 	if mapRows <= 0 || mapRows > rows {
 		mapRows = rows
-	}
-	gutter := gutterWidth(v)
-	textW := w - gutter
-	if textW < 1 {
-		textW = 1
 	}
 
 	// Draw logical lines from `top` into the active map (nvi t_rows); rows below
 	// the map stay blank until j expands the map.
 	row := 0
 	lno := top
-	for row < mapRows && lno <= v.LineCount() {
-		cells := engine.DisplayCells(v.Line(lno))
+	for row < mapRows && lno <= sv.LineCount() {
+		cells := engine.DisplayCells(sv.Line(lno))
 		first := true
 		// Emit at least one row even for an empty line.
 		for i := 0; (i < len(cells) || first) && row < mapRows; i += textW {
 			if gutter > 0 && first {
-				f.drawGutter(lno, row, gutter)
+				f.drawGutter(lno, coff, roff+row, gutter)
 			}
-			x := gutter
+			x := coff + gutter
 			for j := i; j < i+textW && j < len(cells); j++ {
 				// Continuation cells (Rune == 0) belong to a preceding wide
 				// glyph; tcell draws the wide rune spanning both columns, so skip
 				// them but still advance the column.
 				if cells[j].Rune != 0 {
-					f.scr.SetContent(x, row, cells[j].Rune, nil, styleFor(cells[j].Style))
+					f.scr.SetContent(x, roff+row, cells[j].Rune, nil, styleFor(cells[j].Style))
 				}
 				x++
 			}
@@ -334,25 +359,19 @@ func (f *Frontend) paintNow(v engine.View) {
 	}
 	// Tildes for map rows past the end of the buffer.
 	for ; row < mapRows; row++ {
-		f.scr.SetContent(0, row, '~', nil, tc.StyleDefault)
+		f.scr.SetContent(coff, roff+row, '~', nil, tc.StyleDefault)
 	}
 	// Blank filler below a reduced z[count] map.
 	for ; row < rows; row++ {
-		for x := 0; x < w; x++ {
-			f.scr.SetContent(x, row, ' ', nil, tc.StyleDefault)
+		for x := 0; x < cols; x++ {
+			f.scr.SetContent(coff+x, roff+row, ' ', nil, tc.StyleDefault)
 		}
 	}
 
-	f.drawStatus(v, w, rows)
-	f.placeCursor(v, mapRows, rows, gutter, textW)
-
-	// An ex-output overlay (e.g. :p, :set all) is drawn over the bottom of the
-	// buffer: a "+=+=" divider, the output lines, and a continue prompt on the
-	// last row -- the buffer stays visible above (nvi vs_msg).
-	if out := v.PendingOutput(); out != nil {
-		f.renderOutput(out, v.PendingOutputPrompt(), v.PendingOutputFirst(), w, h)
+	f.drawStatus(sv, coff, statusRow, cols, split)
+	if sv.Active() {
+		f.placeCursor(sv, coff, roff, statusRow, gutter, textW, mapRows)
 	}
-	f.scr.Show()
 }
 
 // renderExMode draws the ex-mode scrolling transcript with the current prompt
@@ -437,12 +456,13 @@ func gutterWidth(v engine.View) int {
 	return engine.GutterWidth(v.LineCount(), v.Number())
 }
 
-func (f *Frontend) drawGutter(lno int64, row, gutter int) {
+func (f *Frontend) drawGutter(lno int64, coff, row, gutter int) {
 	label := strconv.FormatInt(lno, 10)
 	pad := gutter - 1 - len(label)
-	x := 0
-	for ; x < pad; x++ {
+	x := coff
+	for i := 0; i < pad; i++ {
 		f.scr.SetContent(x, row, ' ', nil, tc.StyleDefault)
+		x++
 	}
 	for _, r := range label {
 		f.scr.SetContent(x, row, r, nil, tc.StyleDefault)
@@ -451,46 +471,53 @@ func (f *Frontend) drawGutter(lno int64, row, gutter int) {
 	f.scr.SetContent(x, row, ' ', nil, tc.StyleDefault)
 }
 
-func (f *Frontend) drawStatus(v engine.View, w, row int) {
-	msg, _ := v.Message()
+// drawStatus draws a screen's status/colon/message line at (coff, row), cols
+// wide. In a split every status line is the inter-screen divider and is drawn in
+// reverse video across its full width (nvi standout modeline).
+func (f *Frontend) drawStatus(sv engine.ScreenView, coff, row, cols int, split bool) {
+	msg, _ := sv.Message()
 	st := tc.StyleDefault
+	if split {
+		st = st.Reverse(true)
+	}
 	x := 0
-	for _, r := range msg {
-		if x >= w {
-			break
+	rs := []rune(msg)
+	for ; x < cols; x++ {
+		r := ' '
+		if x < len(rs) {
+			r = rs[x]
 		}
-		f.scr.SetContent(x, row, r, nil, st)
-		x++
+		f.scr.SetContent(coff+x, row, r, nil, st)
 	}
 }
 
-func (f *Frontend) placeCursor(v engine.View, mapRows, statusRow, gutter, textW int) {
-	if v.Mode() == engine.ModeExColon {
-		msg, _ := v.Message()
-		f.scr.ShowCursor(engine.DisplayStringColumns(msg, 8), statusRow) // end of the colon line
+func (f *Frontend) placeCursor(sv engine.ScreenView, coff, roff, statusRow, gutter, textW, mapRows int) {
+	if sv.Mode() == engine.ModeExColon {
+		msg, _ := sv.Message()
+		f.scr.ShowCursor(coff+engine.DisplayStringColumns(msg, 8), statusRow) // end of the colon line
 		return
 	}
-	cur := v.Cursor()
-	if mp, ok := v.MatchHighlight(); ok {
+	cur := sv.Cursor()
+	if mp, ok := sv.MatchHighlight(); ok {
 		cur = mp // showmatch: flash the cursor at the matching bracket
 	}
-	top := v.Viewport().Top
+	top := sv.Viewport().Top
 
-	// Screen row: sum the wrapped row counts of lines [top, cur.Line) then add
-	// the cursor's wrapped row within its own line.
+	// Screen row within the pane: sum the wrapped row counts of lines
+	// [top, cur.Line) then add the cursor's wrapped row within its own line.
 	y := 0
 	for ln := top; ln < cur.Line; ln++ {
-		y += wrapRowsOf(v.Line(ln), textW)
+		y += wrapRowsOf(sv.Line(ln), textW)
 	}
-	dx := engine.CursorDisplayColumn(v.Line(cur.Line), cur.Col, v.Mode())
+	dx := engine.CursorDisplayColumn(sv.Line(cur.Line), cur.Col, sv.Mode())
 	y += dx / textW
-	x := gutter + dx%textW
+	x := coff + gutter + dx%textW
 
 	if y < 0 || y >= mapRows {
 		f.scr.HideCursor()
 		return
 	}
-	f.scr.ShowCursor(x, y)
+	f.scr.ShowCursor(x, roff+y)
 }
 
 // wrapRowsOf returns how many screen rows a display line occupies at the given

@@ -105,7 +105,7 @@ func (e *Engine) handlePendingOutput(ev Event) bool {
 		} else {
 			e.scr.pendingPage++
 		}
-		e.fe.Render(view{e.scr}, ChangeSet{Full: true})
+		e.fe.Render(e.curView(), ChangeSet{Full: true})
 		return true
 	}
 	// Final page: dismiss; ':' opens the colon line (nvi SCROLL_W_EX).
@@ -113,6 +113,6 @@ func (e *Engine) handlePendingOutput(ev Event) bool {
 	if r == ':' {
 		e.enterCmdline(':')
 	}
-	e.fe.Render(view{e.scr}, ChangeSet{Full: true})
+	e.fe.Render(e.curView(), ChangeSet{Full: true})
 	return true
 }

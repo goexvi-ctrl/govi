@@ -45,6 +45,19 @@ func (f *fakeView) PendingOutputFirst() bool    { return true }
 func (f *fakeView) MatchHighlight() (engine.Pos, bool) {
 	return engine.Pos{}, false
 }
+func (f *fakeView) Split() bool { return false }
+func (f *fakeView) Screens() []engine.ScreenView {
+	return []engine.ScreenView{fakePane{f}}
+}
+
+// fakePane adapts fakeView to engine.ScreenView as a single full pane.
+type fakePane struct{ *fakeView }
+
+func (p fakePane) Roff() int    { return 0 }
+func (p fakePane) Coff() int    { return 0 }
+func (p fakePane) Rows() int    { return int(p.fakeView.LineCount()) }
+func (p fakePane) Cols() int    { return 0 }
+func (p fakePane) Active() bool { return true }
 
 func gridRow(g *Grid, y int) string {
 	var b strings.Builder

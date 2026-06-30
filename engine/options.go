@@ -164,6 +164,27 @@ func defaultOptions() options {
 	return o
 }
 
+// clone returns a deep copy of o. A new split screen gets its own copy of the
+// options so that per-screen settings (nvi keeps OPTION opts[] in each SCR) can
+// diverge, while registers and maps stay shared.
+func (o options) clone() options {
+	n := options{
+		b: make(map[string]bool, len(o.b)),
+		i: make(map[string]int, len(o.i)),
+		s: make(map[string]string, len(o.s)),
+	}
+	for k, v := range o.b {
+		n.b[k] = v
+	}
+	for k, v := range o.i {
+		n.i[k] = v
+	}
+	for k, v := range o.s {
+		n.s[k] = v
+	}
+	return n
+}
+
 // Accessors used by the rest of the engine.
 func (o options) Bool(name string) bool  { return o.b[name] }
 func (o options) Int(name string) int    { return o.i[name] }
@@ -297,7 +318,7 @@ func (e *Engine) setOne(tok string) error {
 func (e *Engine) afterOptSet(d *optDef) {
 	switch d.name {
 	case "tabstop", "list", "number", "shiftwidth", "foreground", "background", "ruler", "showmode":
-		e.fe.Render(view{e.scr}, ChangeSet{Full: true})
+		e.fe.Render(e.curView(), ChangeSet{Full: true})
 	}
 }
 

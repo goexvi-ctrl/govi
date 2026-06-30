@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"os"
+
 	"govi/engine/buffer"
 	"govi/engine/mark"
 	"govi/engine/register"
@@ -37,11 +39,22 @@ type screen struct {
 
 	cursor     Pos   // 1-based line, 0-based rune column
 	top        int64 // first buffer line shown (1-based)
-	rows       int   // full text rows (nvi t_maxrows)
+	rows       int   // full text rows (nvi t_maxrows); the status row sits just below
 	mapRows    int   // active scroll-map height (nvi t_rows)
 	minMapRows int   // minimum map height after z[count] (nvi t_minrows)
 	cols       int   // columns available
 	defScroll  int   // ^D/^U half-page size (nvi defscroll); 0 = derive from rows
+
+	// Split-screen placement in the display (nvi SCR roff/coff). A screen
+	// occupies display rows [roff, roff+rows) for text and row roff+rows for its
+	// own status/colon/message line; columns [coff, coff+cols). For a single
+	// (unsplit) screen roff and coff are 0.
+	roff int
+	coff int
+
+	// file is the paged-file handle backing this screen's buffer, if any (nvi's
+	// per-screen EXF). nil for an in-memory buffer.
+	file *os.File
 
 	mode          Mode
 	showModeLabel string // showmode text: Command, Insert, Append, Change, Replace

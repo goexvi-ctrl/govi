@@ -500,7 +500,7 @@ func (e *Engine) exWriteQuit(c *exCmd) error {
 	if err := e.exWrite(c); err != nil {
 		return err
 	}
-	e.quit = true
+	e.finishQuit()
 	return nil
 }
 
@@ -572,7 +572,7 @@ func (e *Engine) exXit(c *exCmd) error {
 			return err
 		}
 	}
-	e.quit = true
+	e.finishQuit()
 	return nil
 }
 
@@ -583,8 +583,7 @@ func (e *Engine) exQuit(c *exCmd) error {
 	if e.scr.dirty() && !c.force {
 		return fmt.Errorf("No write since last change (use ! to override)")
 	}
-	e.removeRecovery() // clean exit (or explicit discard)
-	e.quit = true
+	e.finishQuit() // close just this screen if others are displayed, else exit
 	return nil
 }
 
