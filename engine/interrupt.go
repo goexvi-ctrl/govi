@@ -1,6 +1,9 @@
 package engine
 
-import "errors"
+import (
+	"errors"
+	"os/exec"
+)
 
 // errInterrupted is returned by an interruptible operation (search, :g/:v, :s)
 // when the user pressed ^C part-way through. It surfaces as nvi's "Interrupted"
@@ -48,6 +51,38 @@ func (e *Engine) Interrupted() bool { return e.interrupted.Load() }
 // promptly when a ^C arrives. It never carries a value; a receive means
 // "interrupt requested".
 func (e *Engine) InterruptChan() <-chan struct{} { return e.interruptCh }
+
+// awaitCmd waits for an already-started command c, collecting its result with
+// finish (which blocks until the output is ready and returns it), unless the
+// user presses ^C first. On interrupt it kills the process and returns
+// errInterrupted at once, without waiting for finish: the abandoned goroutine's
+// result lands in the buffered(1) channel with no reader and is discarded, and
+// killing the process unblocks it so nothing lingers. This is how govi improves
+// on nvi for blocking work -- the ^C wakes the select immediately rather than
+// waiting for a between-operations poll.
+//
+// c must already be started (so c.Process is non-nil for the kill). finish is
+// run on the helper goroutine, so it may read output buffers the command fills.
+func (e *Engine) awaitCmd(c *exec.Cmd, finish func() (string, error)) (string, error) {
+	type result struct {
+		out string
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		out, err := finish()
+		done <- result{out, err}
+	}()
+	select {
+	case r := <-done:
+		return r.out, r.err
+	case <-e.interruptCh:
+		if c.Process != nil {
+			_ = c.Process.Kill()
+		}
+		return "", errInterrupted
+	}
+}
 
 // clearInterrupt resets both interrupt representations. Call it just before
 // beginning an interruptible operation so a ^C that predates the operation does

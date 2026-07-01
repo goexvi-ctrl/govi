@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -34,8 +35,20 @@ func (e *Engine) runShellCmd(cmd, input string, cols, rows int) (string, error) 
 	if input != "" {
 		c.Stdin = strings.NewReader(input)
 	}
-	out, err := c.CombinedOutput()
-	return string(out), err
+	// Split CombinedOutput into Start + Wait so the process exists (c.Process set)
+	// before we begin selecting on the interrupt: a ^C then reliably kills it.
+	var buf bytes.Buffer
+	c.Stdout = &buf
+	c.Stderr = &buf
+	if err := c.Start(); err != nil {
+		return "", err
+	}
+	// buf is read only inside finish, after Wait returns (which waits for the
+	// output copiers), so there is no race with the child's writes.
+	return e.awaitCmd(c, func() (string, error) {
+		err := c.Wait()
+		return buf.String(), err
+	})
 }
 
 // runShellStdout runs cmd through the shell and returns only its standard output.
@@ -166,6 +179,9 @@ func (e *Engine) filterLines(l1, l2 int64, cmd string) error {
 		in.WriteByte('\n')
 	}
 	out, err := e.runShellCmd(cmd, in.String(), e.bangCols(), e.bangRows())
+	if errors.Is(err, errInterrupted) {
+		return err // ^C: leave the buffer unchanged, report "Interrupted"
+	}
 	if err != nil {
 		// nvi still replaces the filtered lines with stdout/stderr even when
 		// the utility exits non-zero (ex_filter.c reads the pipe before wait).
@@ -218,6 +234,9 @@ func (e *Engine) writeToCommand(c *exCmd, cmd string) error {
 		in.WriteByte('\n')
 	}
 	out, err := e.runShellCmd(cmd, in.String(), e.bangCols(), e.bangRows())
+	if errors.Is(err, errInterrupted) {
+		return err // ^C: nothing to show, report "Interrupted"
+	}
 	if err != nil {
 		// Like a filter, still show stdout/stderr when the utility exits
 		// non-zero; only a failure to launch is reported as an error.
@@ -241,6 +260,9 @@ func (e *Engine) readFromCommand(cmd string) ([][]rune, error) {
 		return nil, err
 	}
 	out, err := e.runShellCmd(cmd, "", e.bangCols(), e.bangRows())
+	if errors.Is(err, errInterrupted) {
+		return nil, err // ^C: insert nothing, report "Interrupted"
+	}
 	if err != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {

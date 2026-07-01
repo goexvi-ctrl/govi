@@ -8,7 +8,8 @@ import (
 )
 
 func TestRunBangPTY(t *testing.T) {
-	out, err := runBangPTY("/bin/sh", "printf 'line1\\nline2\\n'", t.TempDir(), 80, 24)
+	e := New(&captureFrontend{}, Options{})
+	out, err := e.runBangPTY("/bin/sh", "printf 'line1\\nline2\\n'", t.TempDir(), 80, 24)
 	if err != nil {
 		t.Fatal(err)
 	}

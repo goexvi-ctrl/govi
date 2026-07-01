@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -56,7 +57,10 @@ func (e *Engine) runBangNoRange(cmd string) error {
 	if runner, ok := e.fe.(BangRunner); ok {
 		out, err = runner.RunBang(e.shellProg(), cmd, e.cwd, cols, rows)
 	} else {
-		out, err = runBangPTY(e.shellProg(), cmd, e.cwd, cols, rows)
+		out, err = e.runBangPTY(e.shellProg(), cmd, e.cwd, cols, rows)
+	}
+	if errors.Is(err, errInterrupted) {
+		return err // ^C: no partial transcript, report "Interrupted"
 	}
 	e.presentBangOutput(out)
 	if err != nil {

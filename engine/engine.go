@@ -567,6 +567,13 @@ func (e *Engine) writeFile(path string) (lines, bytes int64, err error) {
 	n := s.store.Lines()
 	var bytesOut int64
 	for i := int64(1); i <= n; i++ {
+		if e.Interrupted() {
+			// ^C mid-write: discard the partial temp file so the original is left
+			// untouched (nvi leaves the file unmodified on an interrupted write).
+			tmp.Close()
+			os.Remove(tmpName)
+			return 0, 0, errInterrupted
+		}
 		line, _ := s.store.Get(i)
 		b := []byte(string(line))
 		tmp.Write(b)
