@@ -7,8 +7,9 @@
 /cmd/govi/govi
 /gui/bridge/bridge
 
-# Generated from engine/version.gox + the Version file by `make` (see Makefile).
-/engine/version.go
+# engine/version.go is generated from engine/version.gox + the Version file by
+# `make` (see Makefile), but it is checked in so `go build ./cmd/govi` works
+# without make. Only the maintainer regenerates it when bumping the Version.
 
 # macOS GUI app build products (libgovi archive, linked binary, .app bundle)
 /gui/build/
