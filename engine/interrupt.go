@@ -28,8 +28,11 @@ var errInterrupted = errors.New("Interrupted")
 //     reports on a buffered channel, and select between that result and
 //     InterruptChan(), so a ^C wakes them the instant it arrives.
 //
-// clearInterrupt resets the state at the start of an interruptible operation
-// (nvi's CLR_INTERRUPT), so a stale ^C cannot abort the next one.
+// clearInterrupt resets the state when a command finishes (deferred at the top
+// of Engine.Input, nvi's CLR_INTERRUPT), so a stale ^C cannot abort the next
+// command. It is deliberately not cleared on entry: the frontend can set the
+// flag out of band ahead of the Input that launches the command it aborts, and
+// clearing on entry would swallow that ^C.
 
 // Interrupt records that the user requested an interrupt. It is safe to call
 // concurrently with the goroutine driving Input -- indeed that is the point.
@@ -84,9 +87,11 @@ func (e *Engine) awaitCmd(c *exec.Cmd, finish func() (string, error)) (string, e
 	}
 }
 
-// clearInterrupt resets both interrupt representations. Call it just before
-// beginning an interruptible operation so a ^C that predates the operation does
-// not cancel it.
+// clearInterrupt resets both interrupt representations. It is deferred at the
+// top of Engine.Input so the reset happens when the command finishes: this
+// command's interruptible loops observe a ^C set (possibly out of band, ahead of
+// this Input) before it is dropped, and the drop keeps it from leaking into the
+// next command.
 func (e *Engine) clearInterrupt() {
 	e.interrupted.Store(false)
 	select {
