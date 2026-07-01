@@ -166,6 +166,11 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 	s := e.scr
 	s.msg, s.msgKind = "", MsgNone
 
+	if ev.Key == KeyEscape {
+		m.cancelCommand(e)
+		return
+	}
+
 	if ev.Mods&ModCtrl != 0 {
 		m.ctrlKey(e, ev.Rune)
 		return
@@ -251,6 +256,22 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 	}
 
 	m.editKey(e, r)
+}
+
+// cancelCommand implements <ESC> in vi command mode (nvi v_cmd's esc: handling).
+// It abandons a partially entered command so the next key starts fresh: any
+// pending operator, register selection, and count are discarded. nvi silently
+// cancels a "partial" command (one where a non-numeric component -- an operator
+// or register -- was entered) but rings the bell for a count-only or idle <ESC>
+// (POSIX requires the alert, and nvi refuses to silently swallow a bare count).
+func (m *vimode) cancelCommand(e *Engine) {
+	partial := m.op != 0 || m.reg != 0
+	m.op, m.opCount, m.opReg = 0, 0, 0
+	m.reg = 0
+	m.count, m.haveCount = 0, false
+	if !partial {
+		e.fe.Bell()
+	}
 }
 
 // ctrlKey handles control-key commands (scrolling, movement aliases, info).

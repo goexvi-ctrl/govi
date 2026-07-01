@@ -78,6 +78,27 @@ func TestViMotionsAndDelete(t *testing.T) {
 	viCase(t, "dt", "a,b,c\n", "dt,", ",b,c")
 }
 
+// TestViEscapeCancelsPartialCommand covers nvi's <ESC> behavior in command mode:
+// it abandons a pending operator, count, or register so the following key starts
+// a fresh command (nvi v_cmd esc: handling). Regression for the audit finding
+// that govi left a pending operator/count in place across <ESC>.
+func TestViEscapeCancelsPartialCommand(t *testing.T) {
+	// Operator then ESC: the operator is cancelled, the next key is its own
+	// command (w just moves; the line is unchanged).
+	viCase(t, "d<esc>w", "alpha beta gamma\n", "d\x1bw", "alpha beta gamma")
+	// Count then ESC: the count is discarded, so x deletes a single char.
+	viCase(t, "5<esc>x", "alpha beta gamma\n", "5\x1bx", "lpha beta gamma")
+	// Count + operator then ESC: both are cancelled.
+	viCase(t, "2d<esc>w", "alpha beta gamma\n", "2d\x1bw", "alpha beta gamma")
+	// Register selection then ESC: cancelled, so the following dd is a plain
+	// line delete into the unnamed register (not into "a).
+	viCase(t, `"a<esc>dd`, "one\ntwo\n", "\"a\x1bdd", "two")
+	// A cancelled operator must not leak into the next operator: d<esc>dd is a
+	// normal line delete, not d+d (which would also delete a line but via the
+	// wrong path) -- verify the result is a clean single-line delete.
+	viCase(t, "d<esc>dd", "one\ntwo\nthree\n", "d\x1bdd", "two\nthree")
+}
+
 func TestViChange(t *testing.T) {
 	viCase(t, "cw", "hello world\n", "cwbye\x1b", "bye world")
 	viCase(t, "cc", "old line\nkeep\n", "ccnew\x1b", "new\nkeep")
