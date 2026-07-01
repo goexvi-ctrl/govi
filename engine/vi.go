@@ -300,7 +300,9 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 		}
 	case 'w': // ^W: switch to the next split screen (nvi v_screen)
 		e.switchScreen()
-	case 'r': // redraw the screen (no-op here; the frontend repaints each input)
+	case 'l', 'r': // ^L / ^R: force a full redraw (nvi v_redraw), recovering the
+		// display from tty output another program produced
+		e.redrawRequested = true
 	case '\\': // ^\ switch to ex mode (nvi v_cmd.c 034)
 		e.handleCtrlBackslash()
 	case 'z': // suspend editor (^Z)

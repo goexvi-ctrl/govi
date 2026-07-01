@@ -154,6 +154,7 @@ type LineRange struct {
 // repaint everything; they exist so a GUI can repaint minimally.
 type ChangeSet struct {
 	Full           bool        // repaint everything
+	Sync           bool        // discard the cached screen and repaint from scratch (^L/^R, tty-corruption recovery)
 	DirtyLines     []LineRange // buffer lines whose content changed
 	CursorMoved    bool
 	ModeChanged    bool

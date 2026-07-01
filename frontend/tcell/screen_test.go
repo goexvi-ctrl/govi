@@ -272,3 +272,62 @@ func TestFrontendColonLine(t *testing.T) {
 		t.Fatalf("colon cursor at (%d,%d), want (2,%d)", x, y, textRows(3))
 	}
 }
+
+// countingScreen wraps a tcell Screen to count physical flushes so a test can
+// tell a normal incremental paint (Show) from a forced full redraw (Sync).
+type countingScreen struct {
+	tc.Screen
+	syncs int
+	shows int
+}
+
+func (c *countingScreen) Sync() { c.syncs++; c.Screen.Sync() }
+func (c *countingScreen) Show() { c.shows++; c.Screen.Show() }
+
+// TestRedrawForcesSync proves ^L/^R make the tcell frontend call Sync() (a full
+// physical redraw that recovers a tty another program corrupted), while an
+// ordinary motion only Show()s the changed cells.
+func TestRedrawForcesSync(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "f.txt")
+	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sim := tc.NewSimulationScreen("")
+	cs := &countingScreen{Screen: sim}
+	fe, err := NewWithScreen(cs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sim.SetSize(20, 6)
+	eng := engine.New(fe, engine.Options{})
+	fe.Attach(eng)
+	if err := eng.Open(path); err != nil {
+		t.Fatal(err)
+	}
+	eng.Resize(textRows(6), 20)
+
+	// A plain motion paints via Show(), never Sync().
+	syncs0, shows0 := cs.syncs, cs.shows
+	eng.Input(engine.KeyEvent{Rune: 'j'})
+	if cs.syncs != syncs0 {
+		t.Fatalf("plain motion called Sync() (%d -> %d)", syncs0, cs.syncs)
+	}
+	if cs.shows == shows0 {
+		t.Fatal("plain motion did not Show()")
+	}
+
+	for _, r := range []rune{'l', 'r'} {
+		syncs1 := cs.syncs
+		eng.Input(engine.KeyEvent{Rune: r, Mods: engine.ModCtrl})
+		if cs.syncs == syncs1 {
+			t.Fatalf("^%c did not call Sync()", 'A'+(r-'a'))
+		}
+		// Back to incremental painting on the next key.
+		syncs2 := cs.syncs
+		eng.Input(engine.KeyEvent{Rune: 'k'})
+		if cs.syncs != syncs2 {
+			t.Fatalf("key after ^%c still called Sync()", 'A'+(r-'a'))
+		}
+	}
+}

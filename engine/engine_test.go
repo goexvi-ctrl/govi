@@ -166,3 +166,26 @@ func typeColon(e *Engine, cmd string) {
 	}
 	e.Input(KeyEvent{Key: KeyEnter})
 }
+
+// TestRedrawRequestsSync verifies ^L and ^R ask the frontend to repaint from
+// scratch (ChangeSet.Sync) -- nvi v_redraw, so a corrupted tty can be restored
+// -- while an ordinary motion does not.
+func TestRedrawRequestsSync(t *testing.T) {
+	e, fe, _ := newTestEngine(t, "alpha\nbeta\n")
+
+	e.Input(KeyEvent{Rune: 'j'})
+	if fe.lastCS.Sync {
+		t.Fatalf("plain motion set ChangeSet.Sync")
+	}
+	for _, r := range []rune{'l', 'r'} {
+		e.Input(KeyEvent{Rune: r, Mods: ModCtrl})
+		if !fe.lastCS.Sync {
+			t.Fatalf("^%c did not set ChangeSet.Sync", 'A'+(r-'a'))
+		}
+		// The request is one-shot: the next event clears it.
+		e.Input(KeyEvent{Rune: 'k'})
+		if fe.lastCS.Sync {
+			t.Fatalf("ChangeSet.Sync stayed set after ^%c", r)
+		}
+	}
+}

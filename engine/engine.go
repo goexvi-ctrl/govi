@@ -55,6 +55,12 @@ type Engine struct {
 	quit    bool
 	exitMsg string // set when a signal caused the exit; printed by the host
 
+	// redrawRequested is set by ^L/^R and consumed by the next diff() so the
+	// frontend forces a full physical repaint (nvi v_redraw). This recovers the
+	// display after another program has written to the tty; ordinary paints only
+	// push changed cells and cannot fix corruption the editor did not cause.
+	redrawRequested bool
+
 	wordBoundary WordBoundaryFunc // double-click word selection (GUI hosts)
 
 	recoverPath  string    // this session's recovery file, "" if none yet
@@ -431,7 +437,10 @@ func (e *Engine) Input(ev Event) {
 
 func (e *Engine) diff(b snap) ChangeSet {
 	a := e.snap()
+	sync := e.redrawRequested
+	e.redrawRequested = false
 	return ChangeSet{
+		Sync:           sync,
 		CursorMoved:    a.cursor != b.cursor,
 		Scrolled:       a.top != b.top,
 		ModeChanged:    a.mode != b.mode,

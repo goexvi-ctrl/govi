@@ -27,6 +27,7 @@ type Frontend struct {
 	inEventBurst bool
 	paintPending bool
 	paintUrgent  bool // mode/message/overlay: paint immediately mid-burst
+	forceSync    bool // ^L/^R: next paint calls Sync() to recover a corrupted tty
 	lastPaintAt  time.Time
 }
 
@@ -270,6 +271,11 @@ func (f *Frontend) SetTitle(title string) { f.title = title }
 // Render paints the current View. During a burst, processEvents schedules
 // repaints; urgent changes (mode, message, overlay) paint on the next loop pass.
 func (f *Frontend) Render(v engine.View, cs engine.ChangeSet) {
+	if cs.Sync {
+		// Sticky until the next paint actually happens, so a ^L coalesced into a
+		// burst still forces the Sync() when the burst's paint fires.
+		f.forceSync = true
+	}
 	if f.inEventBurst {
 		f.paintPending = true
 		if renderUrgent(v, cs) {
@@ -290,7 +296,7 @@ func (f *Frontend) paintNow(v engine.View) {
 
 	if v.Mode() == engine.ModeExText {
 		f.renderExMode(v, w, h)
-		f.scr.Show()
+		f.present()
 		return
 	}
 
@@ -305,7 +311,19 @@ func (f *Frontend) paintNow(v engine.View) {
 	if out := v.PendingOutput(); out != nil {
 		f.renderOutput(out, v.PendingOutputPrompt(), v.PendingOutputFirst(), w, h)
 	}
-	f.scr.Show()
+	f.present()
+}
+
+// present flushes the back buffer to the terminal. Normally Show() emits only
+// the cells that changed; after ^L/^R (forceSync) Sync() redraws every cell from
+// scratch, discarding tcell's model of the on-screen contents so output another
+// program wrote to the tty is overwritten.
+func (f *Frontend) present() {
+	if f.forceSync {
+		f.scr.Sync()
+	} else {
+		f.scr.Show()
+	}
 }
 
 // paintScreen draws one screen (split pane): its text band [roff, roff+rows),

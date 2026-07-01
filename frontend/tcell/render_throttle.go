@@ -22,7 +22,7 @@ func (f *Frontend) minRenderPeriod() time.Duration {
 }
 
 func renderUrgent(v engine.View, cs engine.ChangeSet) bool {
-	if cs.Full || cs.ModeChanged || cs.MessageChanged {
+	if cs.Full || cs.Sync || cs.ModeChanged || cs.MessageChanged {
 		return true
 	}
 	if v.PendingOutput() != nil {
@@ -53,6 +53,7 @@ func (f *Frontend) markPainted() {
 	f.lastPaintAt = time.Now()
 	f.paintPending = false
 	f.paintUrgent = false
+	f.forceSync = false
 }
 
 func (f *Frontend) ensurePainted() {
