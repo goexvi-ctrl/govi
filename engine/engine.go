@@ -404,11 +404,17 @@ func (e *Engine) snap() snap {
 
 // Input feeds one event to the engine and repaints as needed.
 func (e *Engine) Input(ev Event) {
-	// Each event begins a fresh command, so discard any interrupt request left
-	// over from a previous one (nvi's CLR_INTERRUPT at the top of the command
-	// loop). An interrupt that arrives *during* an interruptible operation is set
-	// by the frontend on another goroutine and observed within that same Input.
-	e.clearInterrupt()
+	// Discard a leftover interrupt when the command FINISHES, not on entry
+	// (nvi's CLR_INTERRUPT). The frontend records a ^C out of band
+	// (Engine.Interrupt) on a separate goroutine and can poll it ahead of the
+	// main loop (see frontend/tcell forwardInterrupts), so a ^C typed to abort
+	// *this* command may already be set before Input begins. Clearing on entry --
+	// as an earlier version did -- swallowed such a ^C and let a long search /
+	// :s / :g / :! run to completion with no feedback. Deferring the clear lets
+	// this command's interruptible loops observe the flag first, then drops only
+	// an interrupt left over once the command is done, so it cannot leak into the
+	// next command.
+	defer e.clearInterrupt()
 
 	before := e.snap()
 
