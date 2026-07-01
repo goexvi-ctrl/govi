@@ -17,6 +17,7 @@ type tagLoc struct {
 	file string
 	line int64
 	col  int
+	tag  string // the tag name (or cscope pattern) whose jump saved this location
 }
 
 // tagMatch is one candidate location produced by :tag or :cscope find (nvi's
@@ -145,6 +146,7 @@ func (e *Engine) tagJumpNewScreen(name string) error {
 		file: e.scr.name,
 		line: e.scr.cursor.Line,
 		col:  e.scr.cursor.Col,
+		tag:  name,
 	})
 	if err := e.editNewScreen(file); err != nil {
 		return err
@@ -176,6 +178,7 @@ func (e *Engine) tagJump(name string) error {
 		file: e.scr.name,
 		line: e.scr.cursor.Line,
 		col:  e.scr.cursor.Col,
+		tag:  name,
 	})
 	e.scr.tagMatches = matches
 	e.scr.tagMatchIdx = 0

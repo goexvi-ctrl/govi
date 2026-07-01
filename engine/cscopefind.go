@@ -38,7 +38,7 @@ func (e *Engine) cscopeFind(arg string, force bool) error {
 	}
 
 	// Save the current location so ^T can return here once we jump.
-	ret := tagLoc{file: e.scr.name, line: e.scr.cursor.Line, col: e.scr.cursor.Col}
+	ret := tagLoc{file: e.scr.name, line: e.scr.cursor.Line, col: e.scr.cursor.Col, tag: pattern}
 
 	var matches []tagMatch
 	for _, c := range e.cscopes {

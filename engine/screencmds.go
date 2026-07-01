@@ -249,9 +249,68 @@ func (e *Engine) exDisplay(c *exCmd) error {
 		return e.displayBuffers()
 	case strings.HasPrefix("connections", arg):
 		return e.cscopeDisplay()
+	case strings.HasPrefix("tags", arg):
+		return e.displayTags()
 	default:
 		return fmt.Errorf("%s", usage)
 	}
+}
+
+// displayTags implements :display t[ags] (nvi ex_tag_display): the tag stack,
+// most recent first, numbered from 1, showing the file each tag jump landed in
+// and the tag (or cscope pattern) searched for. The current entry -- the most
+// recent jump, where the cursor sits now -- is marked with '*'.
+//
+// govi stores the location saved *before* each jump, so the file a jump landed
+// in is the file saved by the next jump; the newest jump's target is the current
+// file.
+func (e *Engine) displayTags() error {
+	s := e.scr
+	if len(s.tagStack) == 0 {
+		s.msg, s.msgKind = "The tags stack is empty", MsgInfo
+		return nil
+	}
+	var lines []string
+	for i := len(s.tagStack) - 1; i >= 0; i-- {
+		current := i == len(s.tagStack)-1
+		dest := s.name
+		if !current {
+			dest = s.tagStack[i+1].file
+		}
+		if dest == "" {
+			dest = "[No file]"
+		}
+		num := len(s.tagStack) - i
+		lines = append(lines, formatTagLine(num, dest, s.tagStack[i].tag, current))
+	}
+	e.showOutput(lines)
+	return nil
+}
+
+// formatTagLine renders one :display tags row, mirroring nvi's column layout: a
+// right-justified file name (long names truncated to their tail after "...")
+// followed by an optional '*' current marker and the tag name.
+func formatTagLine(num int, file, tag string, current bool) string {
+	const nameW = 30
+	var b strings.Builder
+	fmt.Fprintf(&b, "%2d ", num)
+	if r := []rune(file); len(r) > nameW {
+		fmt.Fprintf(&b, "   ... %s", string(r[len(r)-(nameW-4):]))
+	} else {
+		fmt.Fprintf(&b, "   %*s", nameW, file)
+	}
+	if current {
+		b.WriteByte('*')
+	}
+	if tag != "" {
+		if current {
+			b.WriteString("    ")
+		} else {
+			b.WriteString("     ")
+		}
+		b.WriteString(tag)
+	}
+	return b.String()
 }
 
 // displayScreens lists the background screens (nvi ex_sdisplay): names separated
