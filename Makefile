@@ -70,7 +70,9 @@ LSREGISTER = /System/Library/Frameworks/CoreServices.framework/Frameworks/Launch
 $(IDIR)/GoVi.app: gui/build/GoVi.app $(GOVI_ICNS)
 	rm -rf $@
 	ditto gui/build/GoVi.app $@
-	$(LSREGISTER) -f $@   # register file types + the govi:// URL scheme
+
+# No longer register
+#	$(LSREGISTER) -f $@   # register file types + the govi:// URL scheme
 
 # release: build a signed macOS .dmg for upload to a GitHub release. The styled
 # image holds the GoVi.app bundle, the govi CLI, and /Applications +
