@@ -319,10 +319,14 @@ func GoviText(h C.longlong, s *C.char) {
 }
 
 // GoviInterrupt delivers the interrupt event (cancel current command/input).
+// eng.Interrupt records the request out of band (it is safe to call while the
+// engine is busy in a long command) so an in-progress operation can observe it;
+// the InterruptEvent then drives the between-commands cancel (e.g. a colon line).
 //
 //export GoviInterrupt
 func GoviInterrupt(h C.longlong) {
 	if in := get(h); in != nil {
+		in.eng.Interrupt()
 		in.eng.Input(engine.InterruptEvent{})
 	}
 }

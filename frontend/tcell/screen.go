@@ -109,7 +109,9 @@ func (f *Frontend) Run() {
 func (f *Frontend) runVisual(sigCh <-chan os.Signal) bool {
 	events := make(chan tc.Event)
 	quit := make(chan struct{})
-	go f.scr.ChannelEvents(events, quit)
+	raw := make(chan tc.Event)
+	go f.scr.ChannelEvents(raw, quit)
+	go f.forwardInterrupts(raw, events)
 	defer func() {
 		close(quit)
 		// Unblock a PollEvent that may be waiting for a key so the goroutine sees
@@ -220,6 +222,56 @@ func (f *Frontend) runExMode(sigCh <-chan os.Signal) {
 			return
 		}
 	}
+}
+
+// forwardInterrupts relays polled tcell events from raw to the main loop's
+// channel, but first records the user's ^C out of band via eng.Interrupt(). It
+// runs on its own goroutine and, once anything is queued, never blocks solely on
+// the outgoing channel: it keeps draining raw via select even while the main
+// goroutine is stuck inside a long Engine.Input. That way a ^C is seen -- and
+// the interrupt flag set -- immediately, even if typed-ahead events sit in front
+// of it. It closes out when raw closes so the main loop still detects shutdown.
+func (f *Frontend) forwardInterrupts(raw <-chan tc.Event, out chan<- tc.Event) {
+	var queue []tc.Event
+	note := func(ev tc.Event) {
+		if isInterruptEvent(ev) {
+			f.eng.Interrupt()
+		}
+		queue = append(queue, ev)
+	}
+	for {
+		if len(queue) == 0 {
+			ev, ok := <-raw
+			if !ok {
+				close(out)
+				return
+			}
+			note(ev)
+			continue
+		}
+		select {
+		case out <- queue[0]:
+			queue = queue[1:]
+		case ev, ok := <-raw:
+			if !ok {
+				close(out) // shutdown: drop any tail, the main loop is exiting
+				return
+			}
+			note(ev)
+		}
+	}
+}
+
+// isInterruptEvent reports whether ev is the user's interrupt: a typed ^C (raw
+// mode delivers it as KeyCtrlC, not a signal) or tcell's own interrupt event.
+func isInterruptEvent(ev tc.Event) bool {
+	switch ev := ev.(type) {
+	case *tc.EventKey:
+		return ev.Key() == tc.KeyCtrlC
+	case *tc.EventInterrupt:
+		return true
+	}
+	return false
 }
 
 func (f *Frontend) handleEvent(ev tc.Event) {

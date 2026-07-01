@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"govi/engine/buffer"
@@ -61,6 +62,15 @@ type Engine struct {
 	// push changed cells and cannot fix corruption the editor did not cause.
 	redrawRequested bool
 
+	// interrupted / interruptCh carry the user's ^C (SIGINT) request across the
+	// frontend->engine boundary. They are the one piece of engine state a frontend
+	// may touch concurrently with the goroutine driving Input (see Interrupt): a
+	// long-running command must be able to observe a ^C that lands while it is
+	// still executing, and the engine is otherwise single-threaded. CPU-bound
+	// loops poll interrupted; blocking operations select on interruptCh.
+	interrupted atomic.Bool
+	interruptCh chan struct{} // buffered(1)
+
 	wordBoundary WordBoundaryFunc // double-click word selection (GUI hosts)
 
 	recoverPath  string    // this session's recovery file, "" if none yet
@@ -80,7 +90,11 @@ type Engine struct {
 // New returns an Engine that renders through fe. Call Open and Resize before
 // feeding input.
 func New(fe Frontend, _ Options) *Engine {
-	e := &Engine{fe: fe, wordBoundary: DefaultWordBoundary}
+	e := &Engine{
+		fe:           fe,
+		wordBoundary: DefaultWordBoundary,
+		interruptCh:  make(chan struct{}, 1),
+	}
 	e.setBuffer(buffer.NewMem(), "")
 	return e
 }
@@ -390,6 +404,12 @@ func (e *Engine) snap() snap {
 
 // Input feeds one event to the engine and repaints as needed.
 func (e *Engine) Input(ev Event) {
+	// Each event begins a fresh command, so discard any interrupt request left
+	// over from a previous one (nvi's CLR_INTERRUPT at the top of the command
+	// loop). An interrupt that arrives *during* an interruptible operation is set
+	// by the frontend on another goroutine and observed within that same Input.
+	e.clearInterrupt()
+
 	before := e.snap()
 
 	// A showmatch bracket flash is cleared by the next real key (which is then
