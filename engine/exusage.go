@@ -53,6 +53,7 @@ var exCmdMeta = map[string]exCmdUsage{
 	"copy":         {"copy lines", ":[range] copy [buffer] address"},
 	"delete":       {"delete lines", ":[range] delete [buffer]"},
 	"edit":         {"edit a file", ":e[dit][!] [file]"},
+	"ex":           {"edit a file (alias of :edit)", ":ex[!] [file]"},
 	"exusage":      {"display ex command usage", ":exu[sage] [command]"},
 	"file":         {"display or set the file name", ":f[ile] [name]"},
 	"global":       {"execute commands on matching lines", ":[range] g[lobal] /pattern/ commands"},

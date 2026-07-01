@@ -65,6 +65,7 @@ func init() {
 		{full: "abbreviate", min: 2, fn: (*Engine).exAbbreviate},
 		{full: "unabbreviate", min: 3, fn: (*Engine).exUnabbreviate},
 		{full: "edit", min: 1, fn: (*Engine).exEdit, newScreen: true},
+		{full: "ex", min: 2, fn: (*Engine).exEdit, newScreen: true}, // nvi: :ex is an alias of :edit (both are ex_edit)
 		{full: "next", min: 1, fn: (*Engine).exNext, newScreen: true},
 		{full: "previous", min: 4, fn: (*Engine).exPrev, newScreen: true},
 		{full: "rewind", min: 3, fn: (*Engine).exRewind},
