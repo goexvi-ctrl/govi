@@ -48,6 +48,9 @@ func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (Pos, bool
 		// Start just past the cursor on the current line, then following lines,
 		// wrapping back to the start if wrapscan is set.
 		for i := int64(0); i <= n; i++ {
+			if e.Interrupted() {
+				return Pos{}, false
+			}
 			lno := from.Line + i
 			startCol := 0
 			if i == 0 {
@@ -69,6 +72,9 @@ func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (Pos, bool
 
 	// Backward.
 	for i := int64(0); i <= n; i++ {
+		if e.Interrupted() {
+			return Pos{}, false
+		}
 		lno := from.Line - i
 		if lno < 1 {
 			if !ws {
@@ -92,6 +98,16 @@ func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (Pos, bool
 	return Pos{}, false
 }
 
+// searchFailErr reports why a searchFrom returned no match: an interrupt (the
+// user pressed ^C mid-scan) takes precedence over a genuine miss so the user
+// sees "Interrupted" rather than a misleading "not found".
+func (e *Engine) searchFailErr() error {
+	if e.Interrupted() {
+		return errInterrupted
+	}
+	return fmt.Errorf("Pattern not found: %s", e.scr.lastPattern)
+}
+
 // searchAddr resolves an ex search line-address (/pat/ or ?pat?): it finds the
 // line matching pat searching from the line adjacent to cur in dir, wrapping per
 // wrapscan, and returns that line number. The current line is excluded at the
@@ -110,7 +126,7 @@ func (e *Engine) searchAddr(pat string, cur int64, dir searchDir) (int64, error)
 	}
 	pos, ok := e.searchFrom(re, from, dir)
 	if !ok {
-		return 0, fmt.Errorf("Pattern not found: %s", e.scr.lastPattern)
+		return 0, e.searchFailErr()
 	}
 	return pos.Line, nil
 }
@@ -125,7 +141,7 @@ func (e *Engine) startSearch(pattern string, dir searchDir) error {
 	e.scr.lastSearchDir = dir
 	pos, ok := e.searchFrom(re, e.scr.cursor, dir)
 	if !ok {
-		return fmt.Errorf("Pattern not found: %s", e.scr.lastPattern)
+		return e.searchFailErr()
 	}
 	e.scr.cursor = pos
 	e.scr.clampCursor()
@@ -200,7 +216,7 @@ func (e *Engine) searchLine(line string, dir searchDir) (Pos, bool, error) {
 		s.lastSearchDir = dir
 		pos, ok := e.searchFrom(re, from, dir)
 		if !ok {
-			return Pos{}, false, fmt.Errorf("Pattern not found: %s", s.lastPattern)
+			return Pos{}, false, e.searchFailErr()
 		}
 		cur := pos
 		linewise = false
@@ -354,7 +370,7 @@ func (e *Engine) repeatSearch(opposite bool) error {
 	}
 	pos, ok := e.searchFrom(re, e.scr.cursor, dir)
 	if !ok {
-		return fmt.Errorf("Pattern not found: %s", e.scr.lastPattern)
+		return e.searchFailErr()
 	}
 	e.scr.cursor = pos
 	e.scr.clampCursor()

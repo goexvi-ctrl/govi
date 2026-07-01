@@ -1,5 +1,13 @@
 package engine
 
+import "errors"
+
+// errInterrupted is returned by an interruptible operation (search, :g/:v, :s)
+// when the user pressed ^C part-way through. It surfaces as nvi's "Interrupted"
+// message; any partial results already applied (substitutions made, global
+// commands run) are kept, matching nvi.
+var errInterrupted = errors.New("Interrupted")
+
 // Cooperative interrupt (^C / SIGINT) support.
 //
 // The engine runs single-threaded: a host feeds events through Engine.Input on

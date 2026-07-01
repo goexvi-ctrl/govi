@@ -56,6 +56,10 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 	lno := l1
 	end := l2
 	for lno <= end {
+		if e.Interrupted() {
+			e.endChange() // balance beginChange; keep the subs already made
+			return errInterrupted
+		}
 		in := s.lineRunes(lno)
 		out, n, replaced := substituteLine(re, in, replRunes, global)
 		if replaced {
@@ -134,6 +138,10 @@ func (e *Engine) exAmp(c *exCmd) error {
 	lno := l1
 	end := l2
 	for lno <= end {
+		if e.Interrupted() {
+			e.endChange() // balance beginChange; keep the subs already made
+			return errInterrupted
+		}
 		in := s.lineRunes(lno)
 		out, _, replaced := substituteLine(re, in, replRunes, global)
 		if replaced {
@@ -309,6 +317,9 @@ func (e *Engine) global(c *exCmd, invert bool) error {
 	// command that inserts elsewhere (e.g. t$) does not mistrack later matches.
 	var matches []int64
 	for ln := l1; ln <= l2 && ln <= s.lineCount(); ln++ {
+		if e.Interrupted() {
+			return errInterrupted
+		}
 		_, ok := re.MatchAt(s.lineRunes(ln), 0)
 		if ok != invert {
 			matches = append(matches, ln)
@@ -323,6 +334,9 @@ func (e *Engine) global(c *exCmd, invert bool) error {
 	e.beginChange()
 	defer e.endChange()
 	for i := range matches {
+		if e.Interrupted() {
+			return errInterrupted // keep the body commands already run (nvi)
+		}
 		target := s.gMarks[i]
 		if target < 1 || target > s.lineCount() {
 			continue // visited line was deleted by an earlier body command
