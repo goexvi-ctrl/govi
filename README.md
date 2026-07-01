@@ -1,24 +1,65 @@
 <img src="icon.png" alt="GoVi Icon" width="128">
 
-# govi
+# GoVi
 
-**GoVi** is an Ex/Vi text editor — a modern Go reimplementation of Keith Bostic's **nvi** preserving
-learned muscle memory.  **GoVi**'s development focus has been on **vi**.
+GoVi is a from-scratch reimplementation of Keith Bostic's nvi, written in Go. Not
+vim, not a "vi-like" — nvi specifically, down to the ex semantics and the `.exrc`
+security rules. The same editor core drives two front ends: a terminal editor
+(`govi`) and a native macOS app (`GoVi.app`).
 
-This repository builds to different **govi** programs:
+If you already know vi, you already know GoVi. That's the whole point. `h j k l`,
+operators and motions, `:` for ex commands, `Q` to drop into the ex line editor.
+Your fingers won't notice the difference.
 
-| Program | What it is |
-|---------|------------|
-| **`govi`** | Terminal editor (full-screen, like classic vi) |
-| **`GoVi.app`** | Native macOS graphical editor; **`govi -g`** opens files in it from the shell |
+## A note on how this got built
 
-Both use the same editor engine. If you know vi, you already know govi.
+Full disclosure, because it's the interesting part: GoVi is less than two weeks old
+and it started as an experiment in how far Claude (and Grok) can be driven to write
+a genuinely hard piece of software. nvi is a hard target — crash recovery, 73
+`:set` options, regex substitution, register and mark handling — so it made a good
+test.
+
+To keep it honest I didn't eyeball the output. I had Claude build a headless
+virtual terminal — a screen that lives entirely in memory and is never drawn — and
+then ran *real nvi* and GoVi inside it side by side, feeding both the same
+keystrokes and diffing the resulting screens cell for cell. So where GoVi claims
+parity, that parity is measured against the actual editor, not against my memory of
+it.
+
+I've been impressed with how well it worked. Make of that what you will.
+
+## What it can do
+
+- vi command mode: motions, operators, counts, search
+- ex mode (`Q`), with the substitute command and its flags
+- insert / replace / colon modes
+- marks and registers
+- split screens — `^W`, `:vsplit`, `:bg` / `:fg`, `:resize`
+- tags and cscope — `:tag`, `^]`, `:cscope`
+- crash recovery (`govi -r`)
+- `.nexrc` / `.exrc` startup files, following nvi's security model
+- 73 `:set` options — `autoindent`, `tabstop`, `shiftwidth`, `number`, `list`, and
+  the rest (a lot of them exist purely for compatibility, same as in nvi)
+- built-in help: `:help`, `:viusage`, `:exusage`, `:version`
+
+The macOS app adds tabbed windows, spell checking, international input, and color.
+
+## What it can't (yet)
+
+The honest list:
+
+- UTF-8 text only
+- `^Z` suspend works in the terminal, not in the app
+- some legacy `:set` options are accepted but inert (same as nvi)
+
+The chapters below are the reference: install, command-line flags, the full command
+and option tables, the macOS app, and crash recovery.
 
 ---
 
 ## Requirements
 
-- **Go 1.26 or newer** to build either frontend.
+- **Go 1.25 or newer** to build either frontend.
 - A **Unix-like system** (Linux, macOS, *BSD) for the terminal editor.
 - For the macOS GUI (**GoVi.app**): **macOS** with the **Swift toolchain**
   (`swiftc`) from Xcode or the Command Line Tools.
@@ -64,6 +105,11 @@ cp "/Volumes/GoVi "*/govi /usr/local/bin/   # or ~/bin
 The release is signed with a Developer ID and notarized by Apple, so it opens
 normally -- no quarantine workaround needed.
 
+**Launch GoVi.app once from the Finder after installing it** (double-click it in
+**Applications**). The first launch registers the app's **`govi://`** URL scheme
+with macOS Launch Services, which is how **`govi -g`** reaches it; until it has run
+once, `govi -g` has no registered app to open.
+
 Or build it from source:
 
 ```sh
@@ -96,18 +142,18 @@ govi [-g [-w]] [-r [file]] [-s] [file ...]
 | **`-s`** | Silent startup: do not read startup files or `EXINIT`/`NEXINIT` |
 | **`file ...`** | Files to edit. With multiple files, **`:n`** / **`:prev`** move through the argument list |
 
-With **`-g`**, `govi` hands the files to a running **GoVi.app** (or launches it),
-forwarding the working directory and startup environment. Set **`GOVI_APP`** if the
-app bundle is not in the default search path (next to the `govi` binary,
-`gui/build/GoVi.app` in a checkout, or `/Applications/GoVi.app`).
+With **`-g`**, `govi` does not locate the app bundle itself — it hands the files
+to **GoVi.app** through macOS **Launch Services**.  Because it goes through the
+**`govi://`** URL scheme, **GoVi.app must be registered with Launch Services
+first.** Do this by opening **GoVi** from the finder.  Once this is dong `govi -g`
+will open that version of **GoVi**.
 
-**`govi -g` with no file** opens a *temporary* buffer (backed by a `vi.XXXXXX`
-file in the temp directory, like nvi), which is **deleted when its window/tab
-closes**. Because the temporary file is discarded, **`:wq`/`:x`/`ZZ`/`:q` warn
+**`govi [-g]` with no file** opens a *temporary* buffer (backed by a `vi.XXXXXX`
+file in the temp directory, like nvi), which is **deleted when govi exits**.
+Because the temporary file is discarded, **`:wq`/`:x`/`ZZ`/`:q` warn
 ("File is a temporary; exit will discard modifications") instead of quitting** —
 save your work with **`:w file`** (which adopts that name), or discard it with
-**`:q!`** / **`ZQ`**. (govi does not write the temporary file itself; that would
-only matter if you had copied its name for use from another process.)
+**`:q!`**.
 
 ---
 
@@ -156,7 +202,7 @@ These are the authoritative references; the summaries below match them.
 |-----|--------|
 | **`h`** **`^H`** | Left |
 | **`j`** **`^J`** **`^N`** | Down (logical line) |
-| **`k`** **`^K`** **`^P`** | Up |
+| **`k`** **`^P`** | Up |
 | **`l`** **space** | Right |
 | **`w` `b` `e`** | Word forward / backward / end of word |
 | **`W` `B` `E`** | WORD (blank-delimited) motions |
@@ -175,7 +221,7 @@ These are the authoritative references; the summaries below match them.
 | **`{` `}`** | Paragraph backward / forward |
 | **`[[` `]]`** | Section backward / forward |
 | **`` ` `` `'`** *mark* | To mark (exact / line) |
-| **`_`** | First non-blank of last line |
+| **`_`** | First non-blank (count-1 lines down) |
 
 ### Scrolling
 
@@ -207,7 +253,7 @@ These are the authoritative references; the summaries below match them.
 | **`d`** *motion* | Delete |
 | **`c`** *motion* | Change (delete, then insert) |
 | **`y`** *motion* | Yank |
-| **`>` **`<`** *motion* | Shift lines right / left |
+| **`>`** **`<`** *motion* | Shift lines right / left |
 | **`~`** *motion* | Toggle case |
 | **`!`** *motion* *cmd* | Filter through shell |
 | **`dd` `cc` `yy`** | Line delete / change / yank |
@@ -243,7 +289,6 @@ These are the authoritative references; the summaries below match them.
 | **`^]`** **`^T`** | Tag push / pop (ctags) |
 | **`Q`** | Ex (line) mode |
 | **`ZZ`** | Write if modified and quit |
-| **`ZQ`** | Quit without writing |
 | **`^L` `^R`** | Repaint (terminal; GUI repaints automatically) |
 | **`^Z`** | Suspend editor (Unix terminal only) |
 
@@ -347,17 +392,38 @@ ambiguous prefix rings the bell so you can type more.
 | **`:unabbreviate`** **`:una[bbreviate] lhs`** | Remove abbreviation |
 | **`:source`** **`:so[urce] file`** | Read and execute ex commands from a file |
 
-### Shell, tags, recovery
+### Shell and recovery
 
 | Command | Summary |
 |---------|---------|
 | **`:[range] !cmd`** **`:!cmd`** | Filter lines through shell / run shell command |
 | **`:shell`** **`:sh[ell]`** | Run an interactive shell |
-| **`:tag`** **`:ta[g] tagname`** | Jump to ctags tag |
 | **`:preserve`** **`:pre[serve]`** | Flush recovery file |
 | **`:recover`** **`:rec[over] [file]`** | Recover from recovery directory |
 | **`:suspend`** **`:su[spend][!]`** | Suspend session (terminal) |
 | **`:stop`** **`:st[op][!]`** | Same as **`:suspend`** |
+
+### Screens (split windows)
+
+| Command | Summary |
+|---------|---------|
+| **`:vsplit`** **`:vs[plit] [file]`** | Split into a new screen |
+| **`:bg`** / **`:fg`** | Background / foreground a screen |
+| **`:resize`** **`:res[ize] [+/-]n`** | Grow or shrink the current split |
+
+In vi mode, **`^W`** switches to the next screen. A **capitalized** ex command
+(**`:Edit`**, **`:Next`**, **`:Tag`**, …) opens its target in a new split screen.
+
+### Tags and cscope
+
+| Command | Summary |
+|---------|---------|
+| **`:tag`** **`:ta[g] tag`** | Jump to a ctags tag (**`^]`** jumps to the word under the cursor) |
+| **`:tagpop`** **`:tagp[op]`** | Pop the tag stack (**`^T`**) |
+| **`:tagnext`** **`:tagn[ext]`** / **`:tagprev`** | Next / previous match for the current tag |
+| **`:tagtop`** **`:tagt[op]`** | Pop the entire tag stack |
+| **`:display tags`** | Show the tag stack (also **`:display buffers`** / **`screens`** / **`connections`**) |
+| **`:cscope`** **`:cs[cope] cmd`** | cscope connections and queries: add / find / reset / kill / help |
 
 ### Misc
 
@@ -415,9 +481,9 @@ every option. Boolean options: **`:set option`** / **`:set nooption`**. Query:
 | **readonly** | ro | off | Treat buffer as read-only |
 | **exrc** | | off | Read **`.exrc`** in the current directory at startup |
 | **recdir** | | /var/tmp/vi.recover | Recovery file directory |
-| **scroll** | scr | — | Lines scrolled by **`^D`/`^U`** |
-| **sections** | sect | NHSHH… | Section boundaries for **`[[` `]]`** |
-| **paragraphs** | para | IPLPPPQPP… | Paragraph boundaries for **`{` `}`** |
+| **scroll** | scr | — | Recognized, but **`^D`/`^U`** use a computed half-page (option not yet wired) |
+| **sections** | sect | NHSHH… | Recognized, but **`[[` `]]`** use built-in defaults (custom value not yet honored) |
+| **paragraphs** | para | IPLPPPQPP… | Recognized, but **`{` `}`** use built-in defaults (custom value not yet honored) |
 
 ### GoVi.app display options
 
@@ -432,7 +498,7 @@ not change the display.
 
 Example: **`:set background=wheat foreground=#001122`**
 
-All other nvi options (74 total) are recognized and appear in **`:set all`**. Many
+All other nvi options (73 total) are recognized and appear in **`:set all`**. Many
 are inert in govi — they exist for compatibility but do not change behavior. See
 [`docs/parity.md`](docs/parity.md) for the full parity matrix.
 
@@ -581,9 +647,7 @@ Developer-oriented notes about the architecture and embedding boundary are in
 govi aims for nvi-compatible editing, not a byte-for-byte clone of every nvi
 feature. Notable gaps:
 
-- **No split screens** — no **`^W`**, **`:bg`**, **`:fg`**, **`:resize`**
 - **UTF-8** text only
-- **No cscope** integration
 - **Suspend** (**`^Z`**, **`:suspend`**) — Unix terminal only; not in GoVi.app
 - Many legacy options are **settable but inert** (see parity doc)
 - **`foreground`** / **`background`** colors — **GoVi.app** only
