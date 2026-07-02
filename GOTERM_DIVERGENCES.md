@@ -115,6 +115,14 @@ shell). `:e #` used to open a file literally named `#`. Oracle-verified incl. th
 per-command too-many-match errors (`:e` -> Usage, `:w`/`:r` -> "too many file
 names"). See entry #46.
 
+## Status: divergences #49-53 (the 2026-07-01 parity-review wave) are FIXED;
+#54 (:display tags/buffers format) is OPEN, display-only. The review also
+verified every parity.md row through the harness (see govi/docs/parity-review.md)
+and fixed a harness artifact: govi's #45 flock made the second-starting editor
+read-only when a comparison shared one fixture file, eating the first sent byte
+at nvi's "Press any key" prompt -- goterm's runArgs now starts both editors with
+EXINIT="set nolock" (locking itself stays covered by TestCoverageLock).
+
 ## Status: divergences #1-45 are addressed. #45 (2026-06-28, DATA-SAFETY) FIXED:
 implemented the `lock` option (advisory `flock` on a dedicated fd, read-only
 fallback when another process -- including nvi -- holds it, re-locked across the
@@ -1018,6 +1026,73 @@ transient status line truncates a hair differently in a 3-way split, and
 changed" report is still unimplemented (pre-existing, surfaces on a vsplit's
 shared bottom status row).
 
+## Parity-review wave (2026-07-01, found by the parityreview_test.go battery)
+
+### 49. insert-mode `^T` shifted the line's indent instead of indenting at the cursor  [FIXED 2026-07-01]
+govi's `^T` in input mode adjusted the LINE's leading indent (vim semantics).
+nvi (v_txt.c txt_dent, isindent=1) advances the CURSOR's screen column to the
+next shiftwidth boundary: any blanks immediately before the cursor are consumed,
+then the gap is filled with tabs (a full tabstop each) and trailing spaces,
+inserted at the cursor. On "alpha beta gamma" with sw=4, `ia^Tb<Esc>`:
+nvi -> "a   balpha..." (cursor 0,4); govi (old) -> "    abalpha..." (0,5).
+Fixed in engine/viinsert.go (insertIndent); verified by the goterm coverage
+ctrl-t case and two new conformance cases (insert-ctrl-t-midline/-tab) against
+the oracle. Insert-mode `^D` keeps the old line-shift model for now (nvi's ^D
+is ai-boundary-scoped with 0^D/^^D forms; still open, see the Inconclusive ^D
+note).
+
+### 50. `:vi`/`:visual` with a file argument did nothing  [FIXED 2026-07-01]
+nvi's vi-mode `:vi[sual][!] [+cmd] [file]` is a second command-table entry
+(C_VISUAL_VI) that IS `ex_edit` -- it edits the named file; `:Vi file` opens it
+in a split. govi's exVisual ignored the argument entirely (only the bare
+ex-mode "return to vi" form worked). Fixed in engine/exmode.go: a non-empty
+argument delegates to exEdit. Verified: parityreview "visual-file" now matches.
+
+### 51. `window` option was inert (accepted but drove nothing)  [FIXED 2026-07-01]
+parity.md claimed `window` functional; it was read only as a cap for the
+`z<count>` map. In nvi, `:set window=N` (f_window-clamped to lines-1) resizes
+the vi map immediately -- the screen paints N text rows and grows like a
+z[count] small screen -- and `^F`/`^B` page by `count*window - 2`
+(v_pagedown/v_pageup), while a geometry change re-derives a default window and
+the displayed `scroll` (f_lines). At 24x80 with `:set window=6`, `^F`:
+nvi top->005 in a 6-row map; govi (old) paged 21 lines in a full screen.
+Fixed across engine/screen.go (windowVal/applyWindowOption), engine/vi.go
+(pageOffset, z reset to the window default), engine/options.go (afterOptSet),
+engine/engine.go (Resize/relayout). `:set all` now shows nvi-matching
+window/scroll values. Verified: parityreview "window" matches; paging battery
+0/8; z cases unchanged.
+
+### 52. `:preserve` snapshot was deleted on a clean exit  [FIXED 2026-07-01, DATA-SAFETY]
+govi wrote the recovery snapshot on `:preserve` ("File preserved") but a normal
+`:q!`/exit removed it with the session's recovery file -- defeating the entire
+point of :preserve (recover LATER with `vi -r`). nvi keeps a preserved file
+(RCV_PRESERVE). Fixed in engine/recovery.go: :preserve marks the file kept;
+removeRecovery detaches instead of deleting it (later edits start a fresh
+recovery file). Regression: engine TestRecoveryPreservedSurvivesExit. Note nvi
+leaves TWO entries (snapshot + recover-mail file); govi has no recovery-mail
+concept and leaves one.
+
+### 53. `autowrite` was not honored by the file-switching commands  [FIXED 2026-07-01]
+parity.md claimed `autowrite` functional; only suspend used it. nvi applies it
+in file_m1 (common/exf.c): an unforced `:n`/`:prev`/`:rew`, tag jump/push/pop,
+or `^^` away from a modified buffer WRITES it (unless readonly -- System V
+behavior) instead of failing "No write since last change". Fixed in
+engine/exfile.go (checkModified) and applied at all seven guard sites
+(exfile.go, tags.go, vicmds2.go). Verified: parityreview "autowrite" matches
+with the guard case still failing without aw. The historic autowrite-before-`:!`
+corner (ex_bang.c) is not wired; recorded, not fixed.
+
+### 54. `:display tags` / `:display buffers` format differs from nvi  [OPEN, display]
+Behavior is right (stack and buffers are tracked; `:display screens` matches
+exactly) but the report layout differs. `tags`: nvi prints one frame per stack
+entry INCLUDING the origin position (a one-jump stack shows 2 rows) with its
+own alignment; govi prints only the jump frames and pads differently.
+`buffers`: nvi lists "* a (line mode)" style per-buffer headers plus a
+"* default buffer" row; govi prints a compact "a  <content>" line and no
+default-buffer row. Both are display-only; needs homebrew-nvi format
+reverse-engineering (this tree's ex_tag.c does not match the 1.81.6 binary's
+spacing exactly), so recorded rather than fixed.
+
 ## Undocumented but functional (note, not a divergence)
 - vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes
   in ex mode and returns cleanly with `vi` -- but `^\` is NOT listed in govi's
@@ -1055,6 +1130,9 @@ shared bottom status row).
 ## Known/accepted (do NOT "fix")
 - `^X` hex input: govi accepts 2, 4, or 6 hex digits; nvi only 2. Intentional
   govi extension.
+- `filec` defaults to `<tab>` in govi (colon-line file completion on out of the
+  box); nvi's default is empty. The completion mechanism itself matches when
+  both editors set the same character (parityreview "filec").
 - `"0` (yank register) and `"-` (small-delete register): govi implements both
   (vim); nvi has NEITHER -- `"0p` / `"-p` are no-ops in nvi. govi correctly does
   not shift the numbered ring "1.."9 on a sub-line delete. These are govi

@@ -48,7 +48,7 @@ parity row can be checked against the source description quickly.
 | `^D` | yes | ✅ | ✅ | scroll down half screen (sets count) |
 | `^E` | yes | 🟡 | 🟡 | scroll down by lines; matches nvi on non-wrapping files, but scrolls by logical line rather than screen row, so wrapped lines differ (GOTERM_DIVERGENCES #44) |
 | `^F` | yes | ✅ | ✅ | scroll down by screens |
-| `^G` | yes | ✅ | ✅ | file status |
+| `^G` | yes | 🟡 | 🟡 | file status; a message too long for one line lands truncated on govi's status line where nvi pages it into a `+=+=` overlay (info-message pagination, GOTERM_DIVERGENCES "Inconclusive") |
 | `^H` | yes | ✅ | ✅ | move left; arrives as Backspace (normalizeKey->`h`). A raw Ctrl-`h` rune is unbound |
 | `^J` | yes | ✅ | ✅ | move down by lines |
 | `^L` | yes | ✅ | — | force full redraw (tcell `Sync()`), recovering a tty another program corrupted. GUI has no tty to corrupt |
@@ -63,7 +63,7 @@ parity row can be checked against the source description quickly.
 | `^Y` | yes | 🟡 | 🟡 | scroll up by lines; same wrapped-line granularity gap as `^E` (GOTERM_DIVERGENCES #44) |
 | `^Z` | yes | ✅ | — | suspend; GUI has no job control (Suspender unimplemented) |
 | `^[` | yes | ✅ | ✅ | escape / cancel partial command (clears a pending operator, register, or count; bells for a count-only or idle `^[`) |
-| `^\` | yes | ✅ | ✅ | switch to ex mode |
+| `^\` | yes | 🟡 | 🟡 | switch to ex mode; same ex-screen layout difference as `Q` |
 | `^]` | yes | ✅ | ✅ | tag push for cursor word |
 | `^^` | yes | ✅ | ✅ | switch to alternate file |
 
@@ -121,7 +121,7 @@ parity row can be checked against the source description quickly.
 | `N` | yes | ✅ | ✅ | reverse last search |
 | `O` | yes | ✅ | ✅ | open line above |
 | `P` | yes | ✅ | ✅ | paste before cursor |
-| `Q` | yes | ✅ | ✅ | switch to ex mode |
+| `Q` | yes | 🟡 | 🟡 | switch to ex mode; works, but govi clears to a `:` prompt screen where nvi keeps the buffer text visible (GOTERM_DIVERGENCES #29 cosmetic note) |
 | `R` | yes | ✅ | ✅ | replace characters |
 | `S` | yes | ✅ | ✅ | substitute line(s) |
 | `T` | yes | ✅ | ✅ | backward to-char search in line |
@@ -167,30 +167,30 @@ parity row can be checked against the source description quickly.
 | `!` | yes | ✅ | ✅ | filter/run shell command |
 | `#` | yes | ✅ | ✅ | display numbered lines |
 | `&` | yes | ✅ | ✅ | repeat substitution |
-| `*` | yes | ✅ | ✅ | execute buffer (alias of `@`) |
+| `*` | yes | ✅ | ✅ | execute buffer (alias of `@`). Deliberate difference: nvi's bare `:*` carries no default address, so address-taking buffer contents fail ("address of 0"); govi runs the buffer like `:@` |
 | `<` | yes | ✅ | ✅ | shift left |
 | `=` | yes | ✅ | ✅ | print line number |
 | `>` | yes | ✅ | ✅ | shift right |
 | `@` | yes | ✅ | ✅ | execute buffer |
-| `append` | yes | ✅ | ✅ | |
+| `append` | yes | 🟡 | 🟡 | buffer result correct; nvi enters its scrolled "ex input mode" display, govi keeps the vi screen (GOTERM_DIVERGENCES #28) |
 | `abbreviate` | yes | ✅ | ✅ | |
-| `args` | yes | ✅ | ✅ | |
+| `args` | yes | 🟡 | 🟡 | list correct; a list too long for one line meets the info-message pagination gap (see `^G`) |
 | `bg` | yes | ✅ | ✅ | background current screen |
-| `change` | yes | ✅ | ✅ | |
+| `change` | yes | 🟡 | 🟡 | same ex-input display difference as `append` (#28) |
 | `cd` | yes | ✅ | ✅ | |
 | `chdir` | yes | ✅ | ✅ | |
 | `copy` | yes | ✅ | ✅ | |
 | `cscope` | yes | ✅ | ✅ | add/find/reset/kill/help + `:display connections` |
 | `delete` | yes | ✅ | ✅ | |
-| `display` | yes | ✅ | ✅ | buffers / connections / screens / tags |
+| `display` | yes | 🟡 | 🟡 | buffers / connections / screens / tags all answer; `screens` matches, but `buffers` omits nvi's default-buffer row and mode annotations, and `tags` omits the origin stack frame and aligns differently |
 | `edit` | yes | ✅ | ✅ | |
 | `ex` | yes | ✅ | ✅ | alias of `:edit` (nvi `:ex` = `ex_edit`, not a mode switch); added to `exCmds` |
 | `exusage` | yes | ✅ | ✅ | |
-| `file` | yes | ✅ | ✅ | |
+| `file` | yes | 🟡 | 🟡 | same long-message pagination caveat as `^G` |
 | `fg` | yes | ✅ | ✅ | foreground a backgrounded screen |
 | `global` | yes | ✅ | ✅ | |
 | `help` | yes | ✅ | ✅ | |
-| `insert` | yes | ✅ | ✅ | |
+| `insert` | yes | 🟡 | 🟡 | same ex-input display difference as `append` (#28) |
 | `join` | yes | ✅ | ✅ | |
 | `k` | yes | ✅ | ✅ | set mark (alias of `mark`) |
 | `list` | yes | ✅ | ✅ | |
@@ -203,7 +203,7 @@ parity row can be checked against the source description quickly.
 | `open` | yes | ❌ | ❌ | out of scope (also unimplemented in nvi) |
 | `perl` | yes | ❌ | ❌ | out of scope (scripting) |
 | `perldo` | yes | ❌ | ❌ | out of scope (scripting) |
-| `preserve` | yes | ✅ | ✅ | |
+| `preserve` | yes | ✅ | ✅ | snapshot goes to `recdir` and survives a clean exit for `-r` recovery; govi writes no companion recover-mail file (nvi's second entry) |
 | `previous` | yes | ✅ | ✅ | |
 | `print` | yes | ✅ | ✅ | |
 | `put` | yes | ✅ | ✅ | |
@@ -231,7 +231,7 @@ parity row can be checked against the source description quickly.
 | `unmap` | yes | ✅ | ✅ | |
 | `v` (vglobal) | yes | ✅ | ✅ | |
 | `version` | yes | ✅ | ✅ | |
-| `visual` / `vi` | yes | ✅ | ✅ | ex->vi switch, and vi-mode `visual` opens a screen |
+| `visual` / `vi` | yes | ✅ | ✅ | ex->vi switch; vi-mode `:vi[sual] file` edits that file (nvi C_VISUAL_VI is `ex_edit`), `:Vi` opens it in a split |
 | `viusage` | yes | ✅ | ✅ | |
 | `vsplit` | yes | ✅ | ✅ | |
 | `write` | yes | ✅ | ✅ | |
@@ -258,20 +258,20 @@ auditing reads of each name outside `engine/options.go`.
 | `altwerase` | yes | ⚙️ | ⚙️ | word-erase variant not wired |
 | `autoindent` | yes | ✅ | ✅ | |
 | `autoprint` | yes | ⚙️ | ⚙️ | ex auto-print not wired |
-| `autowrite` | yes | ✅ | ✅ | |
+| `autowrite` | yes | ✅ | ✅ | honored by the nvi `file_m1` family (`:n`/`:prev`/`:rew`, tag jumps/pop/push, `^^`) and suspend; the historic `:!`-warns-first corner is not wired |
 | `backup` | yes | ⚙️ | ⚙️ | |
 | `beautify` | yes | ⚙️ | ⚙️ | |
 | `cdpath` | yes | ✅ | ✅ | |
 | `cedit` | yes | ⚙️ | ⚙️ | colon-line edit char not wired |
 | `columns` | yes | ✅ | ✅ | |
 | `comment` | yes | ⚙️ | ⚙️ | |
-| `directory` | yes | ⚙️ | ⚙️ | temp-file dir not wired |
+| `directory` | yes | ⚙️ | ⚙️ | temp-file dir not wired; default follows `$TMPDIR` like nvi |
 | `edcompatible` | yes | ⚙️ | ⚙️ | |
 | `errorbells` | yes | ⚙️ | ⚙️ | govi always signals errors |
 | `escapetime` | yes | ⚙️ | ⚙️ | key-timing not wired |
 | `exrc` | yes | ✅ | ✅ | |
 | `extended` | yes | ⚙️ | ⚙️ | extended-regex toggle not wired |
-| `filec` | yes | ✅ | ✅ | file-name completion char |
+| `filec` | yes | ✅ | ✅ | file-name completion char; completion verified equal, but govi defaults it to `<tab>` (completion on out of the box) where nvi's default is empty |
 | `flash` | yes | ⚙️ | ⚙️ | visual bell not wired |
 | `hardtabs` | yes | ⚙️ | ⚙️ | |
 | `iclower` | yes | ⚙️ | ⚙️ | |
@@ -300,7 +300,7 @@ auditing reads of each name outside `engine/options.go`.
 | `remap` | yes | ⚙️ | ⚙️ | maps are NON-remapping (RHS sent literally, `maps.go:163`); they never expand recursively |
 | `report` | yes | ✅ | ✅ | |
 | `ruler` | yes | ✅ | ✅ | |
-| `scroll` | yes | ⚙️ | ⚙️ | `^D`/`^U` use computed half-page |
+| `scroll` | yes | ⚙️ | ⚙️ | matches nvi in vi mode anyway: nvi's `^D`/`^U` use `defscroll` (a `^D` count), not this option; nvi reads `scroll` only in ex contexts govi lacks (`:z` sizing, ex `^D`). `:set all` shows the nvi-derived default (window/2) |
 | `searchincr` | yes | ⚙️ | ⚙️ | no incremental search |
 | `sections` | yes | ⚙️ | ⚙️ | `[[`/`]]` use built-in defaults |
 | `secure` | yes | ✅ | ✅ | |
@@ -322,7 +322,7 @@ auditing reads of each name outside `engine/options.go`.
 | `ttywerase` | yes | ⚙️ | ⚙️ | |
 | `verbose` | yes | ⚙️ | ⚙️ | |
 | `warn` | yes | ⚙️ | ⚙️ | |
-| `window` | yes | ✅ | ✅ | |
+| `window` | yes | ✅ | ✅ | `:set window=N` resizes the vi map immediately (small-screen growth like `z<count>`) and drives the `^F`/`^B` page distance (`count*window-2`); tracks the terminal on resize unless explicitly set |
 | `windowname` | yes | ⚙️ | ⚙️ | |
 | `wraplen` | yes | ⚙️ | ⚙️ | `wrapmargin` is used instead |
 | `wrapmargin` | yes | ✅ | ✅ | |
@@ -370,12 +370,19 @@ auditing reads of each name outside `engine/options.go`.
 - **Vi command mode:** complete. Every key nvi binds is implemented, including
   `^L`/`^R` (force full redraw via tcell `Sync()`, for recovering a tty another
   program corrupted). Normal editing still uses diffed, burst-coalesced paints.
-- **Ex commands:** 71 of 74 in-scope commands done (`:display` now covers all four
-  subcommands, including `tags`). Genuine gaps: `^D` scroll, `:mkexrc`, `:z`. Out
-  of scope: `:open`, `:perl`, `:perldo`, `:script`, `:tcl`.
+  The 🟡 rows above are display-layer differences (wrapped-line scrolling,
+  ex-screen layout, info-message pagination), not behavior gaps.
+- **Ex commands:** 71 of 74 in-scope commands done. Genuine gaps: `^D` scroll,
+  `:mkexrc`, `:z`. Out of scope: `:open`, `:perl`, `:perldo`, `:script`,
+  `:tcl`. `:display` answers all four subcommands but formats `buffers` and
+  `tags` differently from nvi.
 - **Options:** all 73 shared nvi options are settable; ~31 are functional and ~42
   are inert placeholders (several inert by design: scripting/terminal-optimization
   hints). 8 nvi options are omitted entirely (encoding, a couple
   internal/deprecated flags, and the `w300`/`w1200`/`w9600` baud-rate window
   aliases), so govi's `:set all` is not a literal superset of nvi's. govi adds 4
   options of its own for the GUI/renderer.
+- **Evidence:** every row of this matrix was verified against nvi 1.81.6 through
+  the goterm harness (or by source reading where the PTY model cannot drive a
+  feature) in the 2026-07 review; see [`parity-review.md`](parity-review.md) for
+  the row-by-row evidence and what the review fixed.
