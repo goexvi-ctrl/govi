@@ -44,6 +44,7 @@ type screen struct {
 	minMapRows int   // minimum map height after z[count] (nvi t_minrows)
 	cols       int   // columns available
 	defScroll  int   // ^D/^U half-page size (nvi defscroll); 0 = derive from rows
+	winUserSet bool  // window option was set explicitly (survives resizes)
 
 	// Split-screen placement in the display (nvi SCR roff/coff). A screen
 	// occupies display rows [roff, roff+rows) for text and row roff+rows for its
@@ -400,6 +401,32 @@ func wrapRows(dw, w int) int {
 		return 1
 	}
 	return (dw + w - 1) / w
+}
+
+// applyWindowOption re-derives the window option and the vi map after a
+// geometry change (nvi f_lines): a default or no-longer-fitting window tracks
+// the new text-row count; an explicitly set smaller value survives.
+func (s *screen) applyWindowOption() {
+	if w := s.opts.Int("window"); !s.winUserSet || w <= 0 || w > s.rows {
+		s.opts.i["window"] = s.rows
+		s.winUserSet = false
+	}
+	s.mapRows = s.windowVal()
+	s.minMapRows = s.mapRows
+	// nvi f_lines: a geometry change also re-derives the related scroll
+	// value (displayed by :set all; vi's ^D/^U use defscroll, not this).
+	s.opts.i["scroll"] = s.windowVal() / 2
+}
+
+// windowVal is the effective window option value (nvi O_WINDOW after
+// f_window's clamp): at most the text rows, at least 1. The vi map default
+// and the ^F/^B paging distance derive from it.
+func (s *screen) windowVal() int {
+	w := s.opts.Int("window")
+	if w <= 0 || w > s.rows {
+		return s.rows
+	}
+	return w
 }
 
 // effectiveMapRows returns the active map height, defaulting to the full screen.

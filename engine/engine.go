@@ -76,6 +76,7 @@ type Engine struct {
 	recoverPath  string    // this session's recovery file, "" if none yet
 	recoverSync  time.Time // last time the recovery file was written
 	recoverDirty bool      // changes exist that the recovery file lacks
+	recoverKeep  bool      // :preserve ran; keep the file past save/exit (nvi RCV_PRESERVE)
 
 	// Line-oriented ex (Q) output: while exLineMode is set, command output is
 	// collected into exOut for a line-at-a-time host instead of the transcript.
@@ -332,8 +333,7 @@ func (e *Engine) Resize(rows, cols int) {
 		s.roff, s.coff = 0, 0
 		s.rows = rows
 		s.cols = cols
-		s.mapRows = rows
-		s.minMapRows = rows
+		s.applyWindowOption()
 		s.defScroll = 0 // re-derive the half-page size from the new height
 		// Keep the columns/lines options in step with the terminal geometry.
 		s.opts.i["columns"] = cols
@@ -377,8 +377,7 @@ func (e *Engine) relayout() {
 		s.coff = 0
 		s.cols = e.termCols
 		s.rows = disp - 1
-		s.mapRows = s.rows
-		s.minMapRows = s.rows
+		s.applyWindowOption()
 		s.defScroll = 0
 		s.opts.i["columns"] = e.termCols
 		s.opts.i["lines"] = e.termH

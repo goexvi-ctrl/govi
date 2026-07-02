@@ -105,9 +105,15 @@ func (e *Engine) exitExMode() {
 	e.scr.exTranscript = nil
 }
 
-// exVisual implements :visual / :vi -- return to vi mode from ex mode. :Vi
-// (capitalized) opens the current file in a new split screen.
+// exVisual implements :visual / :vi. A bare :vi returns to vi mode from ex
+// mode, and :Vi (capitalized) opens the current file in a new split screen.
+// nvi's vi-mode form is a separate command-table entry (C_VISUAL_VI) that is
+// ex_edit itself -- ":vi[sual][!] [+cmd] [file]" edits another file -- so with
+// an argument this delegates to exEdit (which also handles the capital form).
 func (e *Engine) exVisual(c *exCmd) error {
+	if strings.TrimSpace(c.arg) != "" {
+		return e.exEdit(c)
+	}
 	if c.newScreen {
 		return e.editNewScreen("")
 	}

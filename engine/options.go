@@ -108,7 +108,9 @@ var optDefs = []optDef{
 	{name: "ttywerase", typ: optBool},
 	{name: "verbose", typ: optBool},
 	{name: "warn", typ: optBool, dB: true},
-	{name: "window", abbr: "w", typ: optNum},
+	// Static default mirrors nvi (default lines - 1); Resize re-derives it
+	// from the real geometry (applyWindowOption).
+	{name: "window", abbr: "w", typ: optNum, dN: 23},
 	{name: "windowname", typ: optBool},
 	{name: "wraplen", abbr: "wl", typ: optNum},
 	{name: "wrapmargin", abbr: "wm", typ: optNum},
@@ -150,6 +152,9 @@ func defaultOptions() options {
 		}
 	}
 	// Environment-derived defaults, like nvi.
+	if dir := os.Getenv("TMPDIR"); dir != "" {
+		o.s["directory"] = strings.TrimRight(dir, "/")
+	}
 	if sh := os.Getenv("SHELL"); sh != "" {
 		o.s["shell"] = sh
 	}
@@ -318,6 +323,21 @@ func (e *Engine) setOne(tok string) error {
 func (e *Engine) afterOptSet(d *optDef) {
 	switch d.name {
 	case "tabstop", "list", "number", "shiftwidth", "foreground", "background", "ruler", "showmode":
+		e.fe.Render(e.curView(), ChangeSet{Full: true})
+	case "window":
+		// nvi f_window clamps to the text rows, then the vi map (and hence
+		// ^F/^B paging) uses the new size immediately, growing like a z[count]
+		// small screen.
+		s := e.scr
+		if w := s.opts.i["window"]; w > s.rows {
+			s.opts.i["window"] = s.rows
+		} else if w < 1 {
+			s.opts.i["window"] = 1
+		}
+		s.winUserSet = true
+		s.mapRows = s.windowVal()
+		s.minMapRows = s.mapRows
+		s.scrollToCursor()
 		e.fe.Render(e.curView(), ChangeSet{Full: true})
 	}
 }

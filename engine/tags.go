@@ -39,8 +39,8 @@ type tagMatch struct {
 func (e *Engine) gotoTagMatch(m tagMatch, force bool) error {
 	switched := false
 	if m.file != "" && m.file != e.scr.name {
-		if e.scr.modified && !force {
-			return fmt.Errorf("No write since last change")
+		if err := e.checkModified(force, "No write since last change"); err != nil {
+			return err
 		}
 		if err := e.Open(m.file); err != nil {
 			return err
@@ -109,8 +109,8 @@ func (e *Engine) exTagTop(c *exCmd) error {
 	if len(s.tagStack) == 0 {
 		return fmt.Errorf("The tags stack is empty")
 	}
-	if s.modified && !c.force {
-		return fmt.Errorf("No write since last change")
+	if err := e.checkModified(c.force, "No write since last change"); err != nil {
+		return err
 	}
 	loc := s.tagStack[0]
 	s.tagStack = nil
@@ -169,8 +169,8 @@ func (e *Engine) tagJump(name string) error {
 	if err != nil {
 		return err
 	}
-	if e.scr.modified {
-		return fmt.Errorf("No write since last change")
+	if err := e.checkModified(false, "No write since last change"); err != nil {
+		return err
 	}
 	// Push the current location for ^T, then make the matches the active group so
 	// :tagnext/:tagprev can step through them.

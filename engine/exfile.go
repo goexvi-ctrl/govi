@@ -137,6 +137,21 @@ func (e *Engine) exEdit(c *exCmd) error {
 
 // exNext implements :n[!] -- edit the next file in the argument list. :N
 // (capitalized) edits the next file in a new split screen.
+// checkModified is nvi's file_m1 guard (common/exf.c), used by the
+// file-switching commands (:next/:prev/:rewind, the tag jumps, ^^): when
+// autowrite is set, an unforced switch away from a modified buffer writes it
+// instead of failing. The write is skipped for a readonly session (System V
+// behavior, which nvi follows), falling through to the error.
+func (e *Engine) checkModified(force bool, msg string) error {
+	if !e.scr.dirty() || force {
+		return nil
+	}
+	if e.scr.opts.Bool("autowrite") && !e.scr.opts.Bool("readonly") {
+		return e.Save("")
+	}
+	return fmt.Errorf("%s", msg)
+}
+
 func (e *Engine) exNext(c *exCmd) error {
 	if e.scr.argIdx+1 >= len(e.scr.argv) {
 		return fmt.Errorf("No more files to edit")
@@ -146,8 +161,8 @@ func (e *Engine) exNext(c *exCmd) error {
 		// arglist positioned at that file; the parent screen is left untouched.
 		return e.editArgNewScreen(e.scr.argIdx + 1)
 	}
-	if e.scr.dirty() && !c.force {
-		return fmt.Errorf("No write since last change (use :n! to override)")
+	if err := e.checkModified(c.force, "No write since last change (use :n! to override)"); err != nil {
+		return err
 	}
 	e.scr.argIdx++
 	return e.Open(e.scr.argv[e.scr.argIdx])
@@ -162,8 +177,8 @@ func (e *Engine) exPrev(c *exCmd) error {
 	if c.newScreen {
 		return e.editArgNewScreen(e.scr.argIdx - 1)
 	}
-	if e.scr.dirty() && !c.force {
-		return fmt.Errorf("No write since last change (use :prev! to override)")
+	if err := e.checkModified(c.force, "No write since last change (use :prev! to override)"); err != nil {
+		return err
 	}
 	e.scr.argIdx--
 	return e.Open(e.scr.argv[e.scr.argIdx])
@@ -182,8 +197,8 @@ func (e *Engine) editArgNewScreen(idx int) error {
 
 // exRewind implements :rewind[!] -- edit the first file in the list.
 func (e *Engine) exRewind(c *exCmd) error {
-	if e.scr.dirty() && !c.force {
-		return fmt.Errorf("No write since last change (use :rewind! to override)")
+	if err := e.checkModified(c.force, "No write since last change (use :rewind! to override)"); err != nil {
+		return err
 	}
 	if len(e.scr.argv) == 0 {
 		return fmt.Errorf("No files to edit")

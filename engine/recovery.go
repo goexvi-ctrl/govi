@@ -118,13 +118,16 @@ func (e *Engine) writeRecovery(path string) {
 }
 
 // removeRecovery deletes this session's recovery file (after a clean save or
-// exit).
+// exit). A :preserve'd file is detached instead of deleted -- the point of
+// :preserve is that the snapshot survives for a later vi -r, as in nvi; any
+// further changes then start a fresh recovery file.
 func (e *Engine) removeRecovery() {
-	if e.recoverPath != "" {
+	if e.recoverPath != "" && !e.recoverKeep {
 		os.Remove(e.recoverPath)
-		e.recoverPath = ""
 	}
+	e.recoverPath = ""
 	e.recoverDirty = false
+	e.recoverKeep = false
 }
 
 // recoveredFile holds a parsed recovery file.
@@ -262,6 +265,7 @@ func (e *Engine) exPreserve(c *exCmd) error {
 		return nil
 	}
 	e.syncRecovery(true)
+	e.recoverKeep = true
 	e.scr.msg, e.scr.msgKind = "File preserved", MsgInfo
 	return nil
 }

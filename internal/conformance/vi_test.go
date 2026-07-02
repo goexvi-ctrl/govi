@@ -69,6 +69,9 @@ var viConformanceCases = []struct {
 	{"macro-at", "dd\nfoo\nbar\n", `"ayyj@a`}, // reg a = "dd"; @a deletes line 2
 	{"insert-ctrl-w", "\n", "ihello world\x17X\x1b"},
 	{"insert-ctrl-t", "x\n", ":set sw=4\ri\x14\x1b"},
+	// ^T indents at the CURSOR (nvi txt_dent), not the line's leading indent.
+	{"insert-ctrl-t-midline", "alpha\n", ":set sw=4\ria\x14b\x1b"},
+	{"insert-ctrl-t-tab", "x\n", ":set sw=8\ri\x14\x1b"},
 	{"increment", "val 41\n", "f4#+"},
 	{"tildeop-word", "hello world\n", ":set tildeop\r~w"},
 	{"filter-operator", "c\nb\na\n", "!Gsort\r"},

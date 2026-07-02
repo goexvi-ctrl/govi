@@ -73,8 +73,8 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 			m.insertWordErase(e)
 		case 'u': // erase back to the start of the inserted text on this line
 			m.insertLineErase(e)
-		case 't': // shift the current line right by shiftwidth
-			m.insertShift(e, +1)
+		case 't': // indent to the next shiftwidth boundary at the cursor
+			m.insertIndent(e)
 		case 'd': // shift the current line left by shiftwidth
 			m.insertShift(e, -1)
 		case 'h': // erase the previous character
@@ -291,8 +291,56 @@ func (m *vimode) insertLineErase(e *Engine) {
 	s.cursor.Col = lo
 }
 
-// insertShift implements ^T / ^D: shift the current line's indentation by one
-// shiftwidth, moving the cursor with the text.
+// insertIndent implements insert-mode ^T (nvi v_txt.c txt_dent, isindent=1):
+// advance the cursor's screen column to the next shiftwidth boundary. Any
+// <blank>s immediately before the cursor are first consumed, then the gap from
+// the remaining text to the target column is filled with <tab>s (each worth a
+// full tabstop) and trailing <space>s, inserted AT THE CURSOR. This differs
+// from vim, which shifts the line's leading indent regardless of the cursor.
+func (m *vimode) insertIndent(e *Engine) {
+	s := e.scr
+	line := s.lineRunes(s.cursor.Line)
+	col := clampIdx(s.cursor.Col, len(line))
+	ts, sw := s.opts.Int("tabstop"), s.opts.Int("shiftwidth")
+	scrcol := func(n int) int {
+		c := 0
+		for i := 0; i < n; i++ {
+			if line[i] == '\t' {
+				c += ts - c%ts
+			} else {
+				c++
+			}
+		}
+		return c
+	}
+	target := scrcol(col)
+	target += sw - target%sw
+
+	lo := col
+	for lo > 0 && (line[lo-1] == ' ' || line[lo-1] == '\t') {
+		lo--
+	}
+	var fill []rune
+	for cno := scrcol(lo); cno < target; {
+		if step := ts - cno%ts; cno+step <= target {
+			fill = append(fill, '\t')
+			cno += step
+		} else {
+			fill = append(fill, ' ')
+			cno++
+		}
+	}
+	nl := cloneR(line[:lo])
+	nl = append(nl, fill...)
+	nl = append(nl, line[col:]...)
+	s.setLine(s.cursor.Line, nl)
+	s.cursor.Col = lo + len(fill)
+}
+
+// insertShift implements ^D: shift the current line's indentation by one
+// shiftwidth, moving the cursor with the text. (nvi's insert-mode ^D acts on
+// the autoindent whitespace at the cursor and inserts a literal ^D elsewhere;
+// that fuller model, with the 0^D / ^^D forms, is still an open gap.)
 func (m *vimode) insertShift(e *Engine, dir int) {
 	s := e.scr
 	line := s.lineRunes(s.cursor.Line)

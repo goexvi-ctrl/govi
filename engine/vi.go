@@ -280,9 +280,9 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 	count := effCount(m.count)
 	switch r {
 	case 'f': // forward a full screen (nvi v_pagedown)
-		m.pageDown(e, count*s.rows-2, true)
+		m.pageDown(e, pageOffset(count, s.windowVal()), true)
 	case 'b': // back a full screen (nvi v_pageup)
-		m.pageUp(e, count*s.rows-2, true)
+		m.pageUp(e, pageOffset(count, s.windowVal()), true)
 	case 'd': // down half a screen (nvi v_hpagedown)
 		if m.haveCount {
 			s.defScroll = count
@@ -371,6 +371,17 @@ func (m *vimode) moveVertical(e *Engine, targetLine int64) {
 	s.cursor.Line = clampLine(s, targetLine)
 	s.cursor.Col = s.maintainedCol(s.cursor.Line)
 	m.preserveCol = true
+}
+
+// pageOffset is the ^F/^B scroll distance (nvi v_pagedown/v_pageup):
+// count * window - 2, never less than one line. The two-line overlap is
+// subtracted only once, matching historic vi.
+func pageOffset(count, window int) int {
+	off := count * window
+	if off <= 2 {
+		return 1
+	}
+	return off - 2
 }
 
 // pageDown scrolls the viewport toward EOF by offset screen lines (nvi
@@ -713,8 +724,10 @@ func (e *Engine) screenPosition(m *vimode, typ rune, line int64, haveLine bool, 
 		}
 		return
 	}
-	s.mapRows = s.rows
-	s.minMapRows = s.rows
+	// z without a window size resets the map to the window-option default
+	// (nvi t_minrows), not necessarily the full screen.
+	s.mapRows = s.windowVal()
+	s.minMapRows = s.mapRows
 	switch typ {
 	case '\r', '\n':
 		s.top = target
@@ -723,7 +736,7 @@ func (e *Engine) screenPosition(m *vimode, typ rune, line int64, haveLine bool, 
 		// scrolls forward one screen (Z_PLUS scrolls t_rows lines, vs. ^F's
 		// window-2), cursor to the new top line.
 		if !haveLine {
-			m.pageDown(e, s.rows, true)
+			m.pageDown(e, s.effectiveMapRows(), true)
 			return
 		}
 		s.top = target
@@ -733,7 +746,7 @@ func (e *Engine) screenPosition(m *vimode, typ rune, line int64, haveLine bool, 
 		// the line at the bottom (the historic "previous screen" off-by-one of
 		// the line form is not replicated).
 		if !haveLine {
-			m.pageUp(e, s.rows, true)
+			m.pageUp(e, s.effectiveMapRows(), true)
 			return
 		}
 		s.top = s.topForBottom(target)

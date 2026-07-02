@@ -50,8 +50,8 @@ func (e *Engine) editAlternate() error {
 	if e.scr.altFile == "" {
 		return fmt.Errorf("No alternate file")
 	}
-	if e.scr.modified {
-		return fmt.Errorf("No write since last change")
+	if err := e.checkModified(false, "No write since last change"); err != nil {
+		return err
 	}
 	return e.Open(e.scr.altFile)
 }
