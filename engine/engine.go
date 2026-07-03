@@ -567,6 +567,65 @@ func (e *Engine) runCmdline(prefix rune, line string) {
 
 // writeFile saves the buffer to path, atomically via a temp file + rename, and
 // returns the line and byte counts written.
+// writeRange writes buffer lines [l1,l2] to path. When appendMode is true the
+// lines are appended to path (nvi ":[range]w >> file", LF_APPEND) and path is
+// created if absent; otherwise path is replaced atomically via temp+rename.
+// Used for partial-range and appended writes; the whole-file write goes through
+// writeFile, which additionally handles the emptied-buffer case.
+func (e *Engine) writeRange(path string, l1, l2 int64, appendMode bool) (lines, bytes int64, err error) {
+	s := e.scr
+	var f *os.File
+	var tmpName string
+	if appendMode {
+		f, err = os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+		if err != nil {
+			return 0, 0, err
+		}
+	} else {
+		f, err = os.CreateTemp(filepath.Dir(path), ".govi-*")
+		if err != nil {
+			return 0, 0, err
+		}
+		tmpName = f.Name()
+	}
+	var bytesOut, nOut int64
+	for i := l1; i <= l2; i++ {
+		if e.Interrupted() {
+			f.Close()
+			if tmpName != "" {
+				os.Remove(tmpName)
+			}
+			return 0, 0, errInterrupted
+		}
+		line, _ := s.store.Get(i)
+		b := []byte(string(line))
+		f.Write(b)
+		f.Write([]byte{'\n'})
+		bytesOut += int64(len(b)) + 1
+		nOut++
+	}
+	if err := f.Close(); err != nil {
+		if tmpName != "" {
+			os.Remove(tmpName)
+		}
+		return 0, 0, err
+	}
+	if !appendMode {
+		if info, err := os.Stat(path); err == nil {
+			mode := info.Mode() & (os.ModePerm | os.ModeSetuid | os.ModeSetgid)
+			if err := os.Chmod(tmpName, mode); err != nil {
+				os.Remove(tmpName)
+				return 0, 0, err
+			}
+		}
+		if err := os.Rename(tmpName, path); err != nil {
+			os.Remove(tmpName)
+			return 0, 0, err
+		}
+	}
+	return nOut, bytesOut, nil
+}
+
 func (e *Engine) writeFile(path string) (lines, bytes int64, err error) {
 	s := e.scr
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".govi-*")

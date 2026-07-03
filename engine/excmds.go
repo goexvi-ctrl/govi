@@ -334,6 +334,13 @@ func (e *Engine) exWrite(c *exCmd) error {
 		}
 		return e.writeToCommand(c, cmd)
 	}
+	// :[range]w >> file appends the addressed lines to file (nvi LF_APPEND).
+	// Detect and strip the ">>" before file-name expansion.
+	appendMode := false
+	if strings.HasPrefix(arg, ">>") {
+		appendMode = true
+		arg = strings.TrimSpace(arg[2:])
+	}
 	if arg != "" {
 		// Expand %/#/glob characters in the target name (nvi ex_write.c calls
 		// argv_exp2). :w takes one file, so several matches is an error.
@@ -360,7 +367,8 @@ func (e *Engine) exWrite(c *exCmd) error {
 	// existing file that is not the buffer's own file (or whose name was changed
 	// via :f) unless the write is forced (:w!) or the `writeany` option is set.
 	// Without this, :w other-existing-file silently overwrites it (data loss).
-	if !c.force && !e.scr.opts.Bool("writeany") {
+	// Appending (>>) does not clobber, so nvi skips this check for it.
+	if !c.force && !appendMode && !e.scr.opts.Bool("writeany") {
 		target := arg
 		if target == "" {
 			target = e.scr.name
@@ -371,6 +379,34 @@ func (e *Engine) exWrite(c *exCmd) error {
 				return fmt.Errorf("%s exists, not written; use ! to override", target)
 			}
 		}
+	}
+	// An appended write, or a write of a partial line range, writes only the
+	// addressed lines and never clears the modified flag or touches recovery/lock
+	// state (it is not a full save of the buffer to its own file). The plain
+	// whole-file :w goes through Save, which keeps that bookkeeping.
+	l1, l2 := int64(1), e.scr.lineCount()
+	if c.addrCount > 0 {
+		l1, l2 = c.addr1, c.addr2
+	}
+	if appendMode || l1 != 1 || l2 != e.scr.lineCount() {
+		target := arg
+		if target == "" {
+			target = e.scr.name
+		}
+		if target == "" {
+			return fmt.Errorf("No current filename")
+		}
+		n, b, err := e.writeRange(e.resolvePath(target), l1, l2, appendMode)
+		if err != nil {
+			return err
+		}
+		verb := "written"
+		if appendMode {
+			verb = "appended"
+		}
+		e.scr.msg = fmt.Sprintf("%q: %d lines, %d bytes %s", filepath.Base(target), n, b, verb)
+		e.scr.msgKind = MsgInfo
+		return nil
 	}
 	// Save resolves the name against the current directory at write time; pass it
 	// through as given so the buffer's name stays relative (nvi FR_NAME).
