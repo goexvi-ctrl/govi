@@ -505,12 +505,12 @@ enum LaunchPath {
     }
 }
 
-// WaitCoordinator unblocks `govi -g -w` launchers. Each -w invocation records a
+// WaitCoordinator unblocks `govi -G` launchers. Each -G invocation records a
 // FIFO in launch-wait and is tracked as an independent session over only the
 // files that invocation opened; its FIFO is signaled (opened for writing) once
 // none of those files remain open in any window/tab. Later invocations -- with
-// or without -w -- start their own session (or none) and never extend an
-// existing one, so closing just the -w file releases its launcher.
+// or without -G -- start their own session (or none) and never extend an
+// existing one, so closing just the -G file releases its launcher.
 final class WaitCoordinator {
     static let shared = WaitCoordinator()
 
@@ -523,7 +523,7 @@ final class WaitCoordinator {
 
     // registerWait starts a wait session when the just-launched invocation
     // recorded a FIFO in launch-wait; paths are the files it opened. Invocations
-    // without -w leave no launch-wait and add no session. It is called before the
+    // without -G leave no launch-wait and add no session. It is called before the
     // windows exist, so completion is first evaluated by the checkComplete() that
     // openPaths runs after opening them.
     func registerWait(paths: [String], fifo: String?) {
@@ -589,7 +589,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // handleLaunch reads a validated one-shot payload and opens its files with the
-    // launcher's cwd (and -w FIFO). Data only: it never writes or runs anything.
+    // launcher's cwd (and -G FIFO). Data only: it never writes or runs anything.
     private func handleLaunch(_ token: String) {
         guard let p = LaunchPath.consumePayload(token: token), !p.files.isEmpty else { return }
         EditorWindow.openPaths(p.files, cwd: p.cwd, fifo: p.fifo, silent: p.silent)

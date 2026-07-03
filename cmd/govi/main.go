@@ -6,8 +6,9 @@
 // instead of vi mode, following nvi's program-name convention; -v forces vi
 // mode back on.
 //
-// With -g, govi instead opens the named files in the GoVi.app macOS GUI (see
-// launch_darwin.go) and does not start the terminal editor.
+// With -g (or -G, which also waits for the files to be closed), govi instead
+// opens the named files in the GoVi.app macOS GUI (see launch_darwin.go) and
+// does not start the terminal editor.
 package main
 
 import (
@@ -74,7 +75,7 @@ func runIO(progname string, args []string, stdout, stderr io.Writer) int {
 	exMode := fs.Bool("e", false, "start in ex mode (as if invoked as ex)")
 	viMode := fs.Bool("v", false, "start in vi mode (overrides an ex program name; wins over -e)")
 	gui := fs.Bool("g", false, "open the files in the GoVi.app GUI instead of the terminal")
-	wait := fs.Bool("w", false, "with -g, block until the tabs/windows for these files are closed")
+	guiWait := fs.Bool("G", false, "like -g, and block until the tabs/windows for these files are closed")
 
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
@@ -83,12 +84,8 @@ func runIO(progname string, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	if *gui {
-		return launchGUI(*silent, *wait, fs.Args())
-	}
-	if *wait {
-		fmt.Fprintln(stderr, "govi: -w is only valid with -g")
-		return 2
+	if *gui || *guiWait {
+		return launchGUI(*silent, *guiWait, fs.Args())
 	}
 
 	fe, err := newEditorFrontend()

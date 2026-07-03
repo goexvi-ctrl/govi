@@ -371,13 +371,13 @@ nvi parses `[-eFlRrSsv] [-c command] [-t tag] [-w size] [file ...]`
 | `-r` recover (list / named file) | yes | ✅ | same two forms |
 | `-c command` / `+cmd` | yes | ❌ | engine hook exists (`RunEx`); flag not wired |
 | `-t tag` | yes | ❌ | `:tag` works inside the editor |
-| `-w size` | yes | ❌ | sets the `window` option; **conflicts with govi's boolean `-w`** (GUI wait, only valid with `-g`) |
+| `-w size` | yes | ❌ | sets the `window` option; the letter is free now that govi's GUI wait is `-G`, but the flag is not wired |
 | `-s` batch/silent (ex only) | yes | ❌ | **govi repurposes `-s`** as "skip startup files/EXINIT" (closest nvi analog: exrc handling; nvi has no such flag) |
 | `-S` secure | yes | ❌ | govi's `secure` option works; flag not wired |
 | `-l` lisp + showmatch | yes | ❌ | `lisp` is inert in govi anyway |
 | `-F` (no snapshot) | error msg | ❌ | nvi only prints "no longer supported" |
 | `-` (= `-s`) historic | yes | ❌ | obsolete-argument translation not implemented |
-| `-g` / `-w` GUI launch | no | ✅ | govi extensions (GoVi.app) |
+| `-g` / `-G` GUI launch | no | ✅ | govi extensions (GoVi.app); `-G` = launch and wait |
 
 ---
 
@@ -413,7 +413,7 @@ nvi parses `[-eFlRrSsv] [-c command] [-t tag] [-w size] [file ...]`
 - **Command line:** file args, `-r` recovery, ex-mode startup (argv[0]
   `ex`/`nex`/`goex` or `-e`, `-v` to override) match nvi; `-R`/`view`, `-c`,
   `-t`, `-w size`, and ex batch `-s` are not wired (section 4), and govi's
-  `-s`/`-w` letters currently mean different things than nvi's.
+  `-s` letter currently means something different than nvi's.
 - **Evidence:** every row of this matrix was verified against nvi 1.81.6 through
   the goterm harness (or by source reading where the PTY model cannot drive a
   feature) in the 2026-07 review; see [`parity-review.md`](parity-review.md) for

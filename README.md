@@ -131,13 +131,15 @@ make install      # installs ~/bin/govi and ~/bin/GoVi.app
 ## Command-line options (`govi`)
 
 ```
-govi [-g [-w]] [-r [file]] [-s] [file ...]
+govi [-e | -v] [-g | -G] [-r [file]] [-s] [file ...]
 ```
 
 | Flag | Meaning |
 |------|---------|
+| **`-e`** | Start in **ex mode** (also selected by invoking the binary as `goex`, `ex`, or `nex` — e.g. via a symlink); **`:vi`** switches to the vi screen |
+| **`-v`** | Start in **vi mode** (overrides an ex program name) |
 | **`-g`** | Open the files in **GoVi.app** (macOS) instead of the terminal |
-| **`-w`** | With **`-g`**, block until the tabs/windows for *these* files are closed (useful as an `EDITOR`); requires at least one file |
+| **`-G`** | Like **`-g`**, and block until the tabs/windows for *these* files are closed (useful as an `EDITOR`); requires at least one file |
 | **`-r`** | List recoverable files (`govi -r`) or recover a named file (`govi -r file`) |
 | **`-s`** | Silent startup: do not read startup files or `EXINIT`/`NEXINIT` |
 | **`file ...`** | Files to edit. With multiple files, **`:n`** / **`:prev`** move through the argument list |

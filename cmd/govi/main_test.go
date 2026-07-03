@@ -27,20 +27,24 @@ func TestRun_unknownFlag(t *testing.T) {
 	}
 }
 
-func TestRun_waitRequiresGUI(t *testing.T) {
+// TestRun_wFlagRemoved pins that the old boolean -w (GUI wait, renamed -G) is
+// gone: nvi spells -w as "-w size" and the letter must stay free for that.
+func TestRun_wFlagRemoved(t *testing.T) {
 	code, _, stderr := captureRun(t, []string{"-w"}, nil)
 	if code != 2 {
 		t.Fatalf("run(-w) = %d, want 2", code)
 	}
-	if !strings.Contains(stderr, "-w is only valid with -g") {
+	if !strings.Contains(stderr, "-w") {
 		t.Fatalf("stderr = %q", stderr)
 	}
 }
 
+// TestRun_guiDelegatesToLauncher checks that -G implies the GUI launch (no -g
+// needed) with wait set.
 func TestRun_guiDelegatesToLauncher(t *testing.T) {
 	var gotSilent, gotWait bool
 	var gotFiles []string
-	code, _, _ := captureRun(t, []string{"-g", "-s", "-w", "a", "b"}, func() {
+	code, _, _ := captureRun(t, []string{"-G", "-s", "a", "b"}, func() {
 		launchGUI = func(silent, wait bool, files []string) int {
 			gotSilent, gotWait = silent, wait
 			gotFiles = append([]string(nil), files...)
@@ -48,10 +52,24 @@ func TestRun_guiDelegatesToLauncher(t *testing.T) {
 		}
 	})
 	if code != 0 {
-		t.Fatalf("run(-g) = %d, want 0", code)
+		t.Fatalf("run(-G) = %d, want 0", code)
 	}
 	if !gotSilent || !gotWait || len(gotFiles) != 2 || gotFiles[0] != "a" || gotFiles[1] != "b" {
 		t.Fatalf("launchGUI(silent=%v wait=%v files=%v)", gotSilent, gotWait, gotFiles)
+	}
+}
+
+// TestRun_guiNoWait checks plain -g still launches without waiting.
+func TestRun_guiNoWait(t *testing.T) {
+	var gotWait bool
+	code, _, _ := captureRun(t, []string{"-g", "a"}, func() {
+		launchGUI = func(silent, wait bool, files []string) int {
+			gotWait = wait
+			return 0
+		}
+	})
+	if code != 0 || gotWait {
+		t.Fatalf("run(-g) = %d, wait = %v; want 0, false", code, gotWait)
 	}
 }
 

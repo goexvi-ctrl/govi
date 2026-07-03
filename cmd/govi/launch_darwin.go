@@ -23,11 +23,12 @@ var (
 	waitOnFifo     = waitForFifo
 )
 
-// runGUI implements `govi -g`: hand the files to GoVi.app through a govi:// URL.
+// runGUI implements `govi -g`/`-G`: hand the files to GoVi.app through a
+// govi:// URL.
 //
 // A GUI app launched by open(1) inherits neither the shell's cwd nor a file
 // list, and URLs have length/encoding limits. So the launcher writes a one-shot
-// payload file (cwd, the files to open, the silent flag, and the -w FIFO) into a
+// payload file (cwd, the files to open, the silent flag, and the -G FIFO) into a
 // fixed, app-owned directory, then runs `open "govi://open?ctx=<token>"` naming
 // only that payload. GoVi.app validates the token, reads the payload from the
 // fixed location, deletes it, and treats it as pure data -- it only opens files,
@@ -35,7 +36,7 @@ var (
 // the govi:// URL to GoVi.app (cold or already running); no bundle lookup needed.
 func runGUI(silent, wait bool, files []string) int {
 	if wait && len(files) == 0 {
-		fmt.Fprintln(os.Stderr, "govi: -w requires at least one file")
+		fmt.Fprintln(os.Stderr, "govi: -G requires at least one file")
 		return 2
 	}
 	// GoVi.app runs as the user who owns the active graphical session and reads
