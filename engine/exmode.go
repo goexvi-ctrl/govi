@@ -29,6 +29,15 @@ func (e *Engine) ExActive() bool { return e.scr.mode == ModeExText }
 // returns to the vi screen as usual.
 func (e *Engine) EnterEx() { e.enterExMode() }
 
+// TakeMessage returns and clears the pending status message, if any. A
+// line-oriented ex host prints it before the first prompt (e.g. the file-load
+// line at an ex-mode startup), where a screen host shows it on the status row.
+func (e *Engine) TakeMessage() (string, MessageKind) {
+	m, k := e.scr.msg, e.scr.msgKind
+	e.scr.msg, e.scr.msgKind = "", MsgNone
+	return m, k
+}
+
 // ExPrompt returns the prompt a line host prints before reading the next line:
 // ":" normally, or "" while an a/i/c command is collecting input text.
 func (e *Engine) ExPrompt() string {

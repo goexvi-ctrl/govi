@@ -14,6 +14,7 @@ import (
 	"time"
 
 	tc "github.com/gdamore/tcell/v2"
+	"golang.org/x/term"
 
 	"govi/engine"
 )
@@ -24,6 +25,16 @@ type Frontend struct {
 	eng   *engine.Engine
 	title string
 
+	// inited is set once the tcell screen has been initialized -- raw mode and
+	// the alternate screen buffer. It stays false for a session started in ex
+	// mode (goex/-e) until the user enters vi mode: ex is a scrolling line
+	// interface on the normal screen, and must not clear the terminal. closed
+	// is set once the screen has been finalized; nothing may Resume or paint
+	// after that (tcell's Fini is once-only, so a stray Resume would leave the
+	// tty raw in the alternate screen with no way back).
+	inited bool
+	closed bool
+
 	inEventBurst bool
 	paintPending bool
 	paintUrgent  bool // mode/message/overlay: paint immediately mid-burst
@@ -31,39 +42,57 @@ type Frontend struct {
 	lastPaintAt  time.Time
 }
 
-// New initializes a terminal screen and returns a Frontend. Call Attach with
-// the engine, then Run.
+// New returns a Frontend over the terminal. Call Attach with the engine, then
+// Run. The screen is initialized lazily, on first entry to vi mode: a session
+// that starts and ends in ex mode never touches raw mode or the alternate
+// screen buffer.
 func New() (*Frontend, error) {
 	scr, err := tc.NewScreen()
 	if err != nil {
 		return nil, err
 	}
-	return NewWithScreen(scr)
+	return &Frontend{scr: scr}, nil
 }
 
 // NewWithScreen builds a Frontend over a caller-provided tcell Screen. It is
 // used by tests (with a SimulationScreen) and by hosts that manage their own
-// screen. The screen is initialized here.
+// screen. The screen is initialized here, eagerly.
 func NewWithScreen(scr tc.Screen) (*Frontend, error) {
+	f := &Frontend{scr: scr}
+	if err := f.ensureScreen(); err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
+// ensureScreen initializes the tcell screen (raw mode + alternate screen
+// buffer) if it is not already running.
+func (f *Frontend) ensureScreen() error {
+	if f.inited {
+		return nil
+	}
 	// Save cooked termios and install fatal-signal handlers before tcell
 	// switches the tty to raw mode. Go's signal.Notify cannot catch synchronous
 	// signals (SIGSEGV, SIGBUS, ...); without this, kill(1) leaves the shell raw.
 	saveEmergencyTermios()
 	installEmergencyHandlers()
-	if err := scr.Init(); err != nil {
-		return nil, err
+	if err := f.scr.Init(); err != nil {
+		return err
 	}
-	scr.SetStyle(tc.StyleDefault)
-	scr.EnablePaste()
-	return &Frontend{scr: scr}, nil
+	f.scr.SetStyle(tc.StyleDefault)
+	f.scr.EnablePaste()
+	f.inited = true
+	return nil
 }
 
 // Attach binds the engine the frontend drives.
 func (f *Frontend) Attach(e *engine.Engine) { f.eng = e }
 
-// Close restores the terminal.
+// Close restores the terminal. It is a no-op if the screen was never
+// initialized (a pure ex-mode session) or is already closed.
 func (f *Frontend) Close() {
-	if f.scr != nil {
+	if f.scr != nil && f.inited && !f.closed {
+		f.closed = true
 		f.scr.Fini()
 	}
 }
@@ -77,12 +106,18 @@ const mapTimeout = 500 * time.Millisecond
 const recoverFlushDelay = 2 * time.Second
 
 // Run drives the editor until a quit command is issued. It alternates between
-// the full-screen visual loop and, when the user enters ex mode with Q, a
-// line-oriented ex REPL that leaves the alternate screen (matching nvi: ex is a
-// scrolling line interface usable on a paper terminal).
+// the full-screen visual loop and, when in ex mode (started as goex/-e, or
+// entered with Q), a line-oriented ex REPL on the normal screen buffer
+// (matching nvi: ex is a scrolling line interface usable on a paper terminal).
+// The tcell screen -- raw mode, alternate buffer -- starts on first entry to
+// vi mode, so a pure ex session never disturbs the terminal.
 func (f *Frontend) Run() {
-	w, h := f.scr.Size()
-	f.eng.Resize(textRows(h), w)
+	if f.eng.ExActive() {
+		// Starting in ex mode: no screen yet, so size the engine (ex output
+		// formatting, the window option) from the tty directly.
+		w, h := termSize()
+		f.eng.Resize(textRows(h), w)
+	}
 
 	sigCh := f.installSignals()
 	defer signalStop(sigCh)
@@ -90,14 +125,16 @@ func (f *Frontend) Run() {
 	for !f.eng.ShouldQuit() {
 		if f.eng.ExActive() {
 			f.runExMode(sigCh)
-			if !f.eng.ShouldQuit() {
-				// Returning to vi: repaint the full-screen display.
-				f.scr.Sync()
-				w, h := f.scr.Size()
-				f.eng.Resize(textRows(h), w)
-			}
 			continue
 		}
+		if err := f.ensureScreen(); err != nil {
+			fmt.Fprintf(os.Stderr, "govi: cannot initialize terminal: %v\n", err)
+			return
+		}
+		// Entering (or returning to) vi: repaint the full-screen display.
+		f.scr.Sync()
+		w, h := f.scr.Size()
+		f.eng.Resize(textRows(h), w)
 		if f.runVisual(sigCh) {
 			return
 		}
@@ -155,19 +192,37 @@ func (f *Frontend) runVisual(sigCh <-chan os.Signal) bool {
 	return false
 }
 
-// runExMode leaves the full-screen display and runs ex as a cooked-mode line
-// REPL: print the prompt, read a line (echoed and line-edited by the terminal),
-// feed it to the engine, and print the output, scrolling like a terminal. It
-// returns when the user types visual/vi or quits.
+// runExMode runs ex as a cooked-mode line REPL: print the prompt, read a line
+// (echoed and line-edited by the terminal), feed it to the engine, and print
+// the output, scrolling like a terminal. It returns when the user types
+// visual/vi or quits. When entered from vi (Q), the full-screen display is
+// suspended around it; when the session started in ex mode there is no screen
+// to leave.
 func (f *Frontend) runExMode(sigCh <-chan os.Signal) {
-	if err := f.scr.Suspend(); err != nil {
-		return
+	if f.inited {
+		if err := f.scr.Suspend(); err != nil {
+			return
+		}
+		fmt.Fprintln(os.Stdout) // separate from the full-screen display we just left
 	}
-	defer f.scr.Resume()
+	// Resume the full-screen display only when going back to vi mode. On quit
+	// (or a fatal signal) the screen has been finalized -- Fini is once-only,
+	// so a Resume here would put the tty back into raw mode and the alternate
+	// screen with nothing left to restore it.
+	defer func() {
+		if f.inited && !f.closed {
+			f.scr.Resume()
+		}
+	}()
 
 	in := bufio.NewReader(os.Stdin)
 	out := os.Stdout
-	fmt.Fprintln(out) // separate from the full-screen display we just left
+
+	// A message queued before the REPL starts (the file-load line at an
+	// ex-mode startup) prints ahead of the first prompt, as nvi's ex does.
+	if m, _ := f.eng.TakeMessage(); m != "" {
+		fmt.Fprintln(out, m)
+	}
 
 	for f.eng.ExActive() && !f.eng.ShouldQuit() {
 		prompt := f.eng.ExPrompt()
@@ -313,8 +368,24 @@ func textRows(h int) int {
 	return h - 1
 }
 
-// Bell rings the terminal bell.
-func (f *Frontend) Bell() { f.scr.Beep() }
+// termSize returns the tty's size for a session running in ex line mode,
+// where no tcell screen exists to ask; falls back to 80x24.
+func termSize() (w, h int) {
+	if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 && h > 0 {
+		return w, h
+	}
+	return 80, 24
+}
+
+// Bell rings the terminal bell. In ex line mode (no screen) it writes BEL to
+// the terminal directly.
+func (f *Frontend) Bell() {
+	if !f.inited || f.closed {
+		os.Stdout.WriteString("\a")
+		return
+	}
+	f.scr.Beep()
+}
 
 // SetTitle records the desired window title. (Terminal title-setting is applied
 // in a later phase; stored here so the behavior is observable.)
@@ -343,6 +414,9 @@ func (f *Frontend) Render(v engine.View, cs engine.ChangeSet) {
 // each pane in its own row/column band, every pane carrying its own status line
 // (reverse video as a divider when split); the cursor goes in the active pane.
 func (f *Frontend) paintNow(v engine.View) {
+	if !f.inited || f.closed {
+		return // ex line mode (screen never started) or already shut down
+	}
 	f.scr.Clear()
 	w, h := f.scr.Size()
 
