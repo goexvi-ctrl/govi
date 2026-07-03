@@ -42,9 +42,9 @@ func TestOrigCacheStableAcrossEdits(t *testing.T) {
 	}
 
 	// Insert and delete around it so "ccc" moves to a different line number.
-	p.Insert(1, []rune("NEW"))   // ccc now at line 4
-	p.Delete(2)                  // remove old aaa; ccc now at line 3 again then...
-	p.Set(1, []rune("CHANGED"))  // edit line 1
+	p.Insert(1, []rune("NEW"))  // ccc now at line 4
+	p.Delete(2)                 // remove old aaa; ccc now at line 3 again then...
+	p.Set(1, []rune("CHANGED")) // edit line 1
 
 	// Find "ccc" and confirm it is intact.
 	found := false
