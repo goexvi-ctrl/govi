@@ -26,6 +26,7 @@ package main
 import "C"
 
 import (
+	"sync"
 	"unsafe"
 
 	"govi/engine"
@@ -65,7 +66,13 @@ type instance struct {
 	screenSelB      grid.Cell
 }
 
+// instMu guards insts and nextHandle. The GUI host now runs each editor's input
+// on its own serial queue (so a long command does not freeze the UI and a ^C can
+// reach Engine.Interrupt), so get may be called from a window's queue thread
+// concurrently with GoviStart/GoviClose on the main thread. Each engine is still
+// single-threaded; only the handle table is shared.
 var (
+	instMu     sync.RWMutex
 	insts      = map[int64]*instance{}
 	nextHandle int64
 )
@@ -142,7 +149,11 @@ func GoviInsertActive(h C.longlong) C.int {
 	return boolToC(active)
 }
 
-func get(h C.longlong) *instance { return insts[int64(h)] }
+func get(h C.longlong) *instance {
+	instMu.RLock()
+	defer instMu.RUnlock()
+	return insts[int64(h)]
+}
 
 func main() {} // required for c-archive builds
 
@@ -183,9 +194,12 @@ func GoviStart(path, foreground, background, cwd *C.char, silent C.int) C.longlo
 			return 0
 		}
 	}
+	instMu.Lock()
 	nextHandle++
-	insts[nextHandle] = in
-	return C.longlong(nextHandle)
+	h := nextHandle
+	insts[h] = in
+	instMu.Unlock()
+	return C.longlong(h)
 }
 
 // GoviSetCwd sets the editor's working directory (per tab), used for relative
@@ -266,9 +280,12 @@ func GoviBackgroundSpec(h C.longlong) *C.char {
 //
 //export GoviClose
 func GoviClose(h C.longlong) {
-	if in := get(h); in != nil {
+	instMu.Lock()
+	in := insts[int64(h)]
+	delete(insts, int64(h))
+	instMu.Unlock()
+	if in != nil {
 		in.eng.Close()
-		delete(insts, int64(h))
 	}
 }
 
@@ -318,16 +335,22 @@ func GoviText(h C.longlong, s *C.char) {
 	}
 }
 
-// GoviInterrupt delivers the interrupt event (cancel current command/input).
-// eng.Interrupt records the request out of band (it is safe to call while the
-// engine is busy in a long command) so an in-progress operation can observe it;
-// the InterruptEvent then drives the between-commands cancel (e.g. a colon line).
+// GoviInterrupt records the user's ^C out of band. Engine.Interrupt touches only
+// the atomic interrupt flag and the interrupt channel, so -- uniquely among the
+// engine entry points -- it is safe to call concurrently with a command running
+// on another thread. The GUI host calls it from the main thread while a long
+// command runs on its serial engine queue, so an in-progress search / :s / :g /
+// :! observes the ^C and aborts.
+//
+// It deliberately does NOT feed an InterruptEvent here: the between-commands
+// colon-line cancel is delivered as the ordinary ^C key (GoviKeyRune 3) on the
+// engine queue, which must be serialized behind any command already running
+// there rather than mutating engine state from this concurrent call.
 //
 //export GoviInterrupt
 func GoviInterrupt(h C.longlong) {
 	if in := get(h); in != nil {
 		in.eng.Interrupt()
-		in.eng.Input(engine.InterruptEvent{})
 	}
 }
 

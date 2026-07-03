@@ -56,6 +56,13 @@ final class GoviView: NSView, NSTextInputClient {
     private var cols = 1
     private var timer: Timer?
 
+    // engineQueue serializes this window's engine input off the main thread (see
+    // engineInput). A keystroke can launch a long command (search, :s, :g, or a
+    // blocking :! ); running it on the main thread would freeze the UI and block
+    // the very ^C meant to abort it. Each window has its own queue so windows run
+    // independently; the engine itself stays single-threaded per window.
+    private let engineQueue = DispatchQueue(label: "org.govi.engine")
+
     // One selection model, in screen cells. screenDragAnchor is the fixed origin
     // of a character drag; granLo/granHi are the originating word/line edges for
     // word/line drags; screenSelStart/End hold the stored highlighted span.
@@ -322,23 +329,79 @@ final class GoviView: NSView, NSTextInputClient {
     private func armTimer() {
         timer?.invalidate()
         timer = nil
+        let h = handle
         var interval: TimeInterval = 0
-        var action: (() -> Void)?
-        if GoviMatchPending(handle) != 0 {
-            interval = Double(GoviMatchTimeMS(handle)) / 1000.0
-            action = { GoviFireTimeout(self.handle) }
-        } else if GoviMapPending(handle) != 0 {
+        var fire: (() -> Void)?
+        if GoviMatchPending(h) != 0 {
+            interval = Double(GoviMatchTimeMS(h)) / 1000.0
+            fire = { GoviFireTimeout(h) }
+        } else if GoviMapPending(h) != 0 {
             interval = 0.5
-            action = { GoviFireTimeout(self.handle) }
-        } else if GoviNeedsRecoverySync(handle) != 0 {
+            fire = { GoviFireTimeout(h) }
+        } else if GoviNeedsRecoverySync(h) != 0 {
             interval = 2.0
-            action = { GoviSyncRecovery(self.handle) }
+            fire = { GoviSyncRecovery(h) }
         }
-        guard let act = action else { return }
+        guard let fire = fire else { return }
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
-            act()
-            self?.step()
+            self?.engineInput(fire)
         }
+    }
+
+    // engineInput runs one unit of engine input -- a keystroke, a run of typed
+    // scalars, a paste, or a resolved timeout -- on the serial engine queue, then
+    // repaints on the main thread. It is the only path that mutates engine state,
+    // so engine access stays single-threaded even though the work runs off the
+    // main thread.
+    //
+    // Running it off the main thread is what makes ^C work: a keystroke can launch
+    // a long command (a search, :s, :g, or a blocking :! ). On the main thread that
+    // would freeze the UI and -- fatally -- stop the ^C meant to abort it from ever
+    // being delivered. Here the main thread stays free: a quick command is simply
+    // waited for, and a long one is waited for while pumping ONLY key events,
+    // forwarding a ^C to GoviInterrupt (safe to call concurrently) so the command
+    // aborts. Any other key typed meanwhile is deferred and re-posted so type-ahead
+    // is preserved.
+    private func engineInput(_ body: @escaping () -> Void) {
+        // A pending map/showmatch/recovery timer must not fire and touch the engine
+        // on the main thread while the command runs on the queue.
+        timer?.invalidate()
+        timer = nil
+
+        let done = DispatchSemaphore(value: 0)
+        engineQueue.async { body(); done.signal() }
+
+        var deferred: [NSEvent] = []
+        // Fast path: most commands finish at once, so don't pump for them.
+        if done.wait(timeout: .now() + .milliseconds(20)) == .timedOut {
+            // Long command: keep the UI alive for ^C until it finishes.
+            while done.wait(timeout: .now()) == .timedOut {
+                guard let ev = NSApp.nextEvent(
+                    matching: .keyDown, until: Date(timeIntervalSinceNow: 0.02),
+                    inMode: .default, dequeue: true) else { continue }
+                // nextEvent dequeues app-wide key events; only a ^C aimed at THIS
+                // window aborts its command. Anything else (including a ^C meant
+                // for another window) is deferred and re-posted below.
+                if ev.window === window, Self.isInterruptEvent(ev) {
+                    GoviInterrupt(handle) // out of band; aborts the running command
+                } else {
+                    deferred.append(ev) // type-ahead: replay once the command is done
+                }
+            }
+        }
+        step()
+        for ev in deferred { NSApp.postEvent(ev, atStart: false) }
+    }
+
+    // isInterruptEvent reports whether a key event is the user's ^C: ETX in the
+    // characters, or Control-c (mirrors handleControlKey's C0 handling).
+    private static func isInterruptEvent(_ ev: NSEvent) -> Bool {
+        if let v = ev.characters?.unicodeScalars.first?.value, v == 3 { return true }
+        if ev.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.control),
+           let c = ev.charactersIgnoringModifiers, c.lowercased() == "c" {
+            return true
+        }
+        return false
     }
 
     // MARK: - Mouse selection
@@ -711,22 +774,28 @@ final class GoviView: NSView, NSTextInputClient {
 
     @objc func paste(_ sender: Any?) {
         guard let s = NSPasteboard.general.string(forType: .string) else { return }
-        var buf = Array(s.utf8CString)
         if selActive && selectionCapturesInput() {
-            // Replace the selection (wysiwyg, or combined while in insert mode).
+            // Replace the selection (wysiwyg, or combined while in insert mode). A
+            // bounded edit: run it directly and repaint.
             guard let r = editRange() else { editBeep(); return }
+            var buf = Array(s.utf8CString)
             buf.withUnsafeMutableBufferPointer {
                 GoviReplaceText(handle, r.0, Int32(r.1), r.2, Int32(r.3), $0.baseAddress)
             }
             clearSelection()
+            step()
         } else {
             // Selection is copy-only (or none): drop any highlight and feed the
             // text in the current mode, so a colon-line paste runs as a command,
-            // insert mode inserts literally, normal mode interprets it.
+            // insert mode inserts literally, normal mode interprets it. That command
+            // may be long (a pasted :g), so feed it on the interruptible path.
             if selActive { clearSelection() }
-            buf.withUnsafeMutableBufferPointer { GoviText(handle, $0.baseAddress) }
+            let bytes = Array(s.utf8CString)
+            engineInput {
+                var b = bytes
+                b.withUnsafeMutableBufferPointer { GoviText(self.handle, $0.baseAddress) }
+            }
         }
-        step()
     }
 
     @objc override func selectAll(_ sender: Any?) {
@@ -785,10 +854,8 @@ final class GoviView: NSView, NSTextInputClient {
         guard let chars = event.characters, !chars.isEmpty else { return }
         if replaceWithText(chars) { return }
         if selActive { clearSelection() } // copy-only selection: drop it, type normally
-        for scalar in chars.unicodeScalars {
-            GoviKeyRune(handle, Int32(scalar.value), 0)
-        }
-        step()
+        let scalars = Array(chars.unicodeScalars)
+        engineInput { for s in scalars { GoviKeyRune(self.handle, Int32(s.value), 0) } }
     }
 
     // specialKey maps an NSEvent key code to an engine special key, if any.
@@ -862,16 +929,12 @@ final class GoviView: NSView, NSTextInputClient {
         } else {
             return
         }
-        for scalar in scalars {
-            let code: Int32
-            if scalar.value <= 31 {
-                code = Int32(scalar.value)
-            } else {
-                code = Int32(scalar.value & 0x1f)
+        engineInput {
+            for scalar in scalars {
+                let code = scalar.value <= 31 ? Int32(scalar.value) : Int32(scalar.value & 0x1f)
+                GoviKeyRune(self.handle, code, mods)
             }
-            GoviKeyRune(handle, code, mods)
         }
-        step()
     }
 
     // replaceWithText replaces the active selection with s and returns true, or
@@ -907,10 +970,8 @@ final class GoviView: NSView, NSTextInputClient {
         if s.isEmpty { return }
         if replaceWithText(s) { return } // typed over a selection
         if selActive { clearSelection() } // copy-only selection: drop it, type normally
-        for scalar in s.unicodeScalars {
-            GoviKeyRune(handle, Int32(scalar.value), 0)
-        }
-        step()
+        let scalars = Array(s.unicodeScalars)
+        engineInput { for sc in scalars { GoviKeyRune(self.handle, Int32(sc.value), 0) } }
     }
 
     override func doCommand(by selector: Selector) {
@@ -944,21 +1005,18 @@ final class GoviView: NSView, NSTextInputClient {
 
     private func dispatchTab() {
         if selActive { clearSelection() }
-        GoviKeyRune(handle, 9, 0)
-        step()
+        engineInput { GoviKeyRune(self.handle, 9, 0) }
     }
 
     private func sendSpecial(_ key: Int32) {
         if selActive { clearSelection() }
-        GoviKeySpecial(handle, key, 0)
-        step()
+        engineInput { GoviKeySpecial(self.handle, key, 0) }
     }
 
     // sendDEL feeds ^? (the Backspace key) as a rune so the engine erases in
     // insert/ex mode but reports "^? isn't a vi command" in command mode.
     private func sendDEL() {
-        GoviKeyRune(handle, 0x7f, 0)
-        step()
+        engineInput { GoviKeyRune(self.handle, 0x7f, 0) }
     }
 
     func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
