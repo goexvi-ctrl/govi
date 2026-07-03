@@ -5,6 +5,7 @@
 /govi
 /bridge
 /cmd/govi/govi
+/cmd/govi/goex
 /gui/bridge/bridge
 
 # engine/version.go is generated from engine/version.gox + the Version file by
@@ -44,3 +45,4 @@
 
 # Release artifacts: built dmgs live on the GitHub releases page, not in git.
 /GoVi-*.dmg
+/mkrel
