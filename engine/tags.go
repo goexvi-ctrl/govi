@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"govi/engine/regex"
 )
 
 // Tag support: a ctags-format "tags" file maps identifiers to a file and an ex
@@ -197,13 +199,82 @@ func (e *Engine) applyTagAddress(excmd string) {
 		return
 	}
 	if len(excmd) >= 2 && (excmd[0] == '/' || excmd[0] == '?') {
-		pat := excmd[1 : len(excmd)-1]
-		// ctags wraps the line in ^...$ and escapes nothing else; search for it.
-		e.scr.cursor = Pos{Line: 1, Col: 0}
-		if err := e.startSearch(pat, searchFwd); err != nil {
-			e.scr.msg, e.scr.msgKind = err.Error(), MsgError
+		e.tagSearch(excmd)
+	}
+}
+
+// tagSearch positions the cursor on the line matching a ctags /pattern/ (or
+// ?pattern?) address, following nvi (ctag_search, re_tag_conv, SEARCH_TAG):
+// the pattern is literal text apart from a leading ^ and a trailing $, the
+// user's RE and case options do not apply, the whole file is searched from
+// line 1 regardless of wrapscan, and when the exact pattern misses, nvi's
+// cheap fallback retries with the pattern cut at the last '(' (a C function
+// whose argument list changed since ctags ran). The cursor lands in column 0,
+// not the pattern start, and the converted pattern becomes the saved search
+// pattern (so n repeats it), as nvi's re_compile does.
+func (e *Engine) tagSearch(excmd string) {
+	pat := tagConvPattern(excmd)
+	find := func(p string) (Pos, bool) {
+		re, err := regex.Compile(p, regex.Options{Magic: true})
+		if err != nil {
+			return Pos{}, false
+		}
+		// Col -1: include a match at line 1 column 0 (nvi SEARCH_FIRST).
+		return e.searchFrom(re, Pos{Line: 1, Col: -1}, searchFwd)
+	}
+	pos, ok := find(pat)
+	if !ok {
+		if i := strings.LastIndexByte(pat, '('); i > 0 {
+			pos, ok = find(pat[:i])
 		}
 	}
+	if !ok {
+		e.scr.msg, e.scr.msgKind = "Search pattern not found", MsgError
+		return
+	}
+	e.scr.lastPattern = pat
+	e.scr.lastSearchDir = searchFwd
+	e.scr.cursor = Pos{Line: pos.Line, Col: 0}
+	e.scr.clampCursor()
+}
+
+// tagConvPattern converts a ctags search command (delimiters included) to a
+// search pattern, nvi's re_tag_conv: strip the surrounding delimiters, keep a
+// leading ^ and trailing $ magic, drop the backslashes ctags inserts to
+// escape delimiter characters, and escape every other magic character.
+func tagConvPattern(excmd string) string {
+	p := excmd
+	if n := len(p); n > 0 && (p[n-1] == '/' || p[n-1] == '?') {
+		p = p[:n-1]
+	}
+	lastDollar := false
+	if n := len(p); n > 0 && p[n-1] == '$' {
+		lastDollar = true
+		p = p[:n-1]
+	}
+	if len(p) > 0 && (p[0] == '/' || p[0] == '?') {
+		p = p[1:]
+	}
+	var b strings.Builder
+	i := 0
+	if len(p) > 0 && p[0] == '^' {
+		b.WriteByte('^')
+		i = 1
+	}
+	for ; i < len(p); i++ {
+		c := p[i]
+		if c == '\\' && i+1 < len(p) && (p[i+1] == '/' || p[i+1] == '?') {
+			i++
+			c = p[i]
+		} else if strings.IndexByte("^.[]$*", c) >= 0 {
+			b.WriteByte('\\')
+		}
+		b.WriteByte(c)
+	}
+	if lastDollar {
+		b.WriteByte('$')
+	}
+	return b.String()
 }
 
 // tagPop implements ^T: return to the location saved by the most recent tag

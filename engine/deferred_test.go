@@ -157,6 +157,47 @@ func TestTags(t *testing.T) {
 	}
 }
 
+// TestTagsCtagsPatterns pins nvi's re_tag_conv handling of real ctags search
+// patterns: regex metacharacters in the pattern are literal text (a Go tag
+// line is full of them), the user's RE/case options do not apply, and when
+// the exact pattern misses, the search retries truncated at the last '('
+// (nvi's fallback for a C function whose arguments changed).
+func TestTagsCtagsPatterns(t *testing.T) {
+	dir := t.TempDir()
+	src := writeTemp(t, dir, "src.go",
+		"package x\n\n"+
+			"func (e *Engine) writeFile(path string) (lines, bytes int64, err error) {\n"+
+			"}\n\n"+
+			"func Reader(count int) {\n"+
+			"}\n")
+	// Universal-ctags entries: metacharacter-laden pattern with ;" extension
+	// fields, and a pattern whose argument list is stale (fallback case).
+	tags := "Reader\t" + src + "\t/^func Reader(old string) {$/;\"\tf\n" +
+		"writeFile\t" + src + "\t/^func (e *Engine) writeFile(path string) (lines, bytes int64, err error) {$/;\"\tf\tstruct:engine.Engine\n"
+	if err := os.WriteFile(filepath.Join(dir, "tags"), []byte(tags), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := New(&captureFrontend{}, Options{})
+	e.OpenArgs([]string{src})
+	e.Resize(10, 60)
+	e.exExecute("set tags=" + filepath.Join(dir, "tags"))
+	e.exExecute("set ignorecase") // must not affect tag searches (nvi SEARCH_TAG)
+
+	if err := e.exExecute("tag writeFile"); err != nil {
+		t.Fatal(err)
+	}
+	if e.scr.cursor.Line != 3 || e.scr.cursor.Col != 0 {
+		t.Fatalf("tag writeFile -> (%d,%d), want (3,0)", e.scr.cursor.Line, e.scr.cursor.Col)
+	}
+	if err := e.exExecute("tag Reader"); err != nil {
+		t.Fatal(err)
+	}
+	if e.scr.cursor.Line != 6 {
+		t.Fatalf("tag Reader (stale args, '(' fallback) -> line %d, want 6", e.scr.cursor.Line)
+	}
+}
+
 func TestExModeQ(t *testing.T) {
 	e, _, _ := newTestEngine(t, "one\ntwo\nthree\n")
 	drive(e, "Q") // enter ex mode
