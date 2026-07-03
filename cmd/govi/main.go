@@ -12,7 +12,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -20,9 +19,24 @@ import (
 	"runtime/debug"
 	"time"
 
+	"github.com/pborman/options"
+
 	"govi/engine"
 	tcellfe "govi/frontend/tcell"
 )
+
+// cliOptions declares govi's flags for pborman/options, giving traditional
+// getopt(3) behavior: short flags combine (-Gs), -- ends option parsing, and
+// parsing stops at the first non-option argument.
+type cliOptions struct {
+	Help    bool `getopt:"--help -h display this help and exit"`
+	Ex      bool `getopt:"-e start in ex mode (as if invoked as ex)"`
+	Vi      bool `getopt:"-v start in vi mode (overrides an ex program name; wins over -e)"`
+	GUI     bool `getopt:"-g open the files in the GoVi.app GUI instead of the terminal"`
+	GUIWait bool `getopt:"-G like -g, and block until the tabs/windows for these files are closed"`
+	Recover bool `getopt:"-r recover the named file from a recovery file"`
+	Silent  bool `getopt:"-s do not read startup files or EXINIT/NEXINIT"`
+}
 
 // editorHost is the terminal frontend run() drives. Tests substitute a
 // simulation screen via newEditorFrontend.
@@ -67,25 +81,21 @@ func exProgname(progname string) bool {
 }
 
 func runIO(progname string, args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("govi", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-
-	recover := fs.Bool("r", false, "recover the named file from a recovery file")
-	silent := fs.Bool("s", false, "do not read startup files or EXINIT/NEXINIT")
-	exMode := fs.Bool("e", false, "start in ex mode (as if invoked as ex)")
-	viMode := fs.Bool("v", false, "start in vi mode (overrides an ex program name; wins over -e)")
-	gui := fs.Bool("g", false, "open the files in the GoVi.app GUI instead of the terminal")
-	guiWait := fs.Bool("G", false, "like -g, and block until the tabs/windows for these files are closed")
-
-	if err := fs.Parse(args); err != nil {
-		if err == flag.ErrHelp {
-			return 0
-		}
+	vopts, set := options.RegisterNew(progname, &cliOptions{})
+	opts := vopts.(*cliOptions)
+	set.SetParameters("[file ...]")
+	if err := set.Getopt(append([]string{progname}, args...), nil); err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", progname, err)
+		set.PrintUsage(stderr)
 		return 2
 	}
+	if opts.Help {
+		set.PrintUsage(stdout)
+		return 0
+	}
 
-	if *gui || *guiWait {
-		return launchGUI(*silent, *guiWait, fs.Args())
+	if opts.GUI || opts.GUIWait {
+		return launchGUI(opts.Silent, opts.GUIWait, set.Args())
 	}
 
 	fe, err := newEditorFrontend()
@@ -99,7 +109,7 @@ func runIO(progname string, args []string, stdout, stderr io.Writer) int {
 	fe.Attach(eng)
 	defer eng.Close()
 
-	if !*silent {
+	if !opts.Silent {
 		if err := eng.LoadStartup(); err != nil {
 			fe.Close()
 			fmt.Fprintf(stderr, "govi: %v\n", err)
@@ -110,8 +120,8 @@ func runIO(progname string, args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	openArgs := fs.Args()
-	if *recover {
+	openArgs := set.Args()
+	if opts.Recover {
 		if len(openArgs) == 0 {
 			fe.Close()
 			entries, err := eng.ListRecoverable()
@@ -157,7 +167,7 @@ func runIO(progname string, args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	if (*exMode || exProgname(progname)) && !*viMode {
+	if (opts.Ex || exProgname(progname)) && !opts.Vi {
 		eng.EnterEx()
 	}
 

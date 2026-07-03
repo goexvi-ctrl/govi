@@ -22,7 +22,7 @@ func TestRun_unknownFlag(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("run(-not-a-flag) = %d, want 2", code)
 	}
-	if !strings.Contains(stderr, "flag provided but not defined") {
+	if !strings.Contains(stderr, "unknown option") {
 		t.Fatalf("stderr = %q, want unknown-flag message", stderr)
 	}
 }
