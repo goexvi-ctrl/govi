@@ -204,9 +204,17 @@ func TestRun_startupFailure(t *testing.T) {
 	}
 }
 
-// captureRun calls runIO with hooked I/O. setup runs after hooks are saved and
-// before runIO; use it to replace newEditorFrontend, runEditor, or launchGUI.
+// captureRun calls runIO with hooked I/O as the default program name "govi".
+// setup runs after hooks are saved and before runIO; use it to replace
+// newEditorFrontend, runEditor, or launchGUI.
 func captureRun(t *testing.T, args []string, setup func()) (int, string, string) {
+	t.Helper()
+	return captureRunAs(t, "govi", args, setup)
+}
+
+// captureRunAs is captureRun with an explicit program name (argv[0] base),
+// for the ex/goex invocation tests.
+func captureRunAs(t *testing.T, progname string, args []string, setup func()) (int, string, string) {
 	t.Helper()
 
 	oldNew := newEditorFrontend
@@ -223,6 +231,6 @@ func captureRun(t *testing.T, args []string, setup func()) (int, string, string)
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := runIO(args, &stdout, &stderr)
+	code := runIO(progname, args, &stdout, &stderr)
 	return code, stdout.String(), stderr.String()
 }

@@ -23,6 +23,12 @@ func (e *Engine) enterExMode() {
 // full-screen display -- rather than a cursor-addressed screen.
 func (e *Engine) ExActive() bool { return e.scr.mode == ModeExText }
 
+// EnterEx starts the session in ex mode. Hosts call it after opening the
+// initial file when the editor was invoked as ex (nvi keys this off the
+// program name -- ex/nex -- and the -e flag; see nvi common/main.c). :vi
+// returns to the vi screen as usual.
+func (e *Engine) EnterEx() { e.enterExMode() }
+
 // ExPrompt returns the prompt a line host prints before reading the next line:
 // ":" normally, or "" while an a/i/c command is collecting input text.
 func (e *Engine) ExPrompt() string {

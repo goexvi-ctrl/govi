@@ -2,6 +2,10 @@
 // embeddable engine to the tcell terminal frontend. The engine carries no
 // terminal dependency; this command is just one host for it.
 //
+// Invoked as ex, nex, or goex (or with -e), the session starts in ex mode
+// instead of vi mode, following nvi's program-name convention; -v forces vi
+// mode back on.
+//
 // With -g, govi instead opens the named files in the GoVi.app macOS GUI (see
 // launch_darwin.go) and does not start the terminal editor.
 package main
@@ -11,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"time"
 
@@ -51,15 +56,23 @@ func main() {
 
 // run is the real entry point; it returns an exit code for main (and tests).
 func run(args []string) int {
-	return runIO(args, os.Stdout, os.Stderr)
+	return runIO(filepath.Base(os.Args[0]), args, os.Stdout, os.Stderr)
 }
 
-func runIO(args []string, stdout, stderr io.Writer) int {
+// exProgname reports whether the program name selects ex mode, the way nvi
+// keys SC_EX off argv[0] being ex or nex; goex is govi's spelling.
+func exProgname(progname string) bool {
+	return progname == "ex" || progname == "nex" || progname == "goex"
+}
+
+func runIO(progname string, args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("govi", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
 	recover := fs.Bool("r", false, "recover the named file from a recovery file")
 	silent := fs.Bool("s", false, "do not read startup files or EXINIT/NEXINIT")
+	exMode := fs.Bool("e", false, "start in ex mode (as if invoked as ex)")
+	viMode := fs.Bool("v", false, "start in vi mode (overrides an ex program name; wins over -e)")
 	gui := fs.Bool("g", false, "open the files in the GoVi.app GUI instead of the terminal")
 	wait := fs.Bool("w", false, "with -g, block until the tabs/windows for these files are closed")
 
@@ -145,6 +158,10 @@ func runIO(args []string, stdout, stderr io.Writer) int {
 		fe.Close()
 		fmt.Fprintf(stderr, "govi: %v\n", err)
 		return 1
+	}
+
+	if (*exMode || exProgname(progname)) && !*viMode {
+		eng.EnterEx()
 	}
 
 	runEditor(fe)

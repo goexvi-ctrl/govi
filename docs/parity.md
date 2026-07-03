@@ -353,7 +353,35 @@ auditing reads of each name outside `engine/options.go`.
 
 ---
 
-## 4. Frontend-specific summary
+## 4. Command-line invocation
+
+nvi parses `[-eFlRrSsv] [-c command] [-t tag] [-w size] [file ...]`
+(`common/main.c`), plus the historic forms `+cmd` (= `-c cmd`) and a bare `-`
+(= `-s`), and keys the startup mode off argv[0]: `ex`/`nex` start in ex mode,
+`view`/`nview` start readonly.
+
+| Invocation | nvi | govi | Notes |
+|---|---|---|---|
+| `file ...` args | yes | ✅ | multiple files build the args list |
+| no file | yes | ✅ | throwaway `$TMPDIR/vi.*` buffer, removed on exit |
+| argv[0] `ex`/`nex` -> ex mode | yes | ✅ | govi adds the `goex` spelling (symlink/hardlink to the binary) |
+| `-e` (ex mode) / `-v` (vi mode) | yes | ✅ | with both, govi lets `-v` win (nvi: last one wins) |
+| argv[0] `view`/`nview` -> readonly | yes | ❌ | govi's `readonly` option works; only the argv[0]/`-R` plumbing is missing |
+| `-R` readonly | yes | ❌ | see above |
+| `-r` recover (list / named file) | yes | ✅ | same two forms |
+| `-c command` / `+cmd` | yes | ❌ | engine hook exists (`RunEx`); flag not wired |
+| `-t tag` | yes | ❌ | `:tag` works inside the editor |
+| `-w size` | yes | ❌ | sets the `window` option; **conflicts with govi's boolean `-w`** (GUI wait, only valid with `-g`) |
+| `-s` batch/silent (ex only) | yes | ❌ | **govi repurposes `-s`** as "skip startup files/EXINIT" (closest nvi analog: exrc handling; nvi has no such flag) |
+| `-S` secure | yes | ❌ | govi's `secure` option works; flag not wired |
+| `-l` lisp + showmatch | yes | ❌ | `lisp` is inert in govi anyway |
+| `-F` (no snapshot) | error msg | ❌ | nvi only prints "no longer supported" |
+| `-` (= `-s`) historic | yes | ❌ | obsolete-argument translation not implemented |
+| `-g` / `-w` GUI launch | no | ✅ | govi extensions (GoVi.app) |
+
+---
+
+## 5. Frontend-specific summary
 
 | Feature | govi | GoVi.app | Notes |
 |---|---|---|---|
@@ -382,6 +410,10 @@ auditing reads of each name outside `engine/options.go`.
   internal/deprecated flags, and the `w300`/`w1200`/`w9600` baud-rate window
   aliases), so govi's `:set all` is not a literal superset of nvi's. govi adds 4
   options of its own for the GUI/renderer.
+- **Command line:** file args, `-r` recovery, ex-mode startup (argv[0]
+  `ex`/`nex`/`goex` or `-e`, `-v` to override) match nvi; `-R`/`view`, `-c`,
+  `-t`, `-w size`, and ex batch `-s` are not wired (section 4), and govi's
+  `-s`/`-w` letters currently mean different things than nvi's.
 - **Evidence:** every row of this matrix was verified against nvi 1.81.6 through
   the goterm harness (or by source reading where the PTY model cannot drive a
   feature) in the 2026-07 review; see [`parity-review.md`](parity-review.md) for
