@@ -226,18 +226,13 @@ func (e *Engine) deleteChars(p1, p2 Pos) {
 	}
 }
 
-// deleteLines removes buffer lines [l1, l2], keeping one empty line if that
-// would empty the buffer (matching vi).
+// deleteLines removes buffer lines [l1, l2]. Deleting every line leaves the
+// store genuinely empty (Lines() == 0), like nvi and like a fresh no-file
+// buffer: the cursor still has somewhere to be because lineCount() reports a
+// phantom blank line, but a subsequent :w produces a 0-byte file rather than a
+// spurious "\n" (QA-23).
 func (e *Engine) deleteLines(l1, l2 int64) {
 	s := e.scr
-	n := s.store.Lines()
-	if l1 <= 1 && l2 >= n {
-		for i := n; i >= 2; i-- {
-			s.deleteLine(i)
-		}
-		s.setLine(1, []rune{})
-		return
-	}
 	for i := l2; i >= l1; i-- {
 		s.deleteLine(i)
 	}
