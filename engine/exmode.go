@@ -42,6 +42,20 @@ func (e *Engine) ExPrompt() string {
 // (which has already echoed it) and returns the output lines to print. Entering
 // "visual"/"vi" leaves ex mode (ExActive then reports false).
 func (e *Engine) ExFeedLine(line string) []string {
+	out, _ := e.exFeed(line, false)
+	return out
+}
+
+// ExBatchLine processes one line of an ex batch script (nvi -s): informative
+// messages are suppressed (nvi SC_EX_SILENT) and a command failure is
+// returned instead of printed, so the host can abort the script the way nvi
+// does. Explicit output (:p, :l, :nu, :=) is still returned.
+func (e *Engine) ExBatchLine(line string) ([]string, error) {
+	return e.exFeed(line, true)
+}
+
+// exFeed is the shared line-host feed behind ExFeedLine and ExBatchLine.
+func (e *Engine) exFeed(line string, silent bool) ([]string, error) {
 	e.exOut = nil
 	e.exLineMode = true
 	defer func() { e.exLineMode = false }()
@@ -52,32 +66,37 @@ func (e *Engine) ExFeedLine(line string) []string {
 		} else {
 			e.scr.exInput.lines = append(e.scr.exInput.lines, []rune(line))
 		}
-		return e.exOut
+		return e.exOut, nil
 	}
 
 	if IsBackslashLine(line) {
 		e.quitFromBackslash()
-		return []string{QuitCommandDisplay}
+		return []string{QuitCommandDisplay}, nil
 	}
 
 	trimmed := strings.TrimSpace(line)
 	switch trimmed {
 	case "vi", "visual", "vis":
 		e.exitExMode()
-		return nil
+		return nil, nil
 	}
 	if trimmed == "" {
 		text, _ := e.ExStep()
 		e.exOut = append(e.exOut, text)
-		return e.exOut
+		return e.exOut, nil
 	}
 	if err := e.exExecute(line); err != nil {
+		if silent {
+			return e.exOut, err
+		}
 		e.exOut = append(e.exOut, err.Error())
 	} else if e.scr.msg != "" {
-		e.exOut = append(e.exOut, e.scr.msg)
+		if !silent {
+			e.exOut = append(e.exOut, e.scr.msg)
+		}
 		e.scr.msg = ""
 	}
-	return e.exOut
+	return e.exOut, nil
 }
 
 // ExStep advances to the next line for a bare <enter> at the ex prompt, the way

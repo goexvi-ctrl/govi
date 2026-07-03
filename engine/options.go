@@ -371,6 +371,19 @@ func (e *Engine) SetStrOption(name, value string) error {
 // StrOption returns a string option's current value.
 func (e *Engine) StrOption(name string) string { return e.scr.opts.Str(name) }
 
+// SetStartupWindow records the -w command-line size for the window option
+// before the host has reported the terminal geometry (when the :set clamp
+// against the still-default rows would corrupt it). The first Resize clamps
+// and applies it via applyWindowOption, like nvi parsing "window=size" from
+// the command line before screen init.
+func (e *Engine) SetStartupWindow(n int) {
+	if n < 1 {
+		n = 1
+	}
+	e.scr.opts.i["window"] = n
+	e.scr.winUserSet = true
+}
+
 // optDisplay formats one option as nvi does: "name"/"noname" for booleans,
 // "name=value" for numerics and strings (strings quoted).
 func (e *Engine) optDisplay(d *optDef) string {

@@ -44,7 +44,7 @@ func TestRun_wFlagRemoved(t *testing.T) {
 func TestRun_guiDelegatesToLauncher(t *testing.T) {
 	var gotSilent, gotWait bool
 	var gotFiles []string
-	code, _, _ := captureRun(t, []string{"-G", "-s", "a", "b"}, func() {
+	code, _, _ := captureRun(t, []string{"-G", "-n", "a", "b"}, func() {
 		launchGUI = func(silent, wait bool, files []string) int {
 			gotSilent, gotWait = silent, wait
 			gotFiles = append([]string(nil), files...)
@@ -56,6 +56,42 @@ func TestRun_guiDelegatesToLauncher(t *testing.T) {
 	}
 	if !gotSilent || !gotWait || len(gotFiles) != 2 || gotFiles[0] != "a" || gotFiles[1] != "b" {
 		t.Fatalf("launchGUI(silent=%v wait=%v files=%v)", gotSilent, gotWait, gotFiles)
+	}
+}
+
+// TestRun_flagConflicts checks the nvi argument-consistency errors.
+func TestRun_flagConflicts(t *testing.T) {
+	code, _, stderr := captureRun(t, []string{"-c", "q", "-c", "wq"}, nil)
+	if code != 2 || !strings.Contains(stderr, "only one -c") {
+		t.Errorf("two -c: code %d stderr %q", code, stderr)
+	}
+	code, _, stderr = captureRun(t, []string{"-r", "-t", "x"}, nil)
+	if code != 2 || !strings.Contains(stderr, "only one of -r and -t") {
+		t.Errorf("-r with -t: code %d stderr %q", code, stderr)
+	}
+}
+
+// TestRun_noSnapshotWarns checks -F prints nvi's not-supported warning but
+// still starts the editor.
+func TestRun_noSnapshotWarns(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	code, _, stderr := captureRun(t, []string{"-F", "-n"}, func() { useStubFrontend() })
+	if code != 0 || !strings.Contains(stderr, "-F option no longer supported") {
+		t.Errorf("-F: code %d stderr %q", code, stderr)
+	}
+}
+
+// TestRun_commandCanQuit checks a -c command that exits (nvi c_option) ends
+// the session before the run loop starts.
+func TestRun_commandCanQuit(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	ran := false
+	code, _, _ := captureRun(t, []string{"-n", "-c", "q!"}, func() {
+		useStubFrontend()
+		runEditor = func(fe editorHost) { ran = true }
+	})
+	if code != 0 || ran {
+		t.Errorf("-c q!: code %d, run loop started %v; want 0, false", code, ran)
 	}
 }
 
@@ -74,7 +110,7 @@ func TestRun_guiNoWait(t *testing.T) {
 }
 
 func TestRun_terminalInitFailure(t *testing.T) {
-	code, _, stderr := captureRun(t, []string{"-s"}, func() {
+	code, _, stderr := captureRun(t, []string{"-n"}, func() {
 		newEditorFrontend = func() (editorHost, error) {
 			return nil, errors.New("no tty")
 		}
@@ -94,7 +130,7 @@ func TestRun_openUnreadableFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("x"), 0o000); err != nil {
 		t.Fatal(err)
 	}
-	code, _, stderr := captureRun(t, []string{"-s", path}, useStubFrontend)
+	code, _, stderr := captureRun(t, []string{"-n", path}, useStubFrontend)
 	if code != 1 {
 		t.Fatalf("run() = %d, want 1", code)
 	}
@@ -105,7 +141,7 @@ func TestRun_openUnreadableFile(t *testing.T) {
 
 func TestRun_editorWithoutRunLoop(t *testing.T) {
 	var ran bool
-	code, _, _ := captureRun(t, []string{"-s"}, func() {
+	code, _, _ := captureRun(t, []string{"-n"}, func() {
 		useStubFrontend()
 		runEditor = func(editorHost) { ran = true }
 	})
@@ -125,7 +161,7 @@ func TestRun_openFileStartsEditor(t *testing.T) {
 	}
 
 	var ran bool
-	code, _, _ := captureRun(t, []string{"-s", path}, func() {
+	code, _, _ := captureRun(t, []string{"-n", path}, func() {
 		useStubFrontend()
 		runEditor = func(editorHost) { ran = true }
 	})
@@ -249,6 +285,6 @@ func captureRunAs(t *testing.T, progname string, args []string, setup func()) (i
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := runIO(progname, args, &stdout, &stderr)
+	code := runIO(progname, args, false, strings.NewReader(""), &stdout, &stderr)
 	return code, stdout.String(), stderr.String()
 }

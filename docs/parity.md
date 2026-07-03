@@ -366,17 +366,18 @@ nvi parses `[-eFlRrSsv] [-c command] [-t tag] [-w size] [file ...]`
 | no file | yes | ✅ | throwaway `$TMPDIR/vi.*` buffer, removed on exit |
 | argv[0] `ex`/`nex` -> ex mode | yes | ✅ | govi adds the `goex` spelling (symlink/hardlink to the binary) |
 | `-e` (ex mode) / `-v` (vi mode) | yes | ✅ | with both, govi lets `-v` win (nvi: last one wins) |
-| argv[0] `view`/`nview` -> readonly | yes | ❌ | govi's `readonly` option works; only the argv[0]/`-R` plumbing is missing |
-| `-R` readonly | yes | ❌ | see above |
+| argv[0] `view`/`nview` -> readonly | yes | ✅ | govi adds the `goview` spelling |
+| `-R` readonly | yes | ✅ | sets the functional `readonly` option |
 | `-r` recover (list / named file) | yes | ✅ | same two forms |
-| `-c command` / `+cmd` | yes | ❌ | engine hook exists (`RunEx`); flag not wired |
-| `-t tag` | yes | ❌ | `:tag` works inside the editor |
-| `-w size` | yes | ❌ | sets the `window` option; the letter is free now that govi's GUI wait is `-G`, but the flag is not wired |
-| `-s` batch/silent (ex only) | yes | ❌ | **govi repurposes `-s`** as "skip startup files/EXINIT" (closest nvi analog: exrc handling; nvi has no such flag) |
-| `-S` secure | yes | ❌ | govi's `secure` option works; flag not wired |
-| `-l` lisp + showmatch | yes | ❌ | `lisp` is inert in govi anyway |
-| `-F` (no snapshot) | error msg | ❌ | nvi only prints "no longer supported" |
-| `-` (= `-s`) historic | yes | ❌ | obsolete-argument translation not implemented |
+| `-c command` / `+cmd` | yes | ✅ | runs after the file loads; may exit (`-c wq`); one -c only, like nvi |
+| `-t tag` | yes | ✅ | excludes `-r`, like nvi; with file args nvi puts the tag file first in the args list, govi jumps after opening them |
+| `-w size` | yes | ✅ | records the size pre-terminal; the first resize clamps and applies it (nvi f_window) |
+| `-s` batch/silent (ex only) | yes | ✅ | headless ex script on stdin, no prompts; implied by redirected stdin in ex mode (nvi G_SCRIPTED); errors in vi mode like nvi. Verified against the oracle binary-to-binary by `internal/conformance` TestExBatchBinaryConformance |
+| `-S` secure | yes | ✅ | sets the functional `secure` option |
+| `-l` lisp + showmatch | yes | ✅ | `showmatch` functional; `lisp` inert in both editors |
+| `-F` (no snapshot) | error msg | ✅ | prints the same "no longer supported" warning and continues |
+| `-` (= `-s`) historic | yes | ✅ | translated like `+cmd` (nvi v_obsolete) |
+| `-n` skip startup files/EXINIT | no | ✅ | govi extension (nvi has no such flag; its `-s` also skips startup as part of batch mode, as does govi's) |
 | `-g` / `-G` GUI launch | no | ✅ | govi extensions (GoVi.app); `-G` = launch and wait |
 
 ---
@@ -410,10 +411,10 @@ nvi parses `[-eFlRrSsv] [-c command] [-t tag] [-w size] [file ...]`
   internal/deprecated flags, and the `w300`/`w1200`/`w9600` baud-rate window
   aliases), so govi's `:set all` is not a literal superset of nvi's. govi adds 4
   options of its own for the GUI/renderer.
-- **Command line:** file args, `-r` recovery, ex-mode startup (argv[0]
-  `ex`/`nex`/`goex` or `-e`, `-v` to override) match nvi; `-R`/`view`, `-c`,
-  `-t`, `-w size`, and ex batch `-s` are not wired (section 4), and govi's
-  `-s` letter currently means something different than nvi's.
+- **Command line:** full nvi parity (section 4): every nvi flag including ex
+  batch `-s`, the `ex`/`view` program names (plus `goex`/`goview` spellings),
+  and the historic `+cmd`/`-` forms. govi adds `-n` (skip startup files) and
+  the `-g`/`-G` GUI launchers.
 - **Evidence:** every row of this matrix was verified against nvi 1.81.6 through
   the goterm harness (or by source reading where the PTY model cannot drive a
   feature) in the 2026-07 review; see [`parity-review.md`](parity-review.md) for

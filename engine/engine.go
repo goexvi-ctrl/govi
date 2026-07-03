@@ -174,7 +174,7 @@ func (e *Engine) Open(path string) error {
 		}
 		return err
 	}
-	e.releaseLock() // drop any lock held on the previous file
+	e.releaseLock()              // drop any lock held on the previous file
 	e.replaceBuffer(store, name) // closes the previous per-screen file handle
 	e.scr.file = fh
 	if len(e.scr.argv) > 1 {
@@ -281,6 +281,11 @@ func (e *Engine) ClearQuit() { e.quit = false }
 // RunEx executes an ex command programmatically (e.g. from a GUI menu or host
 // configuration), as if typed on the colon line without the leading ':'.
 func (e *Engine) RunEx(cmd string) error { return e.exExecute(cmd) }
+
+// RunStartupEx runs a command-line startup ex command (-c/+cmd, -t tag) after
+// the initial file is opened, reporting failure on the status line the way
+// nvi runs c_option, rather than returning the error to the host.
+func (e *Engine) RunStartupEx(cmd string) { e.runColon(cmd) }
 
 // curView builds the read-only View over the editor state: a plain single-screen
 // view when unsplit, or a renderView enumerating every screen when split. All

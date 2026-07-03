@@ -317,8 +317,9 @@ func (e *Engine) exLineNumber(c *exCmd) error {
 	if c.addrCount == 0 {
 		n = e.scr.lineCount()
 	}
-	e.scr.msg = strconv.FormatInt(n, 10)
-	e.scr.msgKind = MsgInfo
+	// nvi ex_equal emits the number as ex output (ex_printf), not a status
+	// message, so := still prints in batch mode where messages are silenced.
+	e.printLine(strconv.FormatInt(n, 10))
 	return nil
 }
 

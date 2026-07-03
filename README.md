@@ -131,23 +131,34 @@ make install      # installs ~/bin/govi and ~/bin/GoVi.app
 ## Command-line options (`govi`)
 
 ```
-govi [-e | -v] [-g | -G] [-r [file]] [-s] [file ...]
+govi [-eFGglnRSsv] [-c command] [-t tag] [-w size] [file ...]
 ```
+
+The flag set matches nvi's (plus the GUI extensions), including the historic
+forms: `+command` is `-c command`, and a bare `-` is `-s`.
 
 | Flag | Meaning |
 |------|---------|
+| **`-c command`** | Run the ex *command* once the first file is loaded (historic **`+command`** also works, e.g. `govi +10 file`) |
 | **`-e`** | Start in **ex mode** (also selected by invoking the binary as `goex`, `ex`, or `nex` — e.g. via a symlink); **`:vi`** switches to the vi screen |
 | **`-v`** | Start in **vi mode** (overrides an ex program name) |
+| **`-F`** | Historic no-snapshot option; prints nvi's "no longer supported" warning |
 | **`-g`** | Open the files in **GoVi.app** (macOS) instead of the terminal |
 | **`-G`** | Like **`-g`**, and block until the tabs/windows for *these* files are closed (useful as an `EDITOR`); requires at least one file |
+| **`-l`** | Set the `showmatch` option (and `lisp`, which neither govi nor nvi implements) |
+| **`-n`** | Do not read startup files or `EXINIT`/`NEXINIT` (govi extension; nvi has no such flag) |
+| **`-R`** | Set the `readonly` option (also selected by invoking the binary as `goview`, `view`, or `nview`) |
 | **`-r`** | List recoverable files (`govi -r`) or recover a named file (`govi -r file`) |
-| **`-s`** | Silent startup: do not read startup files or `EXINIT`/`NEXINIT` |
+| **`-S`** | Set the `secure` option: shell access disabled |
+| **`-s`** | **Ex batch mode**: run the ex commands on standard input headlessly (ex only, e.g. `goex -s file < script`; implied when stdin is not a terminal) |
+| **`-t tag`** | Start editing at *tag* |
+| **`-w size`** | Set the `window` option to *size* lines |
 | **`file ...`** | Files to edit. With multiple files, **`:n`** / **`:prev`** move through the argument list |
 
 With **`-g`**, `govi` does not locate the app bundle itself — it hands the files
 to **GoVi.app** through macOS **Launch Services**.  Because it goes through the
 **`govi://`** URL scheme, **GoVi.app must be registered with Launch Services
-first.** Do this by opening **GoVi** from the finder.  Once this is dong `govi -g`
+first.** Do this by opening **GoVi** from the finder.  Once this is done `govi -g`
 will open that version of **GoVi**.
 
 **`govi [-g]` with no file** opens a *temporary* buffer (backed by a `vi.XXXXXX`
