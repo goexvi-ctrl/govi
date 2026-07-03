@@ -227,6 +227,15 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 	case 'd', 'c', 'y', '!', '>', '<':
 		m.startOperator(r)
 		return
+	case 'n', 'N':
+		// n/N repeat the last search. As a plain command they move the cursor;
+		// as an operator target (dn, yN) they are a search motion (QA-1).
+		if m.op != 0 {
+			m.searchRepeatMotion(e, r == 'N')
+		} else {
+			m.editKey(e, r)
+		}
+		return
 	case 'z':
 		if m.haveCount {
 			m.zLine = int64(m.count)

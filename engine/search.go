@@ -169,7 +169,11 @@ func (e *Engine) runSearchLine(line string, dir searchDir) error {
 	// offset is an exclusive characterwise motion; a line offset makes it
 	// linewise (nvi).
 	e.scr.cursor = m.searchStart
-	mot := motion{to: target, linewise: linewise}
+	// A search target in column 0 of a later line promotes the exclusive span to
+	// linewise when the operator started at/before the first non-blank (POSIX vi
+	// exclusive-linewise rule), so d/pat deletes whole lines rather than leaving
+	// an empty first line.
+	mot := motion{to: target, linewise: linewise, promote: true}
 	m.operate(e, op, m.searchOpReg, mot)
 	m.changed = false
 	m.count, m.haveCount = 0, false
@@ -351,14 +355,16 @@ func regexEscape(s string) string {
 	return b.String()
 }
 
-// repeatSearch implements n (same direction) and N (opposite).
-func (e *Engine) repeatSearch(opposite bool) error {
+// repeatSearchTarget computes the position of the count-th n (same direction)
+// or N (opposite) search repeat from the cursor, without moving it. ok is false
+// when the pattern is not found; err is set only when there is no prior pattern.
+func (e *Engine) repeatSearchTarget(opposite bool, count int) (Pos, bool, error) {
 	if e.scr.lastPattern == "" {
-		return fmt.Errorf("No previous search pattern")
+		return Pos{}, false, fmt.Errorf("No previous search pattern")
 	}
 	re, err := e.compilePattern("")
 	if err != nil {
-		return err
+		return Pos{}, false, err
 	}
 	dir := e.scr.lastSearchDir
 	if opposite {
@@ -368,11 +374,56 @@ func (e *Engine) repeatSearch(opposite bool) error {
 			dir = searchFwd
 		}
 	}
-	pos, ok := e.searchFrom(re, e.scr.cursor, dir)
+	if count < 1 {
+		count = 1
+	}
+	from := e.scr.cursor
+	var pos Pos
+	for i := 0; i < count; i++ {
+		p, ok := e.searchFrom(re, from, dir)
+		if !ok {
+			return Pos{}, false, nil
+		}
+		pos, from = p, p
+	}
+	return pos, true, nil
+}
+
+// repeatSearch implements n (same direction) and N (opposite).
+func (e *Engine) repeatSearch(opposite bool) error {
+	pos, ok, err := e.repeatSearchTarget(opposite, 1)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		return e.searchFailErr()
 	}
 	e.scr.cursor = pos
 	e.scr.clampCursor()
 	return nil
+}
+
+// searchRepeatMotion applies a pending operator over the span from the cursor to
+// an n/N search repeat, mirroring "d/pat<CR>" used as a motion (a search repeat
+// is just a search with the remembered pattern). The span is exclusive
+// characterwise, like a search motion with no line offset. QA-1.
+func (m *vimode) searchRepeatMotion(e *Engine, opposite bool) {
+	s := e.scr
+	op, reg := m.op, m.opReg
+	count := effCount(m.opCount) * effCount(m.count)
+	start := s.cursor
+	target, ok, err := e.repeatSearchTarget(opposite, count)
+	m.op, m.opCount, m.opReg = 0, 0, 0
+	m.count, m.haveCount = 0, false
+	if err != nil {
+		s.msg, s.msgKind = err.Error(), MsgError
+		return
+	}
+	if !ok {
+		s.msg, s.msgKind = e.searchFailErr().Error(), MsgError
+		return
+	}
+	s.cursor = start
+	m.operate(e, op, reg, motion{to: target, promote: true})
+	m.changed = false
 }
