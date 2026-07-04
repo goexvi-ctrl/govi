@@ -92,6 +92,18 @@ func TestSubstReplacementEscapes(t *testing.T) {
 	exCase(t, "repl-literal-cr-escaped", "one two three\n", []string{"s/two/X\\\rY/"}, "one X\nY three")
 }
 
+// nvi regsub checks the magic option per special: under nomagic & is a
+// literal ampersand and \& is the whole match; ~ / \~ flip the same way.
+func TestSubstReplacementNomagic(t *testing.T) {
+	exCase(t, "nomagic-amp", "abc\n", []string{"set nomagic", "s/b/{&}/"}, "a{&}c")
+	exCase(t, "nomagic-esc-amp", "abc\n", []string{"set nomagic", "s/b/[\\&]/"}, "a[b]c")
+	exCase(t, "nomagic-tilde", "one two\n", []string{"s/one/X/", "set nomagic", "s/two/~/"}, "X ~")
+	exCase(t, "nomagic-esc-tilde", "one two\n", []string{"s/one/X/", "set nomagic", "s/two/[\\~]/"}, "X [X]")
+	// Magic-side controls stay as they were.
+	exCase(t, "magic-amp", "abc\n", []string{"s/b/{&}/"}, "a{b}c")
+	exCase(t, "magic-esc-amp", "abc\n", []string{`s/b/[\&]/`}, "a[&]c")
+}
+
 // TestSubstConfirm walks a :s///c substitution through its prompts: each
 // candidate shows "Confirm change? [n]" with the buffer still unchanged and
 // the cursor on the match; y substitutes, n declines, q stops the command.

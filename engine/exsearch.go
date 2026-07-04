@@ -48,10 +48,10 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 
 	s := e.scr
 	// An unescaped ~ in the replacement stands for the previous replacement text
-	// (historic vi). Expand it textually against the prior replacement before it
-	// becomes the new "previous"; \~ is left for the per-match stage to render as
-	// a literal tilde.
-	repl = expandReplTilde(repl, s.lastSubstRepl)
+	// (historic vi; under nomagic the sense flips and \~ expands). Expand it
+	// textually against the prior replacement before it becomes the new
+	// "previous"; a literal tilde is left for the per-match stage.
+	repl = expandReplTilde(repl, s.lastSubstRepl, s.opts.Bool("magic"))
 	s.lastSubstRepl = repl
 	s.lastSubstFlags = flags
 	replRunes := []rune(repl) // decode once, not per line
@@ -74,12 +74,12 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 			return errInterrupted
 		}
 		in := s.lineRunes(lno)
-		out, n, replaced := substituteLine(re, in, replRunes, global)
+		out, n, replaced := substituteLine(re, in, replRunes, global, s.opts.Bool("magic"))
 		if replaced {
 			any = true
 			lastLine = lno
-			// out may contain newlines (from \n in the replacement): split it
-			// into one or more buffer lines.
+			// out may contain newlines (from a literal ^V-quoted CR in the
+			// replacement): split it into one or more buffer lines.
 			segs := splitRunes(out, '\n')
 			s.setLineKnown(lno, in, segs[0])
 			for i := 1; i < len(segs); i++ {
@@ -206,14 +206,15 @@ func (e *Engine) substConfirmApply() {
 	sc := s.subConfirm
 	in := s.lineRunes(sc.lno)
 	m := sc.m
-	exp := buildReplacement(sc.repl, in, m)
+	exp := buildReplacement(sc.repl, in, m, s.opts.Bool("magic"))
 	full := make([]rune, 0, len(in)+len(exp)-(m.End-m.Start))
 	full = append(full, in[:m.Start]...)
 	full = append(full, exp...)
 	if m.End <= len(in) {
 		full = append(full, in[m.End:]...)
 	}
-	// \n in the replacement splits the line, as in the unconfirmed path.
+	// A literal newline in the replacement splits the line, as in the
+	// unconfirmed path.
 	segs := splitRunes(full, '\n')
 	s.setLineKnown(sc.lno, in, segs[0])
 	for i := 1; i < len(segs); i++ {
@@ -270,7 +271,7 @@ func (e *Engine) repeatSubst() error {
 	global := strings.ContainsRune(s.lastSubstFlags, 'g')
 	lno := s.cursor.Line
 	in := s.lineRunes(lno)
-	out, _, replaced := substituteLine(re, in, []rune(s.lastSubstRepl), global)
+	out, _, replaced := substituteLine(re, in, []rune(s.lastSubstRepl), global, s.opts.Bool("magic"))
 	if !replaced {
 		return fmt.Errorf("No match")
 	}
@@ -312,7 +313,7 @@ func (e *Engine) exAmp(c *exCmd) error {
 			return errInterrupted
 		}
 		in := s.lineRunes(lno)
-		out, _, replaced := substituteLine(re, in, replRunes, global)
+		out, _, replaced := substituteLine(re, in, replRunes, global, s.opts.Bool("magic"))
 		if replaced {
 			any = true
 			last = lno
@@ -342,7 +343,7 @@ func (e *Engine) exTilde(c *exCmd) error { return e.exAmp(c) }
 // substituteLine applies re to a single line, replacing the first match or all
 // matches (global). It returns the new line runes (which may contain '\n'), the
 // number of replacements, and whether anything changed.
-func substituteLine(re *regex.Regex, in, repl []rune, global bool) ([]rune, int, bool) {
+func substituteLine(re *regex.Regex, in, repl []rune, global, magic bool) ([]rune, int, bool) {
 	var out []rune
 	pos := 0
 	count := 0
@@ -364,7 +365,7 @@ func substituteLine(re *regex.Regex, in, repl []rune, global bool) ([]rune, int,
 			continue
 		}
 		out = append(out, in[pos:m.Start]...)
-		out = append(out, buildReplacement(repl, in, m)...)
+		out = append(out, buildReplacement(repl, in, m, magic)...)
 		count++
 		prevEnd = m.End
 		if m.End == m.Start {
@@ -389,12 +390,14 @@ func substituteLine(re *regex.Regex, in, repl []rune, global bool) ([]rune, int,
 	return out, count, true
 }
 
-// buildReplacement expands a substitution replacement, handling & (whole match),
-// \1-\9 (backreferences), \u \l \U \L \E (case), and \\ / \& escapes.  Any
-// other escaped character is that literal character (nvi regsub) -- \n is the
-// letter n, not a newline (that is sed/vim).  A literal (^V-quoted) CR or NL
-// character in the replacement breaks the line, per nvi's OUTCH nltrans.
-func buildReplacement(repl, in []rune, m regex.Match) []rune {
+// buildReplacement expands a substitution replacement, handling the whole
+// match (& under magic, \& under nomagic -- the other spelling is a literal
+// ampersand, per nvi regsub's O_MAGIC checks), \1-\9 (backreferences), and
+// \u \l \U \L \E (case).  Any other escaped character is that literal
+// character (nvi regsub) -- \n is the letter n, not a newline (that is
+// sed/vim).  A literal (^V-quoted) CR or NL character in the replacement
+// breaks the line, per nvi's OUTCH nltrans.
+func buildReplacement(repl, in []rune, m regex.Match, magic bool) []rune {
 	var out []rune
 	// case mode: 0 none, 'U' upper-until-E, 'L' lower-until-E; oneShot 'u'/'l'.
 	var caseMode rune
@@ -441,7 +444,11 @@ func buildReplacement(repl, in []rune, m regex.Match) []rune {
 		r := repl[i]
 		switch r {
 		case '&':
-			emitGroup(0)
+			if magic {
+				emitGroup(0)
+			} else {
+				emitRepl('&')
+			}
 		case '\\':
 			if i+1 >= len(repl) {
 				emit('\\')
@@ -452,6 +459,8 @@ func buildReplacement(repl, in []rune, m regex.Match) []rune {
 			switch {
 			case n >= '0' && n <= '9':
 				emitGroup(int(n - '0'))
+			case n == '&' && !magic:
+				emitGroup(0)
 			case n == 'u', n == 'l':
 				oneShot = n
 			case n == 'U', n == 'L':
@@ -468,21 +477,26 @@ func buildReplacement(repl, in []rune, m regex.Match) []rune {
 	return out
 }
 
-// expandReplTilde replaces each unescaped ~ in a substitute replacement with the
-// previous replacement text prev (historic vi). A backslash escape is passed
-// through untouched (so \~ survives for the per-match stage to make literal, and
-// \& \1 etc. are not disturbed); the result becomes the new "previous".
-func expandReplTilde(repl, prev string) string {
+// expandReplTilde replaces each unescaped ~ in a substitute replacement with
+// the previous replacement text prev (historic vi); under nomagic the sense
+// flips: plain ~ is literal and \~ expands (nvi's O_MAGIC checks in the
+// replacement parse). Other backslash escapes pass through untouched (so \&
+// \1 etc. are not disturbed); the result becomes the new "previous".
+func expandReplTilde(repl, prev string, magic bool) string {
 	rs := []rune(repl)
 	var b strings.Builder
 	for i := 0; i < len(rs); i++ {
 		if rs[i] == '\\' && i+1 < len(rs) {
-			b.WriteRune(rs[i])
-			b.WriteRune(rs[i+1])
+			if rs[i+1] == '~' && !magic {
+				b.WriteString(prev)
+			} else {
+				b.WriteRune(rs[i])
+				b.WriteRune(rs[i+1])
+			}
 			i++
 			continue
 		}
-		if rs[i] == '~' {
+		if rs[i] == '~' && magic {
 			b.WriteString(prev)
 			continue
 		}
