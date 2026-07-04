@@ -211,7 +211,16 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 		op, reg := m.op, m.opReg
 		m.op, m.opCount, m.opReg = 0, 0, 0
 		m.count, m.haveCount = 0, false
-		mot := lineMotion(s.cursor.Line, s.cursor.Line+int64(total)-1)
+		// A line-mode count that runs past the last line is an error in nvi (the
+		// buffer is untouched), not a clamp to EOF: "100dd" in a 5-line file
+		// beeps and does nothing rather than deleting to the end.
+		last := s.cursor.Line + int64(total) - 1
+		if last > s.lineCount() {
+			s.msg, s.msgKind = "Movement past the end-of-file", MsgError
+			e.fe.Bell()
+			return
+		}
+		mot := lineMotion(s.cursor.Line, last)
 		m.operate(e, op, reg, mot)
 		return
 	}
