@@ -285,22 +285,49 @@ func (m *vimode) insertBackspace(e *Engine) {
 }
 
 // insertWordErase implements ^W: delete the whitespace and word before the
-// cursor.
+// cursor. nvi (v_txt.c K_VWERASE) offers three word definitions, selected by the
+// altwerase and ttywerase options and demonstrated by how "/a/b/c" is erased:
+//   - default (historic vi): two character classes plus <blank>s delimit words,
+//     so ^W erases just "c";
+//   - ttywerase: only <blank>s delimit, so ^W erases the whole "/a/b/c";
+//   - altwerase: like the default but the first erased character's class is
+//     ignored, so ^W erases "/c".
+// The erase stops at the insertion start (nvi bounds it at tp->offset), so it
+// cannot delete text that predates the insertion.
 func (m *vimode) insertWordErase(e *Engine) {
 	s := e.scr
 	line := s.lineRunes(s.cursor.Line)
 	col := clampIdx(s.cursor.Col, len(line))
+	blank := func(r rune) bool { return r == ' ' || r == '\t' }
+	lo := 0
+	if s.cursor.Line == m.insertEnter.Line && m.insertEnter.Col <= col {
+		lo = m.insertEnter.Col
+	}
 	i := col
-	for i > 0 && (line[i-1] == ' ' || line[i-1] == '\t') {
+	// Skip trailing <blank>s first (all three modes do this).
+	for i > lo && blank(line[i-1]) {
 		i--
 	}
-	if i > 0 {
-		if isWordRune(line[i-1]) {
-			for i > 0 && isWordRune(line[i-1]) {
-				i--
+	switch {
+	case s.opts.Bool("ttywerase"):
+		for i > lo && !blank(line[i-1]) {
+			i--
+		}
+	case s.opts.Bool("altwerase"):
+		// Erase one character regardless of class, then stay within its class.
+		if i > lo {
+			i--
+			if i > lo && !blank(line[i-1]) {
+				cls := isWordRune(line[i-1])
+				for i > lo && !blank(line[i-1]) && isWordRune(line[i-1]) == cls {
+					i--
+				}
 			}
-		} else {
-			for i > 0 && !isWordRune(line[i-1]) && line[i-1] != ' ' && line[i-1] != '\t' {
+		}
+	default:
+		if i > lo {
+			cls := isWordRune(line[i-1])
+			for i > lo && !blank(line[i-1]) && isWordRune(line[i-1]) == cls {
 				i--
 			}
 		}

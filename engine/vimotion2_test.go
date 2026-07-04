@@ -189,6 +189,34 @@ func TestInsertCtrlW(t *testing.T) {
 	}
 }
 
+// TestInsertCtrlWModes covers CORNERS B-5: insert-mode ^W honors the altwerase
+// and ttywerase options (nvi's three word-erase definitions), and stops at the
+// insertion start. Verified against nvi.
+func TestInsertCtrlWModes(t *testing.T) {
+	const W = "\x17" // ^W
+	cases := []struct{ name, opts, keys, want string }{
+		{"default", "", "i/a/b/c" + W + "\x1b", "/a/b/"},          // erases "c"
+		{"ttywerase", "set ttywerase", "i/a/b/c" + W + "\x1b", ""}, // erases all
+		{"altwerase", "set altwerase", "i/a/b/c" + W + "\x1b", "/a/b"}, // erases "/c"
+		{"default-words", "", "ifoo bar baz" + W + "\x1b", "foo bar "},
+		{"bound-at-insert", "", "A xy" + W + W + "\x1b", "pre"}, // cannot erase "pre"
+	}
+	for _, c := range cases {
+		start := "\n"
+		if c.name == "bound-at-insert" {
+			start = "pre\n"
+		}
+		e, _, _ := newTestEngine(t, start)
+		if c.opts != "" {
+			e.exExecute(c.opts)
+		}
+		drive(e, c.keys)
+		if got := bufText(e); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 func TestFileInfoMessage(t *testing.T) {
 	e, _, _ := newTestEngine(t, "a\nb\nc\n")
 	drive(e, "j")
