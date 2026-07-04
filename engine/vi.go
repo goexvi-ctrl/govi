@@ -1050,7 +1050,9 @@ func normalizeKey(ev KeyEvent) rune {
 	case KeyUp:
 		return 'k'
 	case KeyHome:
-		return '0'
+		// nvi maps the terminal's khome key to '^' (first nonblank,
+		// cl/cl_term.c "go to sol"), not vim's column 0.
+		return '^'
 	case KeyEnd:
 		return '$'
 	case KeyEnter:

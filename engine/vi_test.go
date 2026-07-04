@@ -42,6 +42,17 @@ func viCase(t *testing.T, name, initial, keys, want string) {
 	}
 }
 
+func TestHomeKeyCommandMode(t *testing.T) {
+	// nvi maps khome to '^': first nonblank, not column 0 (that is vim).
+	e, _, _ := newTestEngine(t, "  foo bar\n")
+	drive(e, "$")
+	e.Input(KeyEvent{Key: KeyHome})
+	curAt(t, e, 1, 2, "Home to first nonblank")
+	// End stays '$' (nvi kend).
+	e.Input(KeyEvent{Key: KeyEnd})
+	curAt(t, e, 1, 8, "End to last char")
+}
+
 func TestDelKeyCommandMode(t *testing.T) {
 	// ^? (the DEL/Backspace key) is not a command key: nvi reports it.
 	e, _, _ := newTestEngine(t, "hello\n")
