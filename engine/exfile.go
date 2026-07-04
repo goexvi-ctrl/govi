@@ -102,8 +102,42 @@ func (e *Engine) exFile(c *exCmd) error {
 
 // exEdit implements :e[!] [file] -- edit a file, replacing the current buffer.
 // With no name it re-edits the current file (discarding changes with !).
+// splitPlusCmd peels a leading "+cmd" argument off an :edit/:next argument
+// (nvi FL_ALL / the +command form). It returns the ex command to run once the
+// file is loaded ("" when there is none) and the remaining argument (the file
+// name). A bare "+" means the last line ("$"), matching the command-line form.
+func splitPlusCmd(arg string) (cmd, rest string) {
+	if !strings.HasPrefix(arg, "+") {
+		return "", arg
+	}
+	rs := []rune(arg[1:])
+	var b strings.Builder
+	i := 0
+	for i < len(rs) {
+		if rs[i] == '\\' && i+1 < len(rs) { // \<space> keeps the space in the cmd
+			b.WriteRune(rs[i+1])
+			i += 2
+			continue
+		}
+		if rs[i] == ' ' || rs[i] == '\t' {
+			break
+		}
+		b.WriteRune(rs[i])
+		i++
+	}
+	cmd = b.String()
+	if cmd == "" {
+		cmd = "$"
+	}
+	for i < len(rs) && (rs[i] == ' ' || rs[i] == '\t') {
+		i++
+	}
+	return cmd, string(rs[i:])
+}
+
 func (e *Engine) exEdit(c *exCmd) error {
-	path := strings.TrimSpace(c.arg)
+	plusCmd, arg := splitPlusCmd(strings.TrimSpace(c.arg))
+	path := strings.TrimSpace(arg)
 	if path != "" {
 		// Expand %/# and shell metacharacters: ":e #" re-edits the alternate
 		// file, ":e %" the current one, ":e f*" the unique match (nvi
@@ -121,7 +155,11 @@ func (e *Engine) exEdit(c *exCmd) error {
 	// :E[dit] (capitalized) opens the file -- or the current file when no name is
 	// given -- in a new split screen, leaving the current screen untouched.
 	if c.newScreen {
-		return e.editNewScreen(path)
+		if err := e.editNewScreen(path); err != nil {
+			return err
+		}
+		e.runPlusCmd(plusCmd)
+		return nil
 	}
 	if path == "" {
 		path = e.scr.name
@@ -132,7 +170,28 @@ func (e *Engine) exEdit(c *exCmd) error {
 	if e.scr.dirty() && !c.force {
 		return fmt.Errorf("No write since last change (use :e! to override)")
 	}
-	return e.Open(path)
+	if err := e.Open(path); err != nil {
+		return err
+	}
+	// A "+cmd" argument runs once the file is loaded (:e +N file, :e +/pat file),
+	// like the command-line +cmd form (nvi ex_edit -> the same c_option path).
+	e.runPlusCmd(plusCmd)
+	return nil
+}
+
+// runPlusCmd runs the ex command peeled off an :edit/:next "+cmd" argument, on
+// the freshly loaded file. Empty cmd is a no-op. Failures land on the status
+// line rather than aborting the (already successful) file switch.
+func (e *Engine) runPlusCmd(cmd string) {
+	if cmd == "" {
+		return
+	}
+	e.runColon(cmd)
+	// nvi positions a freshly loaded file so the +cmd's landing line is the top
+	// of the window (as "vi +N file" does from the command line), rather than
+	// leaving the window at line 1 with the cursor part-way down.
+	s := e.scr
+	s.top = clampLine(s, s.cursor.Line)
 }
 
 // exNext implements :n[!] -- edit the next file in the argument list. :N
