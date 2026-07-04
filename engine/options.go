@@ -257,7 +257,7 @@ func resolveOpt(name string) (*optDef, error) {
 		}
 	}
 	if found == nil {
-		return nil, fmt.Errorf("set: no %s option", name)
+		return nil, fmt.Errorf("set: no %s option: 'set all' gives all option values", name)
 	}
 	return found, nil
 }

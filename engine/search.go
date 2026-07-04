@@ -156,7 +156,8 @@ func (e *Engine) searchFailErr() error {
 	if e.Interrupted() {
 		return errInterrupted
 	}
-	return fmt.Errorf("Pattern not found: %s", e.scr.lastPattern)
+	// nvi reports just "Pattern not found" -- it does not echo the pattern.
+	return fmt.Errorf("Pattern not found")
 }
 
 // searchAddr resolves an ex search line-address (/pat/ or ?pat?): it finds the

@@ -408,11 +408,13 @@ func (e *Engine) exWrite(c *exCmd) error {
 		if err != nil {
 			return err
 		}
-		verb := "written"
+		// nvi (common/exf.c): "<name>: appended: N lines, M characters" for an
+		// append, otherwise "<name>: N lines, M characters".
 		if appendMode {
-			verb = "appended"
+			e.scr.msg = fmt.Sprintf("%s: appended: %d lines, %d characters", filepath.Base(target), n, b)
+		} else {
+			e.scr.msg = fmt.Sprintf("%s: %d lines, %d characters", filepath.Base(target), n, b)
 		}
-		e.scr.msg = fmt.Sprintf("%q: %d lines, %d bytes %s", filepath.Base(target), n, b, verb)
 		e.scr.msgKind = MsgInfo
 		return nil
 	}
@@ -504,6 +506,9 @@ func (e *Engine) Save(path string) error {
 		return fmt.Errorf("No current filename")
 	}
 	target := e.resolvePath(given)
+	// Whether the file exists yet controls nvi's "new file:" message prefix.
+	_, statErr := os.Stat(target)
+	wasNew := os.IsNotExist(statErr)
 	// Back up the file's current contents first when the backup option is set
 	// (nvi file_backup), before the write replaces it.
 	if err := e.makeBackup(target); err != nil {
@@ -524,7 +529,14 @@ func (e *Engine) Save(path string) error {
 		// was held on; re-take it so the session keeps the lock across saves.
 		e.relockAfterWrite(target)
 	}
-	e.scr.msg = fmt.Sprintf("%q: %d lines, %d bytes", filepath.Base(target), n, b)
+	// nvi write message (common/exf.c): "<name>: [new file: ]N lines, M
+	// characters" -- no quotes, and the count is bytes but labeled "characters"
+	// (historic). Matches the file-open status wording.
+	if wasNew {
+		e.scr.msg = fmt.Sprintf("%s: new file: %d lines, %d characters", filepath.Base(target), n, b)
+	} else {
+		e.scr.msg = fmt.Sprintf("%s: %d lines, %d characters", filepath.Base(target), n, b)
+	}
 	e.scr.msgKind = MsgInfo
 	return nil
 }

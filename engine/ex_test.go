@@ -1,6 +1,10 @@
 package engine
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // exCase runs an ex command line (or several, separated by '\n') against initial
 // content and checks the buffer result.
@@ -67,6 +71,45 @@ func TestExPipeSeparator(t *testing.T) {
 	if e.scr.opts.Bool("autoindent") || e.scr.opts.Int("shiftwidth") != 9 {
 		t.Errorf("compound :set did not apply both: ai=%v sw=%d",
 			e.scr.opts.Bool("autoindent"), e.scr.opts.Int("shiftwidth"))
+	}
+}
+
+// TestMessageWordingParity covers CORNERS B-10: a sample of common status
+// messages aligned to nvi's exact wording (verified against nvi 1.81.6).
+func TestMessageWordingParity(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "f.txt")
+	if err := os.WriteFile(p, []byte("alpha\nbeta\ngamma\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e := New(&captureFrontend{}, Options{})
+	if err := e.OpenArgs([]string{p}); err != nil {
+		t.Fatal(err)
+	}
+	e.Resize(10, 60)
+
+	// Write to a new name: "<name>: new file: N lines, M characters".
+	if err := e.exExecute("w " + filepath.Join(dir, "g.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if want := "g.txt: new file: 3 lines, 17 characters"; e.scr.msg != want {
+		t.Errorf("write-new msg = %q, want %q", e.scr.msg, want)
+	}
+	// Write the current (now-existing) file: no "new file:" prefix, "characters".
+	if err := e.exExecute("w"); err != nil {
+		t.Fatal(err)
+	}
+	if want := "f.txt: 3 lines, 17 characters"; e.scr.msg != want {
+		t.Errorf("write-existing msg = %q, want %q", e.scr.msg, want)
+	}
+	// Failed search reports just "Pattern not found" (no echoed pattern).
+	if err := e.startSearch("zzzz", searchFwd); err == nil || err.Error() != "Pattern not found" {
+		t.Errorf("search miss = %v, want \"Pattern not found\"", err)
+	}
+	// Unknown option carries nvi's "'set all'" hint.
+	err := e.exExecute("set nosuchopt")
+	if want := "set: no suchopt option: 'set all' gives all option values"; err == nil || err.Error() != want {
+		t.Errorf("bad option = %v, want %q", err, want)
 	}
 }
 
