@@ -38,6 +38,13 @@ type Engine struct {
 	// restorable by :fg/:Fg.
 	bg []*screen
 
+	// cclStore/cclLog hold the colon command-line history collected while the
+	// cedit option is set (nvi wp->ccl_sp's buffer, vi/v_ex.c). Created lazily,
+	// shared by every comedit window, never discarded -- the history and any
+	// in-window edits to it survive window close.
+	cclStore buffer.LineStore
+	cclLog   *undo.Log
+
 	// termH/termCols are the full terminal geometry last given to Resize: termH
 	// is the total number of display rows (text rows of all screens plus one
 	// status row per screen), termCols the width.
@@ -570,6 +577,14 @@ func (e *Engine) runCmdline(prefix rune, line string) {
 			e.scr.msg, e.scr.msgKind = err.Error(), MsgError
 		}
 	default:
+		// While cedit is set, log the command to the colon history before
+		// running it (nvi v_ex calls v_ecl_log before pushing the command, so
+		// failing commands are kept too). Only this vi ':' prompt path logs:
+		// startup files, ex line mode, :g bodies, and direct exExecute calls
+		// never come through here, matching nvi's placement in v_ex.
+		if e.scr.opts.Str("cedit") != "" {
+			e.ceditLog(line)
+		}
 		e.runColon(strings.TrimSpace(line))
 	}
 }
