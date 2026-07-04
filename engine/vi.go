@@ -573,10 +573,19 @@ func (m *vimode) doMotion(e *Engine, key rune, charArg rune) {
 			explicit = true
 		}
 	}
+	// A pure motion (no pending operator) records the previous context for the
+	// absolute motions; an operator target (d/, dG) does not -- nvi sets the mark
+	// from the command's flags, and the command there is the operator (vi/vi.c).
+	prev := e.scr.cursor
+	pureMotion := m.op == 0
+	cls := absClassOf(key)
 	mot, ok := e.computeMotion(key, total, explicit, charArg)
 	m.count = 0
 	m.haveCount = false
 	m.applyMotionOrOp(e, mot, ok)
+	if pureMotion && ok && cls != absNone {
+		e.setPrevContext(prev, e.scr.cursor, cls)
+	}
 }
 
 func (m *vimode) applyMotionOrOp(e *Engine, mot motion, ok bool) {
@@ -656,7 +665,10 @@ func (m *vimode) charArg(e *Engine, ev KeyEvent) {
 			m.pending = 'z'
 			return
 		}
+		prev := e.scr.cursor
 		e.screenPosition(m, c, m.zLine, m.zLine != 0, m.zCount2, m.zCount2Set)
+		// z is V_ABS_L: set the previous context if the line changed.
+		e.setPrevContext(prev, e.scr.cursor, absLine)
 		m.zLine = 0
 		m.zCount2, m.zCount2Set = 0, false
 	case '#':

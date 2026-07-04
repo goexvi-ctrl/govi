@@ -190,12 +190,15 @@ func (e *Engine) startSearch(pattern string, dir searchDir) error {
 		return err
 	}
 	e.scr.lastSearchDir = dir
+	prev := e.scr.cursor
 	pos, ok := e.searchFrom(re, e.scr.cursor, dir)
 	if !ok {
 		return e.searchFailErr()
 	}
 	e.scr.cursor = pos
 	e.scr.clampCursor()
+	// startSearch backs ^A (v_searchw), which is V_ABS: always set the mark.
+	e.setPrevContext(prev, e.scr.cursor, absAlways)
 	return nil
 }
 
@@ -212,8 +215,11 @@ func (e *Engine) runSearchLine(line string, dir searchDir) error {
 		return err
 	}
 	if op == 0 {
+		prev := e.scr.cursor
 		e.scr.cursor = target
 		e.scr.clampCursor()
+		// / and ? are V_ABS_C: set the previous context if the line or column moved.
+		e.setPrevContext(prev, e.scr.cursor, absCol)
 		return nil
 	}
 	// Apply the deferred operator over [searchStart, target]. A search with no
@@ -442,6 +448,7 @@ func (e *Engine) repeatSearchTarget(opposite bool, count int) (Pos, bool, error)
 
 // repeatSearch implements n (same direction) and N (opposite).
 func (e *Engine) repeatSearch(opposite bool) error {
+	prev := e.scr.cursor
 	pos, ok, err := e.repeatSearchTarget(opposite, 1)
 	if err != nil {
 		return err
@@ -451,6 +458,8 @@ func (e *Engine) repeatSearch(opposite bool) error {
 	}
 	e.scr.cursor = pos
 	e.scr.clampCursor()
+	// n and N are V_ABS_C: set the previous context if the line or column moved.
+	e.setPrevContext(prev, e.scr.cursor, absCol)
 	return nil
 }
 

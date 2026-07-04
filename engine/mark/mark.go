@@ -19,6 +19,19 @@ type Mark struct {
 	Deleted bool
 }
 
+// PrevContext is the previous-context mark name. nvi keeps a single "absolute"
+// mark that '' and `` return to; common/mark.c (ABSMARK1 '\'', ABSMARK2 '`')
+// translates a ` reference to ' on every set and get, so "m'", "m`", '' and ``
+// all name the same position. normName replicates that translation.
+const PrevContext = '\''
+
+func normName(name rune) rune {
+	if name == '`' {
+		return PrevContext
+	}
+	return name
+}
+
 // Set holds the marks for one buffer.
 type Set struct {
 	m map[rune]Mark
@@ -29,7 +42,7 @@ func New() *Set { return &Set{m: make(map[rune]Mark)} }
 
 // Get returns the mark named name and whether it is set and not deleted.
 func (s *Set) Get(name rune) (Mark, bool) {
-	mk, ok := s.m[name]
+	mk, ok := s.m[normName(name)]
 	if !ok || mk.Deleted {
 		return Mark{}, false
 	}
@@ -39,11 +52,11 @@ func (s *Set) Get(name rune) (Mark, bool) {
 // Set records mark name at the given position, clearing any deleted state.
 func (s *Set) Set(name rune, mk Mark) {
 	mk.Deleted = false
-	s.m[name] = mk
+	s.m[normName(name)] = mk
 }
 
 // Clear removes mark name entirely.
-func (s *Set) Clear(name rune) { delete(s.m, name) }
+func (s *Set) Clear(name rune) { delete(s.m, normName(name)) }
 
 // Names returns the names of all currently valid (non-deleted) marks.
 func (s *Set) Names() []rune {

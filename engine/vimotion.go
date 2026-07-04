@@ -1,5 +1,7 @@
 package engine
 
+import "govi/engine/mark"
+
 // motion is the result of evaluating a vi motion: the target position plus how
 // a pending operator should treat the span. linewise motions affect whole
 // lines; for charwise motions, inclusive means the rune at the target is part
@@ -29,6 +31,53 @@ const (
 	markCharMotion = rune(0xE000) // `m  -> exact position
 	markLineMotion = rune(0xE001) // 'm  -> first non-blank of mark's line
 )
+
+// absClass classifies a command's "previous context" behavior, mirroring the
+// V_ABS / V_ABS_L / V_ABS_C flags on nvi's vikeys[] entries (vi/vi.c). After an
+// absolute command runs, nvi records where the cursor was beforehand under the
+// previous-context mark ('/`) so '' and `` return to it.
+type absClass int
+
+const (
+	absNone   absClass = iota
+	absAlways          // V_ABS:   always set
+	absLine            // V_ABS_L: set only if the line changed
+	absCol             // V_ABS_C: set only if the line or column changed
+)
+
+// absClassOf returns the previous-context behavior for a computeMotion key,
+// matching nvi's vikeys[] flags: % ( ) { } [[ ]] are V_ABS; G H M L and the
+// 'mark line motion are V_ABS_L; the `mark char motion is V_ABS_C. (The search
+// commands / ? n N and ^A are handled on their own code paths.)
+func absClassOf(key rune) absClass {
+	switch key {
+	case '%', '(', ')', '{', '}', sectionFwdMotion, sectionBackMotion:
+		return absAlways
+	case 'G', 'H', 'M', 'L', markLineMotion:
+		return absLine
+	case markCharMotion:
+		return absCol
+	}
+	return absNone
+}
+
+// setPrevContext records the previous-context mark at prev when a command of the
+// given class moved the cursor from prev to cur. nvi sets the absolute mark to
+// the pre-command position (vi/vi.c, ex/ex.c E_ABSMARK).
+func (e *Engine) setPrevContext(prev, cur Pos, cls absClass) {
+	var set bool
+	switch cls {
+	case absAlways:
+		set = true
+	case absLine:
+		set = prev.Line != cur.Line
+	case absCol:
+		set = prev.Line != cur.Line || prev.Col != cur.Col
+	}
+	if set {
+		e.scr.marks.Set(mark.PrevContext, mark.Mark{Line: prev.Line, Col: prev.Col})
+	}
+}
 
 func isMotionKey(r rune) bool {
 	switch r {

@@ -14,6 +14,7 @@ import (
 type exCmd struct {
 	addr1, addr2 int64 // resolved 1-based line addresses
 	addrCount    int   // number of addresses the user supplied (0, 1, 2)
+	absAddr      bool  // an address was "non-relative" (number, $, 'mark, /?): sets ''
 	force        bool  // the ! flag
 	buffer       rune  // register name, or 0
 	arg          string
@@ -127,6 +128,13 @@ func (e *Engine) exExecute(line string) error {
 	if c == nil {
 		return nil
 	}
+	// A non-relative address (number, $, 'mark, /?) records the previous context
+	// at the pre-command position, whether the command is a bare goto (:15) or an
+	// addressed command (:15d). nvi does this in the ex loop before execution
+	// (ex/ex.c E_ABSMARK); it deliberately does not fire for . + - or %.
+	if c.absAddr {
+		e.setPrevContext(e.scr.cursor, Pos{}, absAlways)
+	}
 	if c.def == nil {
 		if c.addrCount > 0 {
 			// In ex (line) mode a bare address prints the line(s) and makes the
@@ -144,10 +152,11 @@ func (e *Engine) exExecute(line string) error {
 }
 
 type exParser struct {
-	e   *Engine
-	s   []rune
-	pos int
-	err error // set by address parsing (e.g. a search address that fails)
+	e       *Engine
+	s       []rune
+	pos     int
+	err     error // set by address parsing (e.g. a search address that fails)
+	absAddr bool  // a non-relative address base was seen (nvi E_ABSMARK)
 }
 
 func (e *Engine) parseEx(line string) (*exCmd, error) {
@@ -196,6 +205,7 @@ func (e *Engine) parseEx(line string) (*exCmd, error) {
 	if p.err != nil {
 		return nil, p.err
 	}
+	c.absAddr = p.absAddr
 
 	p.skipBlanks()
 	name := p.parseName()
@@ -314,12 +324,14 @@ func (p *exParser) parseAddrBase(cur int64) (int64, bool) {
 	switch r := p.peek(); {
 	case r >= '0' && r <= '9':
 		n, _ := p.parseNumber()
+		p.absAddr = true
 		return n, true
 	case r == '.':
 		p.next()
 		return cur, true
 	case r == '$':
 		p.next()
+		p.absAddr = true
 		return p.e.scr.lineCount(), true
 	case r == '\'':
 		p.next()
@@ -328,6 +340,7 @@ func (p *exParser) parseAddrBase(cur int64) (int64, bool) {
 		}
 		name := p.next()
 		if mk, ok := p.e.scr.marks.Get(name); ok {
+			p.absAddr = true
 			return mk.Line, true
 		}
 		return 0, false
@@ -346,6 +359,7 @@ func (p *exParser) parseAddrBase(cur int64) (int64, bool) {
 			p.err = err
 			return 0, false
 		}
+		p.absAddr = true
 		return lno, true
 	}
 	return 0, false

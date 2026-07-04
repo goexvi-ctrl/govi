@@ -281,6 +281,41 @@ func TestViWordMotions(t *testing.T) {
 	}
 }
 
+// TestViPrevContextMark covers CORNERS A-1: absolute motions (G / ? n % { } etc.),
+// searches, and non-relative ex addresses record the pre-jump position under the
+// previous-context mark, so '' and `` return to it and toggle. Operator targets
+// (y/pat, dG) must not set it. Verified against nvi via the goterm A-1 probe.
+func TestViPrevContextMark(t *testing.T) {
+	body := "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n"
+	lineAfter := func(keys string) int64 {
+		e, _, _ := newTestEngine(t, body)
+		drive(e, keys)
+		return e.scr.cursor.Line
+	}
+	cases := []struct {
+		name string
+		keys string
+		want int64
+	}{
+		{"G-sets-ctx", "10G''", 1},        // 10G records line 1; '' returns
+		{"quote-toggles", "10G''''", 10},  // '' is itself absolute, so it toggles
+		{"search-sets-ctx", "/12\r''", 1}, // / records line 1
+		{"search-toggles", "/12\r''''", 12},
+		{"n-sets-ctx", "/1\rn''", 10},         // / -> line 10, n -> line 11 (''=10)
+		{"ex-addr-sets-ctx", ":13\r''", 1},    // :13 (number address) records line 1
+		{"ex-addr-toggles", ":13\r''''", 13},  // '' toggles back to 13
+		{"ex-dot-inert", ":.\r''", 1},         // :. is relative: '' unset -> no move
+		{"H-after-G", "10GH''", 10},           // H records the pre-jump line 10
+		{"op-y-no-set", "10G1Gy/5\r''", 10},   // yank target must not overwrite ''
+		{"backtick-line", "5G`'''", 5},        // `mark reference aliases 'mark
+	}
+	for _, c := range cases {
+		if got := lineAfter(c.keys); got != c.want {
+			t.Errorf("%s: %q -> line %d, want %d", c.name, c.keys, got, c.want)
+		}
+	}
+}
+
 func TestViGotoLine(t *testing.T) {
 	e, _, _ := newTestEngine(t, "a\nb\nc\nd\ne\n")
 	drive(e, "G")
