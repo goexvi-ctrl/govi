@@ -123,11 +123,15 @@ func TestOutputOverlayDismissed(t *testing.T) {
 	if e.scr.pendingOutput == nil {
 		t.Fatal("expected overlay")
 	}
-	e.Input(KeyEvent{Rune: ' '}) // any key dismisses
+	// Space pages through and finally dismisses the overlay; every key is consumed
+	// by the overlay, so none leaks into the editor (the option count, hence the
+	// page count, can grow over time).
+	for i := 0; i < 20 && e.scr.pendingOutput != nil; i++ {
+		e.Input(KeyEvent{Rune: ' '})
+	}
 	if e.scr.pendingOutput != nil {
 		t.Fatal("overlay not dismissed")
 	}
-	// The dismiss key is consumed, not treated as a command.
 	if bufText(e) != "hello" {
 		t.Fatalf("dismiss key leaked into editor: %q", bufText(e))
 	}

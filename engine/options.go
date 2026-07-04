@@ -8,6 +8,30 @@ import (
 	"strings"
 )
 
+// localeCodeset returns the character-set name from the locale environment
+// (LC_ALL, then LC_CTYPE, then LANG), the way nvi seeds fileencoding and
+// inputencoding from nl_langinfo(CODESET). It takes the part after '.' in a
+// value like "en_US.UTF-8" (dropping any "@modifier"), and defaults to "utf-8"
+// -- govi is UTF-8 internally, so these options are accepted and displayed but
+// do not drive conversion.
+func localeCodeset() string {
+	for _, k := range []string{"LC_ALL", "LC_CTYPE", "LANG"} {
+		v := os.Getenv(k)
+		i := strings.IndexByte(v, '.')
+		if i < 0 {
+			continue
+		}
+		cs := v[i+1:]
+		if j := strings.IndexByte(cs, '@'); j >= 0 {
+			cs = cs[:j]
+		}
+		if cs != "" {
+			return cs
+		}
+	}
+	return "utf-8"
+}
+
 // Options are stored generically by name so the full nvi option set is easy to
 // carry. Only some options drive implemented behavior; the rest are recognized,
 // settable (and listed by :set all), and inert until wired up. This mirrors
@@ -51,12 +75,14 @@ var optDefs = []optDef{
 	{name: "exrc", typ: optBool},
 	{name: "extended", typ: optBool},
 	{name: "filec", typ: optStr, dS: "\t"},
+	{name: "fileencoding", abbr: "fe", typ: optStr, dS: localeCodeset()},
 	{name: "flash", typ: optBool, dB: true},
 	{name: "foreground", abbr: "fg", typ: optStr},
 	{name: "background", abbr: "bg", typ: optStr},
 	{name: "hardtabs", abbr: "ht", typ: optNum},
 	{name: "iclower", typ: optBool},
 	{name: "ignorecase", abbr: "ic", typ: optBool},
+	{name: "inputencoding", abbr: "ie", typ: optStr, dS: localeCodeset()},
 	{name: "keytime", typ: optNum, dN: 6},
 	{name: "leftright", typ: optBool},
 	{name: "lines", typ: optNum, dN: 24},

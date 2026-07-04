@@ -5,6 +5,27 @@ import (
 	"time"
 )
 
+// TestSetEncodingOptions covers CORNERS B-8: the fileencoding and inputencoding
+// options (with fe/ie abbreviations) are recognized and settable, so :set no
+// longer errors on them (govi is UTF-8 internally, so the value is cosmetic).
+func TestSetEncodingOptions(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x\n")
+	if got := e.scr.opts.Str("fileencoding"); got == "" {
+		t.Error("fileencoding should have a non-empty locale default")
+	}
+	for _, set := range []string{"set fileencoding=utf-8", "set inputencoding=iso-8859-1", "set fe=latin1", "set ie=utf-8"} {
+		if err := e.exExecute(set); err != nil {
+			t.Errorf("%q: %v", set, err)
+		}
+	}
+	if got := e.scr.opts.Str("fileencoding"); got != "latin1" {
+		t.Errorf("fileencoding = %q, want latin1", got)
+	}
+	if got := e.scr.opts.Str("inputencoding"); got != "utf-8" {
+		t.Errorf("inputencoding = %q, want utf-8", got)
+	}
+}
+
 func TestSetBool(t *testing.T) {
 	e, _, _ := newTestEngine(t, "x\n")
 	if e.scr.opts.Bool("autoindent") {
