@@ -26,10 +26,11 @@ func TestViShiftWidth(t *testing.T) {
 
 func TestViShiftCursor(t *testing.T) {
 	e, _, _ := newTestEngine(t, "  foo\n")
-	drive(e, "$") // move off column 0
+	drive(e, "$") // move off column 0, onto the last 'o'
 	drive(e, ">>")
-	// Cursor lands on the first non-blank of the shifted line.
-	if e.scr.cursor.Col != e.scr.firstNonBlank(1) {
-		t.Fatalf(">> cursor col = %d, want first non-blank %d", e.scr.cursor.Col, e.scr.firstNonBlank(1))
+	// nvi keeps the cursor on the character it was on (the last 'o'), moved right
+	// by the added indent, rather than snapping to the first non-blank.
+	if want := e.scr.lineLen(1) - 1; e.scr.cursor.Col != want {
+		t.Fatalf(">> cursor col = %d, want last char %d (%q)", e.scr.cursor.Col, want, string(e.scr.lineRunes(1)))
 	}
 }

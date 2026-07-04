@@ -38,8 +38,27 @@ func (m *vimode) operate(e *Engine, op, reg rune, mot motion) {
 		if op == '<' {
 			dir = -1
 		}
+		origLine, origCol := s.cursor.Line, s.cursor.Col
+		oldLead := len(leadingWhitespace(s.lineRunes(l1)))
 		e.shiftLines(l1, l2, dir)
-		s.cursor = Pos{Line: l1, Col: s.firstNonBlank(l1)}
+		// nvi keeps the cursor on the same character, moved by the change in the
+		// line's indent, rather than snapping to the first non-blank -- so ">>"
+		// then "." (or "ll.") tracks the character the shift pushed. This holds
+		// even when the cursor sat inside the indent (0>> keeps column+shiftwidth).
+		// A shift whose operator started on another line falls back to the first
+		// non-blank of the top line.
+		col := s.firstNonBlank(l1)
+		if origLine == l1 {
+			newLead := len(leadingWhitespace(s.lineRunes(l1)))
+			col = origCol + newLead - oldLead
+			if col < 0 {
+				col = 0
+			}
+			if maxc := s.lineLen(l1) - 1; maxc >= 0 && col > maxc {
+				col = maxc
+			}
+		}
+		s.cursor = Pos{Line: l1, Col: col}
 		m.changed = true
 		return
 	}
