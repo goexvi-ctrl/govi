@@ -55,6 +55,14 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 	s.lastSubstRepl = repl
 	s.lastSubstFlags = flags
 	replRunes := []rune(repl) // decode once, not per line
+	// The c flag asks about each replacement (nvi "Confirm change? [n]"). The
+	// command returns to the event loop with the prompt up and the y/n/q
+	// answers arrive as later keys (substConfirmKey). Inside a :g the body
+	// runs synchronously and cannot pause for input, so the flag is ignored
+	// there and the substitution is applied unconditionally.
+	if strings.ContainsRune(flags, 'c') && s.gMarks == nil {
+		return e.startSubstConfirm(re, replRunes, global, l1, l2)
+	}
 	e.beginChange()
 	any := false
 	var lastLine int64
@@ -90,6 +98,162 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 	}
 	s.cursor = Pos{Line: clampLine(s, lastLine), Col: s.firstNonBlank(clampLine(s, lastLine))}
 	return nil
+}
+
+// confirmPrompt is nvi's status-line question for each :s///c candidate.
+const confirmPrompt = "Confirm change? [n]"
+
+// substConfirm is the paused state of a :s///c substitution: the scan
+// position between candidate matches while the engine waits for the y/n/q
+// answer. The whole exchange sits inside one beginChange/endChange bracket so
+// the accepted replacements undo as a unit, like the unconfirmed command.
+type substConfirm struct {
+	re      *regex.Regex
+	repl    []rune
+	global  bool
+	lno     int64       // line being scanned
+	end     int64       // last line of the range (grows when \n adds lines)
+	pos     int         // scan offset within lno
+	prevEnd int         // end of the previous match on lno (-1 none)
+	m       regex.Match // candidate awaiting the answer
+	matched bool        // some candidate was found (vs "No match")
+}
+
+// startSubstConfirm begins a confirmed substitution and shows the prompt for
+// the first candidate. It returns an error if nothing in the range matches.
+func (e *Engine) startSubstConfirm(re *regex.Regex, repl []rune, global bool, l1, l2 int64) error {
+	s := e.scr
+	s.subConfirm = &substConfirm{re: re, repl: repl, global: global, lno: l1, end: l2, prevEnd: -1}
+	e.beginChange()
+	if !e.substConfirmAdvance() {
+		return fmt.Errorf("No match on lines %d,%d", l1, l2)
+	}
+	return nil
+}
+
+// substConfirmAdvance scans from the paused position to the next candidate,
+// parks the cursor on the match (with the buffer text still unchanged, like
+// nvi), and puts the confirm question on the status line. When the range is
+// exhausted it completes the command and returns false.
+func (e *Engine) substConfirmAdvance() bool {
+	s := e.scr
+	sc := s.subConfirm
+	for sc.lno <= sc.end {
+		in := s.lineRunes(sc.lno)
+		for {
+			m, ok := sc.re.MatchAt(in, sc.pos)
+			if !ok {
+				break
+			}
+			if m.End == m.Start && m.Start == sc.prevEnd {
+				// An empty match immediately after the previous match is not
+				// a candidate (see substituteLine): skip a character.
+				if m.Start >= len(in) {
+					break
+				}
+				sc.pos = m.Start + 1
+				continue
+			}
+			sc.m = m
+			sc.matched = true
+			col := m.Start
+			if col >= len(in) {
+				col = len(in) - 1 // a $ match sits past EOL (nvi clamps too)
+			}
+			if col < 0 {
+				col = 0
+			}
+			s.cursor = Pos{Line: sc.lno, Col: col}
+			s.msg, s.msgKind = confirmPrompt, MsgInfo
+			return true
+		}
+		sc.lno++
+		sc.pos = 0
+		sc.prevEnd = -1
+	}
+	e.finishSubstConfirm()
+	return false
+}
+
+// substConfirmKey answers the pending prompt: y substitutes, q stops the
+// command, anything else (n, Enter, Escape, ...) declines -- nvi's default.
+func (e *Engine) substConfirmKey(ev KeyEvent) {
+	sc := e.scr.subConfirm
+	switch {
+	case ev.Key == KeyNone && ev.Rune == 'y' && ev.Mods == 0:
+		e.substConfirmApply()
+	case ev.Key == KeyNone && ev.Rune == 'q' && ev.Mods == 0:
+		e.finishSubstConfirm()
+		return
+	default:
+		sc.prevEnd = sc.m.End
+		sc.pos = sc.m.End
+	}
+	if !sc.global {
+		// Without the g flag only the first match on each line is offered.
+		sc.lno++
+		sc.pos = 0
+		sc.prevEnd = -1
+	}
+	e.substConfirmAdvance()
+}
+
+// substConfirmApply performs the accepted replacement in place, so the screen
+// shows it before the next prompt (nvi stores the line and restarts), and
+// moves the scan position past the inserted text.
+func (e *Engine) substConfirmApply() {
+	s := e.scr
+	sc := s.subConfirm
+	in := s.lineRunes(sc.lno)
+	m := sc.m
+	exp := buildReplacement(sc.repl, in, m)
+	full := make([]rune, 0, len(in)+len(exp)-(m.End-m.Start))
+	full = append(full, in[:m.Start]...)
+	full = append(full, exp...)
+	if m.End <= len(in) {
+		full = append(full, in[m.End:]...)
+	}
+	// \n in the replacement splits the line, as in the unconfirmed path.
+	segs := splitRunes(full, '\n')
+	s.setLineKnown(sc.lno, in, segs[0])
+	for i := 1; i < len(segs); i++ {
+		s.appendLine(sc.lno+int64(i-1), segs[i])
+	}
+	added := int64(len(segs) - 1)
+	sc.end += added
+	sc.lno += added
+	// Resume scanning right after the expansion on its final line; prevEnd
+	// there makes a following empty match adjacent, so it is skipped.
+	expSegs := splitRunes(exp, '\n')
+	if added == 0 {
+		sc.pos = m.Start + len(exp)
+	} else {
+		sc.pos = len(expSegs[len(expSegs)-1])
+	}
+	sc.prevEnd = sc.pos
+	col := m.Start
+	if l := s.lineLen(sc.lno); col >= l {
+		col = l - 1
+	}
+	if col < 0 {
+		col = 0
+	}
+	s.cursor = Pos{Line: sc.lno, Col: col}
+}
+
+// finishSubstConfirm completes a confirmed substitution: closes the undo
+// bracket and clears the prompt. nvi leaves the cursor at the last consulted
+// position rather than moving to the last change, so the cursor stays put.
+func (e *Engine) finishSubstConfirm() {
+	s := e.scr
+	if s.subConfirm == nil {
+		return
+	}
+	s.subConfirm = nil
+	e.endChange()
+	if s.msg == confirmPrompt {
+		s.msg, s.msgKind = "", MsgNone
+	}
 }
 
 // repeatSubst implements & (and :&): repeat the last substitute on the current

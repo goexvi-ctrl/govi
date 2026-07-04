@@ -480,6 +480,9 @@ func (e *Engine) diff(b snap) ChangeSet {
 
 func (e *Engine) interrupt() {
 	s := e.scr
+	if s.subConfirm != nil {
+		e.finishSubstConfirm() // an interrupt at the confirm prompt quits (nvi)
+	}
 	if s.mode == ModeExColon {
 		s.mode = ModeCommand
 		s.colon = nil
@@ -498,6 +501,11 @@ func (e *Engine) dispatchKey(ev KeyEvent) {
 	// collector regardless of the visual mode it was started from.
 	if e.scr.exInput != nil {
 		e.exInputKey(ev)
+		return
+	}
+	// While a :s///c confirmation is pending, every key answers the prompt.
+	if e.scr.subConfirm != nil {
+		e.substConfirmKey(ev)
 		return
 	}
 	switch e.scr.mode {

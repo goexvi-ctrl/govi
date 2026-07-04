@@ -138,6 +138,10 @@ type screen struct {
 	// ex_g_insdel callback); the global's final cursor lands there. 0 when no
 	// insert/delete has happened yet.
 	gLastEdit int64
+
+	// subConfirm is the paused state of a :s///c substitution awaiting its
+	// per-match y/n/q answers (see substConfirmKey). nil when none is pending.
+	subConfirm *substConfirm
 }
 
 // lineCount returns the number of lines in the buffer, treating an empty buffer

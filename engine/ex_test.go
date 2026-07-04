@@ -80,6 +80,74 @@ func TestExGlobal(t *testing.T) {
 	exCase(t, "vglobal-delete", "a\nb\na\nc\n", []string{"v/a/d"}, "a\na")
 }
 
+// TestSubstConfirm walks a :s///c substitution through its prompts: each
+// candidate shows "Confirm change? [n]" with the buffer still unchanged and
+// the cursor on the match; y substitutes, n declines, q stops the command.
+func TestSubstConfirm(t *testing.T) {
+	e, _, _ := newTestEngine(t, "foo bar foo baz\nsecond foo\nthird foo\n")
+	if err := e.exExecute("%s/foo/X/gc"); err != nil {
+		t.Fatal(err)
+	}
+	check := func(step string, line int64, col int, prompt bool) {
+		t.Helper()
+		if prompt && e.scr.msg != "Confirm change? [n]" {
+			t.Fatalf("%s: msg = %q, want confirm prompt", step, e.scr.msg)
+		}
+		if !prompt && e.scr.msg == "Confirm change? [n]" {
+			t.Fatalf("%s: confirm prompt still up", step)
+		}
+		if e.scr.cursor.Line != line || e.scr.cursor.Col != col {
+			t.Fatalf("%s: cursor %d,%d, want %d,%d",
+				step, e.scr.cursor.Line, e.scr.cursor.Col, line, col)
+		}
+	}
+	check("start", 1, 0, true)
+	if got := bufText(e); got != "foo bar foo baz\nsecond foo\nthird foo" {
+		t.Fatalf("buffer changed before an answer: %q", got)
+	}
+	drive(e, "y") // accept the first: line 1 becomes "X bar foo baz"
+	check("after y", 1, 6, true)
+	if got := bufText(e); got != "X bar foo baz\nsecond foo\nthird foo" {
+		t.Fatalf("after y: %q", got)
+	}
+	drive(e, "n") // decline the second foo on line 1; prompt moves to line 2
+	check("after n", 2, 7, true)
+	drive(e, "q") // stop: line 3 is never asked about
+	if e.scr.subConfirm != nil {
+		t.Fatal("confirm still pending after q")
+	}
+	check("after q", 2, 7, false)
+	if got := bufText(e); got != "X bar foo baz\nsecond foo\nthird foo" {
+		t.Fatalf("after q: %q", got)
+	}
+	// The accepted replacements undo as one unit.
+	drive(e, "u")
+	if got := bufText(e); got != "foo bar foo baz\nsecond foo\nthird foo" {
+		t.Fatalf("after undo: %q", got)
+	}
+}
+
+// TestSubstConfirmNoGlobal checks that without the g flag only the first
+// match on each line is offered.
+func TestSubstConfirmNoGlobal(t *testing.T) {
+	e, _, _ := newTestEngine(t, "foo bar foo baz\nplain\nfoo again\n")
+	if err := e.exExecute("%s/foo/X/c"); err != nil {
+		t.Fatal(err)
+	}
+	drive(e, "y") // line 1 first foo; second foo is not offered
+	if e.scr.cursor.Line != 3 || e.scr.cursor.Col != 0 {
+		t.Fatalf("second prompt at %d,%d, want 3,0",
+			e.scr.cursor.Line, e.scr.cursor.Col)
+	}
+	drive(e, "y")
+	if got := bufText(e); got != "X bar foo baz\nplain\nX again" {
+		t.Fatalf("buffer: %q", got)
+	}
+	if e.scr.subConfirm != nil {
+		t.Fatal("confirm still pending after the last candidate")
+	}
+}
+
 // TestExGlobalCursor checks the final cursor of a :g whose body edits lines:
 // nvi leaves it on the line of the last insert/delete the body performed
 // (ex.c range_lno), which for :m0 is the line after the last moved-from
