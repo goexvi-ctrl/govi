@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"govi/engine/regex"
 )
@@ -29,12 +30,19 @@ func (e *Engine) compilePattern(p string) (*regex.Regex, error) {
 		p = e.scr.lastPattern
 	}
 	magic := e.scr.opts.Bool("magic")
+	// iclower (nvi re_compile): the search is case-insensitive as long as no
+	// upper-case letter appears in the pattern. Scanned before ~ expansion,
+	// like nvi, which computes the flags on the pattern as passed in.
+	ic := e.scr.opts.Bool("ignorecase")
+	if !ic && e.scr.opts.Bool("iclower") && !strings.ContainsFunc(p, unicode.IsUpper) {
+		ic = true
+	}
 	// nvi re_conv: a ~ in a pattern stands for the last substitute replacement
 	// text, spliced in verbatim before compiling. The expanded pattern is what
 	// gets saved, so a later empty pattern reuses the expansion (nvi saves the
 	// converted RE the same way).
 	p = expandPatternTilde(p, e.scr.lastSubstRepl, magic)
-	re, err := regex.Compile(p, regex.Options{Magic: magic, IgnoreCase: e.scr.opts.Bool("ignorecase")})
+	re, err := regex.Compile(p, regex.Options{Magic: magic, IgnoreCase: ic})
 	if err != nil {
 		// nvi re_error: msgq "RE error: %s" with the regerror text (msgq
 		// supplies the trailing period).

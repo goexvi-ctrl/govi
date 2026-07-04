@@ -51,6 +51,23 @@ func TestSearchTildePattern(t *testing.T) {
 	}
 }
 
+// iclower (nvi): searches are case-insensitive as long as the pattern has no
+// upper-case letter; one upper-case letter makes the search exact.
+func TestSearchIclower(t *testing.T) {
+	e, _, _ := newTestEngine(t, "xx ABC yy\nxx abc yy\n")
+	if err := e.exExecute("set iclower"); err != nil {
+		t.Fatal(err)
+	}
+	drive(e, "/abc\r")
+	if e.scr.cursor != (Pos{Line: 1, Col: 3}) {
+		t.Fatalf("iclower /abc -> %+v, want line1 col3 (ABC)", e.scr.cursor)
+	}
+	drive(e, "1G0/Abc\r") // upper-case present: exact, no match anywhere
+	if e.scr.cursor != (Pos{Line: 1, Col: 0}) {
+		t.Fatalf("iclower /Abc -> %+v, want unmoved (no match)", e.scr.cursor)
+	}
+}
+
 func TestSearchBackward(t *testing.T) {
 	e, _, _ := newTestEngine(t, "x foo\nbar\nfoo y\n")
 	drive(e, "G")      // to last line
