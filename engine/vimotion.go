@@ -132,25 +132,40 @@ func (e *Engine) computeMotion(key rune, count int, explicit bool, charArg rune)
 			}
 		}
 		return motion{to: Pos{Line: line, Col: s.firstNonBlank(clampLine(s, line))}, linewise: true}, true
+	// H, M, and L target SCREEN rows (nvi vs_sm_position): a wrapped line
+	// counts one row per sub-row, so they can land on a continuation row of a
+	// long line, at the next nonblank from that row's first character. They
+	// never scroll; counts are clamped to the screen (nvi errors instead).
 	case 'H':
-		line := s.top + int64(count) - 1
-		return motion{to: Pos{Line: line, Col: s.firstNonBlank(clampLine(s, line))}, linewise: true}, true
+		n := count - 1
+		if max := s.effectiveMapRows() - 1; n > max {
+			n = max
+		}
+		a, _ := s.advanceRows(rowAddr{lno: s.top}, n)
+		return motion{to: Pos{Line: a.lno, Col: s.nnbFrom(a.lno, s.rowStartCol(a))}, linewise: true}, true
 	case 'L':
-		bottom := s.top + int64(s.effectiveMapRows()) - 1
-		if bottom > s.lineCount() {
-			bottom = s.lineCount()
+		// The bottom screen row; when the file ends within the screen this is
+		// its last real row (nvi P_BOTTOM backs up to the last line).
+		a, _ := s.advanceRows(rowAddr{lno: s.top}, s.effectiveMapRows()-1)
+		a, _ = s.retreatRows(a, count-1)
+		if a.lno < s.top {
+			a = rowAddr{lno: s.top}
 		}
-		line := bottom - int64(count) + 1
-		return motion{to: Pos{Line: line, Col: s.firstNonBlank(clampLine(s, line))}, linewise: true}, true
+		return motion{to: Pos{Line: a.lno, Col: s.nnbFrom(a.lno, s.rowStartCol(a))}, linewise: true}, true
 	case 'M':
-		bottom := s.top + int64(s.effectiveMapRows()) - 1
-		if bottom > s.lineCount() {
-			bottom = s.lineCount()
+		// The middle row: (rows-1)/2 for a filled screen; the middle of the
+		// real rows when the file ends within the screen (nvi P_MIDDLE, which
+		// also ignores any count).
+		mapH := s.effectiveMapRows()
+		_, filled := s.advanceRows(rowAddr{lno: s.top}, mapH-1)
+		var n int
+		if filled == mapH-1 {
+			n = (mapH - 1) / 2
+		} else {
+			n = filled - filled/2
 		}
-		// nvi rounds the middle toward the bottom on an even displayed-line
-		// count: (top+bottom+1)/2 (vs_sm_position P_MIDDLE).
-		line := (s.top + bottom + 1) / 2
-		return motion{to: Pos{Line: line, Col: s.firstNonBlank(clampLine(s, line))}, linewise: true}, true
+		a, _ := s.advanceRows(rowAddr{lno: s.top}, n)
+		return motion{to: Pos{Line: a.lno, Col: s.nnbFrom(a.lno, s.rowStartCol(a))}, linewise: true}, true
 	case 'w':
 		return e.wordForward(cur, count, false, false), true
 	case 'W':

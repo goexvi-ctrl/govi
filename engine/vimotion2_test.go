@@ -224,3 +224,27 @@ func TestPageOverWraps(t *testing.T) {
 	}
 	curAt(t, e, 4, 0, "^B over wraps")
 }
+
+// TestHMLOverWraps checks that H/M/L target screen rows (nvi vs_sm_position),
+// so M can land on a wrapped line's continuation row -- at the next nonblank
+// from the row's first character -- and L targets the bottom screen row
+// without scrolling (QA-10).
+func TestHMLOverWraps(t *testing.T) {
+	e := qaWrapFixture(t)
+
+	// Middle row of 11 is row 5 = the continuation row of line 4; its first
+	// character is rune 40, the 't' of "theta".
+	drive(e, "M")
+	curAt(t, e, 4, 40, "M onto a continuation row")
+
+	// Bottom row is row 10 = line 9 (lines 1 and 4 take two rows each); the
+	// screen must not scroll to reach line 11 as the line-counting code did.
+	drive(e, "L")
+	curAt(t, e, 9, 0, "L to the bottom screen row")
+	if e.scr.top != 1 {
+		t.Fatalf("L scrolled: top %d, want 1", e.scr.top)
+	}
+
+	drive(e, "H")
+	curAt(t, e, 1, 0, "H to the top row")
+}
