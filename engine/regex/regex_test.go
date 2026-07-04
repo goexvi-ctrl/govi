@@ -91,6 +91,11 @@ func TestMatchBasic(t *testing.T) {
 		// No BRE alternation: \| is an escaped ordinary '|' (Spencer/nvi).
 		{`foo\|bar`, "a foo|bar b", 2, 9},
 		{`foo\|bar`, "xbar", -1, -1},
+		// POSIX leftmost-longest (Spencer): the greedy-prefix parse is not
+		// enough when a later optional part could extend the match.
+		{`a*\(ab\)\{0,1\}`, "aab", 0, 3},
+		{`ab*\(bc\)\{0,1\}`, "abbc", 0, 4},
+		{`x*\(xy\)\{0,1\}z*`, "xxy", 0, 3},
 		// * after ^ is an ordinary character (Spencer p_simp_re starordinary):
 		// the anchor is not a repeatable atom.
 		{`^*a`, "*ab", 0, 2},

@@ -75,25 +75,39 @@ func Compile(pattern string, opts Options) (*Regex, error) {
 	return &Regex{root: root, ngroups: p.ngroups, ic: opts.IgnoreCase}, nil
 }
 
-// MatchAt returns the leftmost match beginning at or after start, or ok=false.
+// MatchAt returns the leftmost-longest match beginning at or after start, or
+// ok=false. POSIX semantics, like Spencer's engine: among matches at the
+// leftmost matching position, the longest wins. The backtracker explores every
+// way to match at that position (the continuation always declines) and keeps
+// the captures from the first walk that reached the longest end; exploration
+// stops early once a match runs to the end of the input, since nothing can be
+// longer.
 func (re *Regex) MatchAt(in []rune, start int) (Match, bool) {
 	if start < 0 {
 		start = 0
 	}
 	m := &machine{in: in, ic: re.ic, caps: make([]int, 2*(re.ngroups+1))}
+	bestCaps := make([]int, len(m.caps))
 	for s := start; s <= len(in); s++ {
 		for i := range m.caps {
 			m.caps[i] = -1
 		}
 		m.caps[0] = s
-		end := -1
-		if re.root.match(m, s, func(p int) bool { end = p; return true }) {
-			groups := make([][2]int, re.ngroups+1)
-			groups[0] = [2]int{s, end}
-			for g := 1; g <= re.ngroups; g++ {
-				groups[g] = [2]int{m.caps[2*g], m.caps[2*g+1]}
+		best := -1
+		re.root.match(m, s, func(p int) bool {
+			if p > best {
+				best = p
+				copy(bestCaps, m.caps)
 			}
-			return Match{Start: s, End: end, Groups: groups}, true
+			return p == len(in) // longest possible: stop exploring
+		})
+		if best >= 0 {
+			groups := make([][2]int, re.ngroups+1)
+			groups[0] = [2]int{s, best}
+			for g := 1; g <= re.ngroups; g++ {
+				groups[g] = [2]int{bestCaps[2*g], bestCaps[2*g+1]}
+			}
+			return Match{Start: s, End: best, Groups: groups}, true
 		}
 	}
 	return Match{}, false
