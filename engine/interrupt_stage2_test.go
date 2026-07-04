@@ -43,6 +43,25 @@ func TestInterruptAbortsGlobal(t *testing.T) {
 	}
 }
 
+// TestGlobalIsOneUndoUnit covers CORNERS B-9: a :g runs as a single undo unit,
+// so one u reverts every line it changed. The interrupt path shares this change
+// group (it returns errInterrupted inside the same beginChange/endChange), so a
+// ^C-interrupted :g keeps its partial changes and they undo as one unit too --
+// matching nvi ex_global.c.
+func TestGlobalIsOneUndoUnit(t *testing.T) {
+	e, _, _ := newTestEngine(t, "x1\ny\nx2\nz\nx3\n")
+	if err := e.exExecute("g/x/d"); err != nil {
+		t.Fatal(err)
+	}
+	if got := bufText(e); got != "y\nz" {
+		t.Fatalf("after g/x/d: %q", got)
+	}
+	drive(e, "u")
+	if got := bufText(e); got != "x1\ny\nx2\nz\nx3" {
+		t.Fatalf("one u after :g restored %q, want all lines back", got)
+	}
+}
+
 func TestInterruptAbortsSearch(t *testing.T) {
 	e, _, _ := newTestEngine(t, "one\ntwo\nthree\n")
 	e.Interrupt()
