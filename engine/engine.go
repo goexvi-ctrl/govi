@@ -82,6 +82,7 @@ type Engine struct {
 	// collected into exOut for a line-at-a-time host instead of the transcript.
 	exLineMode bool
 	exOut      []string
+	exSilent   bool // batch script (nvi -s / SC_EX_SILENT): suppress autoprint etc.
 
 	startup   bool // true while reading EXINIT / exrc startup information
 	launchCtx LaunchContext

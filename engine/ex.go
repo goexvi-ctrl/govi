@@ -31,6 +31,7 @@ type exCmdDef struct {
 	usage     string // usage template for :exusage cmd
 	fn        func(*Engine, *exCmd) error
 	newScreen bool // capable of acting in a new screen when capitalized (nvi E_NEWSCREEN)
+	autoprint bool // print the new current line afterward in ex mode (nvi E_AUTOPRINT)
 }
 
 // exCmds is populated in init() rather than as a static initializer: some
@@ -40,21 +41,21 @@ var exCmds []exCmdDef
 
 func init() {
 	exCmds = []exCmdDef{
-		{full: "delete", min: 1, fn: (*Engine).exDelete},
-		{full: "move", min: 1, fn: (*Engine).exMove},
-		{full: "copy", min: 2, fn: (*Engine).exCopy},
-		{full: "t", min: 1, fn: (*Engine).exCopy},
+		{full: "delete", min: 1, fn: (*Engine).exDelete, autoprint: true},
+		{full: "move", min: 1, fn: (*Engine).exMove, autoprint: true},
+		{full: "copy", min: 2, fn: (*Engine).exCopy, autoprint: true},
+		{full: "t", min: 1, fn: (*Engine).exCopy, autoprint: true},
 		{full: "yank", min: 1, fn: (*Engine).exYank},
-		{full: "put", min: 2, fn: (*Engine).exPut},
-		{full: "join", min: 1, fn: (*Engine).exJoin},
+		{full: "put", min: 2, fn: (*Engine).exPut, autoprint: true},
+		{full: "join", min: 1, fn: (*Engine).exJoin, autoprint: true},
 		{full: "write", min: 1, fn: (*Engine).exWrite},
 		{full: "wn", min: 2, fn: (*Engine).exWriteNext},
 		{full: "wq", min: 2, fn: (*Engine).exWriteQuit},
 		{full: "xit", min: 1, fn: (*Engine).exXit},
 		{full: "quit", min: 1, fn: (*Engine).exQuit},
 		{full: "read", min: 1, fn: (*Engine).exRead},
-		{full: ">", min: 1, fn: (*Engine).exShiftRight},
-		{full: "<", min: 1, fn: (*Engine).exShiftLeft},
+		{full: ">", min: 1, fn: (*Engine).exShiftRight, autoprint: true},
+		{full: "<", min: 1, fn: (*Engine).exShiftLeft, autoprint: true},
 		{full: "=", min: 1, fn: (*Engine).exLineNumber},
 		{full: "substitute", min: 1, fn: (*Engine).exSubstitute},
 		{full: "global", min: 1, fn: (*Engine).exGlobal},
@@ -106,7 +107,7 @@ func init() {
 		{full: "help", min: 2, fn: (*Engine).exHelp},
 		{full: "exusage", min: 3, fn: (*Engine).exExusage},
 		{full: "viusage", min: 3, fn: (*Engine).exViusage},
-		{full: "undo", min: 1, fn: (*Engine).exUndo},
+		{full: "undo", min: 1, fn: (*Engine).exUndo, autoprint: true},
 		{full: "@", min: 1, fn: (*Engine).exAt},
 		{full: "*", min: 1, fn: (*Engine).exAt},
 		{full: "#", min: 1, fn: (*Engine).exNumber},
@@ -148,7 +149,17 @@ func (e *Engine) exExecute(line string) error {
 		}
 		return nil
 	}
-	return c.def.fn(e, c)
+	if err := c.def.fn(e, c); err != nil {
+		return err
+	}
+	// autoprint: in ex (line) mode, commands flagged E_AUTOPRINT echo the new
+	// current line when the autoprint option is set (nvi ex.c). It is suppressed
+	// inside a :global (gMarks non-nil) and does not apply to vi colon commands.
+	if c.def.autoprint && e.scr.mode == ModeExText && e.scr.gMarks == nil && !e.exSilent &&
+		e.scr.opts.Bool("autoprint") && e.scr.store.Lines() > 0 {
+		e.printLine(string(e.scr.lineRunes(e.scr.cursor.Line)))
+	}
+	return nil
 }
 
 type exParser struct {

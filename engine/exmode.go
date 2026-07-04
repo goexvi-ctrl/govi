@@ -67,7 +67,8 @@ func (e *Engine) ExBatchLine(line string) ([]string, error) {
 func (e *Engine) exFeed(line string, silent bool) ([]string, error) {
 	e.exOut = nil
 	e.exLineMode = true
-	defer func() { e.exLineMode = false }()
+	e.exSilent = silent
+	defer func() { e.exLineMode, e.exSilent = false, false }()
 
 	if e.scr.exInput != nil {
 		if line == "." {

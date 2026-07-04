@@ -47,6 +47,63 @@ func TestExAppendFromColon(t *testing.T) {
 	}
 }
 
+// TestExAutoprint covers CORNERS A-3: in ex (Q) mode, the E_AUTOPRINT commands
+// (delete, move, copy/t, join, put, <, >, undo) echo the new current line when
+// the autoprint option is set. Verified against nvi -e (run under a pty).
+func TestExAutoprint(t *testing.T) {
+	last := func(out []string) string {
+		if len(out) == 0 {
+			return ""
+		}
+		return out[len(out)-1]
+	}
+	enterEx := func(content string) *Engine {
+		e, _, _ := newTestEngine(t, content)
+		e.EnterEx()
+		e.TakeMessage() // drain the startup file-load message before feeding
+		return e
+	}
+	cases := []struct {
+		name string
+		feed []string // ex command lines; the last one's output is checked
+		want string   // "" means: only require that autoprint fired (non-empty)
+	}{
+		{"delete", []string{"2d"}, "ccc"},
+		{"move", []string{"4m1"}, "ddd"},
+		{"copy", []string{"1t3"}, "aaa"},
+		{"join", []string{"2,3j"}, "bbb ccc"},
+		{"put", []string{"2y", "4put"}, "bbb"},
+		{"shiftr", []string{"set sw=8 ts=8", "2>"}, "\tbbb"}, // one tab, shown as 8 spaces
+		{"undo", []string{"2d", "u"}, ""},                    // undo is E_AUTOPRINT; line depends on its cursor
+	}
+	for _, c := range cases {
+		e := enterEx("aaa\nbbb\nccc\nddd\neee\n")
+		var out []string
+		for _, line := range c.feed {
+			out = e.ExFeedLine(line)
+		}
+		got := last(out)
+		if c.want == "" {
+			if len(out) == 0 {
+				t.Errorf("%s: expected autoprint output, got none", c.name)
+			}
+		} else if got != c.want {
+			t.Errorf("%s: autoprint = %q, want %q", c.name, got, c.want)
+		}
+	}
+	// noautoprint suppresses it.
+	e := enterEx("aaa\nbbb\nccc\n")
+	e.ExFeedLine("set noautoprint")
+	if out := e.ExFeedLine("2d"); len(out) != 0 {
+		t.Errorf("noautoprint: got output %q, want none", out)
+	}
+	// A :global body command must not autoprint each line.
+	e2 := enterEx("x1\ny\nx2\nz\n")
+	if out := e2.ExFeedLine("g/x/d"); len(out) != 0 {
+		t.Errorf("global delete: got autoprint %q, want none", out)
+	}
+}
+
 func TestExLineMode(t *testing.T) {
 	e, _, _ := newTestEngine(t, "one\ntwo\nthree\n")
 	drive(e, "Q")
