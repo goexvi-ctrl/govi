@@ -203,9 +203,12 @@ func (p *parser) parseEscape() (node, error) {
 		}
 		p.closed[idx] = true // the group is now a valid backref target
 		return &groupNode{idx: idx, sub: sub}, nil
-	// \< \> (word boundaries) and \n \t (escapes) are vi search-layer constructs
-	// folded into this self-contained port; Spencer's core spells word
+	// \< \> (word boundaries) are the one vi search-layer rewrite folded into
+	// this self-contained port (nvi re_conv); Spencer's core spells word
 	// boundaries only as [[:<:]] / [[:>:]] (also accepted, see parseClass).
+	// There are deliberately no \n or \t escapes: POSIX regex (and so nvi)
+	// treats an escaped ordinary character as that literal character, so \t
+	// matches the letter t.  Tab/newline atoms are vim regex.
 	case '<':
 		return wordStartNode{}, nil
 	case '>':
@@ -219,10 +222,6 @@ func (p *parser) parseEscape() (node, error) {
 			return nil, fmt.Errorf(`regex: \%d: invalid back reference`, idx)
 		}
 		return &backrefNode{idx: idx}, nil
-	case 'n':
-		return &litNode{r: '\n'}, nil
-	case 't':
-		return &litNode{r: '\t'}, nil
 	}
 	// In nomagic mode, \. \[ \* take on their special meaning.
 	if !p.magic {

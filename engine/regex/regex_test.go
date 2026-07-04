@@ -34,6 +34,11 @@ func TestMatchBasic(t *testing.T) {
 		{`foo\|bar`, "xbar", 1, 4},
 		{`\.`, "a.b", 1, 2},
 		{"xyz", "abc", -1, -1},
+		// POSIX/nvi: an escaped ordinary character is that literal character.
+		// \t is the letter t and \n the letter n, never tab/newline (vim).
+		{`a\tb`, "xatbx", 1, 4},
+		{`a\tb`, "a\tb", -1, -1},
+		{`a\nb`, "xanbx", 1, 4},
 	}
 	for _, tc := range cases {
 		re := mustCompile(t, tc.pat, false)
