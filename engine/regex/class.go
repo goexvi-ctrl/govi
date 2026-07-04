@@ -34,7 +34,7 @@ func (p *parser) parseClass() (node, error) {
 	i := 0
 	for {
 		if p.eof() {
-			return nil, fmt.Errorf("regex: unterminated [")
+			return nil, fmt.Errorf("brackets ([ ]) not balanced")
 		}
 		r := p.peek()
 		if r == ']' && i > 0 {
@@ -63,6 +63,10 @@ func (p *parser) parseClass() (node, error) {
 			p.next() // '-'
 			hi := p.next()
 			lo := c
+			if lo > hi {
+				// Spencer REG_ERANGE, e.g. [z-a].
+				return nil, fmt.Errorf("invalid character range")
+			}
 			preds = append(preds, func(ch rune) bool { return ch >= lo && ch <= hi })
 		} else {
 			lit := c
@@ -88,7 +92,7 @@ func (p *parser) parsePosixName() (string, error) {
 		name = append(name, p.next())
 	}
 	if !(p.peek() == ':' && p.peekAt(1) == ']') {
-		return "", fmt.Errorf("regex: malformed [: :]")
+		return "", fmt.Errorf("invalid character class")
 	}
 	p.next() // ':'
 	p.next() // ']'
@@ -124,5 +128,5 @@ func posixClass(name string) (func(rune) bool, error) {
 	case "graph":
 		return unicode.IsGraphic, nil
 	}
-	return nil, fmt.Errorf("regex: unknown class [:%s:]", name)
+	return nil, fmt.Errorf("invalid character class")
 }

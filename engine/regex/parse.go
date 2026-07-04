@@ -91,46 +91,63 @@ func (p *parser) parsePiece(first bool) (node, error) {
 	if _, isBol := atom.(bolNode); isBol {
 		return atom, nil
 	}
-	// Quantifiers.
-	for {
-		switch {
-		case p.magic && p.peek() == '*':
-			p.next()
-			atom = &starNode{sub: atom}
-		case !p.magic && p.peek() == '\\' && p.peekAt(1) == '*':
-			p.next()
-			p.next()
-			atom = &starNode{sub: atom}
-		case p.peek() == '\\' && p.peekAt(1) == '{':
-			p.next()
-			p.next()
-			lo, hi, err := p.parseInterval()
-			if err != nil {
-				return nil, err
-			}
-			atom = &intervalNode{sub: atom, lo: lo, hi: hi}
-		default:
-			return atom, nil
+	// At most one repetition per simple RE (Spencer p_simp_re): a second
+	// * or \{ becomes the next piece's atom, where it is REG_BADRPT.
+	switch {
+	case p.magic && p.peek() == '*':
+		p.next()
+		return &starNode{sub: atom}, nil
+	case !p.magic && p.peek() == '\\' && p.peekAt(1) == '*':
+		p.next()
+		p.next()
+		return &starNode{sub: atom}, nil
+	case p.peek() == '\\' && p.peekAt(1) == '{':
+		p.next()
+		p.next()
+		lo, hi, err := p.parseInterval()
+		if err != nil {
+			return nil, err
 		}
+		return &intervalNode{sub: atom, lo: lo, hi: hi}, nil
 	}
+	return atom, nil
 }
 
+// dupMax is Spencer's DUPMAX: the largest count allowed in a \{m,n\} bound.
+const dupMax = 255
+
+// parseInterval parses the body of a \{m,n\} bound. Error texts are Spencer's
+// regerror strings (REG_BADBR, REG_EBRACE), which is what nvi displays.
 func (p *parser) parseInterval() (int, int, error) {
+	badbr := func() (int, int, error) {
+		// Spencer's error heuristic: skip ahead to the closing \}; a missing
+		// close brace is EBRACE, anything else wrong in the body is BADBR.
+		for !p.eof() && !(p.peek() == '\\' && p.peekAt(1) == '}') {
+			p.next()
+		}
+		if p.eof() {
+			return 0, 0, fmt.Errorf("braces not balanced")
+		}
+		return 0, 0, fmt.Errorf("invalid repetition count(s)")
+	}
 	lo, hadLo := p.parseInt()
-	if !hadLo {
-		return 0, 0, fmt.Errorf("regex: bad interval")
+	if !hadLo || lo > dupMax {
+		return badbr()
 	}
 	hi := lo
 	if p.peek() == ',' {
 		p.next()
 		if n, had := p.parseInt(); had {
+			if n > dupMax || lo > n {
+				return badbr()
+			}
 			hi = n
 		} else {
 			hi = -1 // unbounded
 		}
 	}
 	if !(p.peek() == '\\' && p.peekAt(1) == '}') {
-		return 0, 0, fmt.Errorf("regex: unterminated interval")
+		return badbr()
 	}
 	p.next()
 	p.next()
@@ -150,7 +167,11 @@ func (p *parser) parseAtom(first bool) (node, error) {
 	r := p.peek()
 	switch {
 	case r == '\\':
-		return p.parseEscape()
+		return p.parseEscape(first)
+	case r == '*' && p.magic && !first:
+		// A * that is neither the first simple RE nor attached to an atom
+		// follows a repetition ("a**"): Spencer REG_BADRPT.
+		return nil, fmt.Errorf("repetition-operator operand invalid")
 	case r == '.':
 		p.next()
 		if p.magic {
@@ -192,10 +213,12 @@ func (p *parser) isEndAnchor() bool {
 	return p.src[p.pos] == '\\' && p.pos+1 < len(p.src) && p.src[p.pos+1] == ')'
 }
 
-func (p *parser) parseEscape() (node, error) {
+// parseEscape parses a backslash escape. Error texts are Spencer's regerror
+// strings; the cases and their outcomes mirror p_simp_re's BACKSL switch.
+func (p *parser) parseEscape(first bool) (node, error) {
 	p.next() // consume backslash
 	if p.eof() {
-		return &litNode{r: '\\'}, nil
+		return nil, fmt.Errorf(`trailing backslash (\)`)
 	}
 	e := p.next()
 	switch e {
@@ -207,7 +230,7 @@ func (p *parser) parseEscape() (node, error) {
 			return nil, err
 		}
 		if !p.atGroupClose() {
-			return nil, fmt.Errorf("regex: unmatched \\(")
+			return nil, fmt.Errorf("parentheses not balanced")
 		}
 		p.next()
 		p.next()
@@ -226,13 +249,20 @@ func (p *parser) parseEscape() (node, error) {
 		return wordStartNode{}, nil
 	case '>':
 		return wordEndNode{}, nil
+	case '{':
+		// A \{ not attached to an atom (parsePiece consumes the attached
+		// ones): Spencer BACKSL|'{' is REG_BADRPT, even pattern-first.
+		return nil, fmt.Errorf("repetition-operator operand invalid")
+	case '}':
+		// A stray \} is REG_EPAREN in Spencer (BACKSL|'}').
+		return nil, fmt.Errorf("parentheses not balanced")
 	case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 		// A backreference is valid only to a group that has already been closed
 		// (matching Spencer/nvi, which error on \1 before \(...\), self-reference
 		// inside a group, or a reference to a nonexistent group).
 		idx := int(e - '0')
 		if !p.closed[idx] {
-			return nil, fmt.Errorf(`regex: \%d: invalid back reference`, idx)
+			return nil, fmt.Errorf("invalid backreference number")
 		}
 		return &backrefNode{idx: idx}, nil
 	}
@@ -243,6 +273,12 @@ func (p *parser) parseEscape() (node, error) {
 			return anyNode{}, nil
 		case '[':
 			return p.parseClass()
+		case '*':
+			if !first {
+				// Same as a magic "a**": a repetition with no operand.
+				return nil, fmt.Errorf("repetition-operator operand invalid")
+			}
+			return &litNode{r: '*'}, nil
 		}
 	}
 	// Otherwise an escaped character is that literal character.

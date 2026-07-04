@@ -30,7 +30,9 @@ func (e *Engine) compilePattern(p string) (*regex.Regex, error) {
 	}
 	re, err := regex.Compile(p, regex.Options{Magic: e.scr.opts.Bool("magic"), IgnoreCase: e.scr.opts.Bool("ignorecase")})
 	if err != nil {
-		return nil, err
+		// nvi re_error: msgq "RE error: %s" with the regerror text (msgq
+		// supplies the trailing period).
+		return nil, fmt.Errorf("RE error: %v.", err)
 	}
 	e.scr.lastPattern = p
 	return re, nil

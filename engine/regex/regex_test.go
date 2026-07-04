@@ -11,6 +11,63 @@ func mustCompile(t *testing.T, pat string, ic bool) *Regex {
 	return re
 }
 
+// Compile errors and their texts follow Spencer's regcomp/regerror (what nvi
+// bundles and displays after an "RE error: " prefix).
+func TestCompileErrors(t *testing.T) {
+	cases := []struct{ pat, want string }{
+		{`a**`, "repetition-operator operand invalid"},
+		{`a*\{2\}`, "repetition-operator operand invalid"},
+		{`a\{2\}\{2\}`, "repetition-operator operand invalid"},
+		{`\{2\}`, "repetition-operator operand invalid"},
+		{`\}`, "parentheses not balanced"},
+		{`a\)`, "parentheses not balanced"},
+		{`\(a`, "parentheses not balanced"},
+		{`a\`, `trailing backslash (\)`},
+		{`a\{3,1\}`, "invalid repetition count(s)"},
+		{`a\{256\}`, "invalid repetition count(s)"},
+		{`a\{2x\}`, "invalid repetition count(s)"},
+		{`a\{2`, "braces not balanced"},
+		{`[z-a]`, "invalid character range"},
+		{`[abc`, "brackets ([ ]) not balanced"},
+		{`[[:bogus:]]`, "invalid character class"},
+		{`\1`, "invalid backreference number"},
+	}
+	for _, tc := range cases {
+		_, err := Compile(tc.pat, Options{Magic: true})
+		if err == nil {
+			t.Errorf("compile %q: no error, want %q", tc.pat, tc.want)
+			continue
+		}
+		if err.Error() != tc.want {
+			t.Errorf("compile %q: error %q, want %q", tc.pat, err.Error(), tc.want)
+		}
+	}
+	// The same rules in nomagic: \* not in first position and not after an
+	// atom is a bad repetition; a first \* is a literal star.
+	if _, err := Compile(`a\*\*`, Options{Magic: false}); err == nil || err.Error() != "repetition-operator operand invalid" {
+		t.Errorf(`nomagic a\*\*: err %v`, err)
+	}
+	re := mustCompileOpts(t, `\*x`, Options{Magic: false})
+	if m, ok := re.MatchAt([]rune("z*x"), 0); !ok || m.Start != 1 || m.End != 3 {
+		t.Errorf(`nomagic \*x: got %+v ok=%v, want 1-3`, m, ok)
+	}
+	// Still-valid forms.
+	for _, ok := range []string{`*a`, `^*a`, `a\{2,\}`, `a\{0,255\}`, `x\(\)y`, `[]a]`, `[a-]`} {
+		if _, err := Compile(ok, Options{Magic: true}); err != nil {
+			t.Errorf("compile %q: unexpected error %v", ok, err)
+		}
+	}
+}
+
+func mustCompileOpts(t *testing.T, pat string, o Options) *Regex {
+	t.Helper()
+	re, err := Compile(pat, o)
+	if err != nil {
+		t.Fatalf("compile %q: %v", pat, err)
+	}
+	return re
+}
+
 func TestMatchBasic(t *testing.T) {
 	cases := []struct {
 		pat, in    string

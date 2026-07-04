@@ -68,7 +68,9 @@ func Compile(pattern string, opts Options) (*Regex, error) {
 		return nil, err
 	}
 	if !p.eof() {
-		return nil, fmt.Errorf("regex: trailing characters in pattern")
+		// The only way the parser stops early is an unmatched \) (Spencer
+		// REG_EPAREN).
+		return nil, fmt.Errorf("parentheses not balanced")
 	}
 	return &Regex{root: root, ngroups: p.ngroups, ic: opts.IgnoreCase}, nil
 }
