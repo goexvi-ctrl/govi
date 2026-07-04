@@ -34,6 +34,13 @@ func TestMatchBasic(t *testing.T) {
 		// No BRE alternation: \| is an escaped ordinary '|' (Spencer/nvi).
 		{`foo\|bar`, "a foo|bar b", 2, 9},
 		{`foo\|bar`, "xbar", -1, -1},
+		// * after ^ is an ordinary character (Spencer p_simp_re starordinary):
+		// the anchor is not a repeatable atom.
+		{`^*a`, "*ab", 0, 2},
+		{`^*a`, "x*a", -1, -1},
+		// A leading * is ordinary too, at the top level and in a group.
+		{`*a`, "z*a", 1, 3},
+		{`\(*a\)`, "z*a", 1, 3},
 		{`\.`, "a.b", 1, 2},
 		{"xyz", "abc", -1, -1},
 		// POSIX/nvi: an escaped ordinary character is that literal character.

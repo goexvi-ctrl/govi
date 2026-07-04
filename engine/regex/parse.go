@@ -67,7 +67,12 @@ func (p *parser) parseConcat(atStart bool) (node, error) {
 			return nil, err
 		}
 		seq = append(seq, n)
-		first = false
+		// A leading ^ does not use up the "first simple RE" position: Spencer's
+		// p_bre consumes the anchor before its loop, so what follows is still
+		// first (a * there is ordinary).
+		if _, isBol := n.(bolNode); !isBol {
+			first = false
+		}
 	}
 	if len(seq) == 1 {
 		return seq[0], nil
@@ -79,6 +84,12 @@ func (p *parser) parsePiece(first bool) (node, error) {
 	atom, err := p.parseAtom(first)
 	if err != nil {
 		return nil, err
+	}
+	// A ^ anchor takes no repetition: in Spencer's BRE the ^ is consumed by
+	// p_bre itself, so a following * begins the first simple RE, where it is
+	// an ordinary character ("^*a" matches "*a" at the start of a line).
+	if _, isBol := atom.(bolNode); isBol {
+		return atom, nil
 	}
 	// Quantifiers.
 	for {
