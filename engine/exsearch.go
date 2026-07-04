@@ -47,6 +47,11 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 	global := strings.ContainsRune(flags, 'g')
 
 	s := e.scr
+	// An unescaped ~ in the replacement stands for the previous replacement text
+	// (historic vi). Expand it textually against the prior replacement before it
+	// becomes the new "previous"; \~ is left for the per-match stage to render as
+	// a literal tilde.
+	repl = expandReplTilde(repl, s.lastSubstRepl)
 	s.lastSubstRepl = repl
 	s.lastSubstFlags = flags
 	replRunes := []rune(repl) // decode once, not per line
@@ -288,6 +293,29 @@ func buildReplacement(repl, in []rune, m regex.Match) []rune {
 		}
 	}
 	return out
+}
+
+// expandReplTilde replaces each unescaped ~ in a substitute replacement with the
+// previous replacement text prev (historic vi). A backslash escape is passed
+// through untouched (so \~ survives for the per-match stage to make literal, and
+// \& \1 etc. are not disturbed); the result becomes the new "previous".
+func expandReplTilde(repl, prev string) string {
+	rs := []rune(repl)
+	var b strings.Builder
+	for i := 0; i < len(rs); i++ {
+		if rs[i] == '\\' && i+1 < len(rs) {
+			b.WriteRune(rs[i])
+			b.WriteRune(rs[i+1])
+			i++
+			continue
+		}
+		if rs[i] == '~' {
+			b.WriteString(prev)
+			continue
+		}
+		b.WriteRune(rs[i])
+	}
+	return b.String()
 }
 
 // exGlobal implements :[range]g/pattern/cmd (default range whole file, default
