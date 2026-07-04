@@ -71,13 +71,25 @@ func TestExSubstitute(t *testing.T) {
 	exCase(t, "subst-backref", "John Smith\n", []string{`s/\([A-Za-z]*\) \([A-Za-z]*\)/\2 \1/`}, "Smith John")
 	exCase(t, "subst-upper", "hello\n", []string{`s/.*/\U&/`}, "HELLO")
 	exCase(t, "subst-delete", "axbxc\n", []string{"s/x//g"}, "abc")
-	exCase(t, "subst-newline", "a,b,c\n", []string{`s/,/\n/g`}, "a\nb\nc")
+	// \n is the letter n in nvi; the line is split by a literal CR (see
+	// TestSubstReplacementEscapes).
+	exCase(t, "subst-newline", "a,b,c\n", []string{"s/,/\r/g"}, "a\nb\nc")
 }
 
 func TestExGlobal(t *testing.T) {
 	exCase(t, "global-delete", "keep\ndrop x\nkeep\ndrop y\n", []string{"g/drop/d"}, "keep\nkeep")
 	exCase(t, "global-subst", "a1\nb\na2\n", []string{"g/a/s/a/X/"}, "X1\nb\nX2")
 	exCase(t, "vglobal-delete", "a\nb\na\nc\n", []string{"v/a/d"}, "a\na")
+}
+
+// nvi regsub: only \digit, \&, and the case controls are special in a
+// replacement; \n and \t are the literal letters (newline-as-\n is sed/vim).
+// A literal (^V-quoted) CR or NL character is what breaks the line.
+func TestSubstReplacementEscapes(t *testing.T) {
+	exCase(t, "repl-backslash-n", "one two three\n", []string{`s/two/X\nY/`}, "one XnY three")
+	exCase(t, "repl-backslash-t", "one two three\n", []string{`s/two/X\tY/`}, "one XtY three")
+	exCase(t, "repl-literal-cr", "one two three\n", []string{"s/two/X\rY/"}, "one X\nY three")
+	exCase(t, "repl-literal-cr-escaped", "one two three\n", []string{"s/two/X\\\rY/"}, "one X\nY three")
 }
 
 // TestSubstConfirm walks a :s///c substitution through its prompts: each

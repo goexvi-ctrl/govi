@@ -390,8 +390,10 @@ func substituteLine(re *regex.Regex, in, repl []rune, global bool) ([]rune, int,
 }
 
 // buildReplacement expands a substitution replacement, handling & (whole match),
-// \1-\9 (backreferences), \u \l \U \L \E (case), \n (newline), and \\ / \&
-// escapes.
+// \1-\9 (backreferences), \u \l \U \L \E (case), and \\ / \& escapes.  Any
+// other escaped character is that literal character (nvi regsub) -- \n is the
+// letter n, not a newline (that is sed/vim).  A literal (^V-quoted) CR or NL
+// character in the replacement breaks the line, per nvi's OUTCH nltrans.
 func buildReplacement(repl, in []rune, m regex.Match) []rune {
 	var out []rune
 	// case mode: 0 none, 'U' upper-until-E, 'L' lower-until-E; oneShot 'u'/'l'.
@@ -423,6 +425,17 @@ func buildReplacement(repl, in []rune, m regex.Match) []rune {
 			}
 		}
 	}
+	// emitRepl emits a character coming from the replacement string itself:
+	// a literal CR or NL breaks the line (untouched by case conversion),
+	// anything else goes through emit. Group text bypasses this (nvi OUTCH
+	// nltrans=0), though a group can never hold a newline anyway.
+	emitRepl := func(r rune) {
+		if r == '\r' || r == '\n' {
+			out = append(out, '\n')
+			return
+		}
+		emit(r)
+	}
 
 	for i := 0; i < len(repl); i++ {
 		r := repl[i]
@@ -439,10 +452,6 @@ func buildReplacement(repl, in []rune, m regex.Match) []rune {
 			switch {
 			case n >= '0' && n <= '9':
 				emitGroup(int(n - '0'))
-			case n == 'n':
-				out = append(out, '\n')
-			case n == 't':
-				emit('\t')
 			case n == 'u', n == 'l':
 				oneShot = n
 			case n == 'U', n == 'L':
@@ -450,10 +459,10 @@ func buildReplacement(repl, in []rune, m regex.Match) []rune {
 			case n == 'E', n == 'e':
 				caseMode = 0
 			default:
-				emit(n) // \& \\ \/ etc -> literal
+				emitRepl(n) // \& \\ \/ \n etc -> that literal character
 			}
 		default:
-			emit(r)
+			emitRepl(r)
 		}
 	}
 	return out
