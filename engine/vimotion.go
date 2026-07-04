@@ -78,7 +78,13 @@ func (e *Engine) computeMotion(key rune, count int, explicit bool, charArg rune)
 	case '0':
 		return motion{to: Pos{Line: cur.Line, Col: 0}}, true
 	case '^':
-		return motion{to: Pos{Line: cur.Line, Col: s.firstNonBlank(cur.Line)}}, true
+		col := s.firstNonBlank(cur.Line)
+		// On a line with no non-blank, nvi's ^ stops on the last blank rather than
+		// column 0 (firstNonBlank returns 0 for an all-blank line).
+		if line := s.lineRunes(cur.Line); len(line) > 0 && col == 0 && (line[0] == ' ' || line[0] == '\t') {
+			col = len(line) - 1
+		}
+		return motion{to: Pos{Line: cur.Line, Col: col}}, true
 	case '|':
 		col := count - 1
 		if col < 0 {
