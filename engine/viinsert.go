@@ -37,6 +37,10 @@ func (m *vimode) startInsert(e *Engine, pos Pos, replace bool, cmd rune) {
 	s.showModeLabel = insertShowMode(cmd, replace)
 	s.clampCursor()
 	m.insertEnter = s.cursor // where this insertion began (bounds ^U)
+	// Autoindent-erase (^D) state. A plain insert on an existing line has no
+	// autoindent characters (nvi: tp->ai is 0 unless the line was auto-opened),
+	// so ^D there is a literal; o/O and insert-<CR> set aiCount afterward.
+	m.aiCount, m.aiCarat, m.aiRestore = 0, 0, nil
 }
 
 func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
@@ -64,6 +68,13 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 		// fall through to process the terminating key normally
 	}
 
+	// The ^^D / 0^D autoindent-erase forms require the '^' or '0' to be the key
+	// immediately before ^D (nvi keys off carat state and cursor position). Clear
+	// it for this key up front; the normal-char branch re-arms it, and ^D reads
+	// the captured value.
+	prevCarat := m.aiCarat
+	m.aiCarat = 0
+
 	// Insert-mode control commands.
 	if ev.Mods&ModCtrl != 0 && ev.Key == KeyNone {
 		switch ev.Rune {
@@ -75,8 +86,8 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 			m.insertLineErase(e)
 		case 't': // indent to the next shiftwidth boundary at the cursor
 			m.insertIndent(e)
-		case 'd': // shift the current line left by shiftwidth
-			m.insertShift(e, -1)
+		case 'd': // erase autoindent (^D), or a literal ^D past the indent
+			m.insertCtrlD(e, prevCarat)
 		case 'h': // erase the previous character
 			m.insertBackspace(e)
 		case 'x': // begin a hexadecimal character entry
@@ -119,6 +130,12 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 		// word just completed.
 		if !isWordRune(ev.Rune) {
 			e.maybeExpandAbbrev()
+		}
+		// Arm the ^^D / 0^D forms: a '^' or '0' typed within the autoindent makes
+		// the next key, if ^D, erase all the indent (nvi K_CARAT / K_ZERO).
+		if (ev.Rune == '^' || ev.Rune == '0') && e.scr.opts.Bool("autoindent") &&
+			e.scr.cursor.Col <= m.aiCount {
+			m.aiCarat = ev.Rune
 		}
 		m.insertRune(e, ev.Rune)
 		m.insertText = append(m.insertText, ev.Rune)
@@ -206,11 +223,19 @@ func (m *vimode) insertNewline(e *Engine) {
 
 	var indent []rune
 	if s.opts.Bool("autoindent") {
-		indent = leadingWhitespace(line)
+		if m.aiRestore != nil {
+			// A preceding ^^D erased this line's indent but asked to reinstate it
+			// on the next autoindented line (nvi nochange).
+			indent = m.aiRestore
+		} else {
+			indent = leadingWhitespace(line)
+		}
 	}
+	m.aiRestore = nil
 	newContent := append(cloneR(indent), tail...)
 	s.appendLine(s.cursor.Line, newContent)
 	s.cursor = Pos{Line: s.cursor.Line + 1, Col: len(indent)}
+	m.aiCount = len(indent) // the copied indent is autoindent for ^D
 }
 
 // insertBackspace implements ^H / Backspace in insert mode: erase the
@@ -345,41 +370,97 @@ func (m *vimode) insertIndent(e *Engine) {
 	nl = append(nl, fill...)
 	nl = append(nl, line[col:]...)
 	s.setLine(s.cursor.Line, nl)
+	atBoundary := col == m.aiCount // ^T at the end of the indent extends it (nvi ai_reset)
 	s.cursor.Col = lo + len(fill)
+	if atBoundary {
+		m.aiCount = s.cursor.Col
+	}
 }
 
-// insertShift implements ^D: shift the current line's indentation by one
-// shiftwidth, moving the cursor with the text. (nvi's insert-mode ^D acts on
-// the autoindent whitespace at the cursor and inserts a literal ^D elsewhere;
-// that fuller model, with the 0^D / ^^D forms, is still an open gap.)
-func (m *vimode) insertShift(e *Engine, dir int) {
+// insertCtrlD implements insert-mode ^D (nvi v_txt.c, K_CNTRLD): it erases
+// autoindent characters, and is otherwise a literal control character. carat is
+// the '^' or '0' typed immediately before, selecting the ^^D / 0^D forms:
+//   - plain ^D erases back to the previous shiftwidth column within the indent;
+//   - 0^D erases all the autoindent;
+//   - ^^D erases all the autoindent but restores it on the next opened line.
+// With no autoindent option, at column 0, or once the cursor has moved past the
+// autoindent, ^D falls through to a literal ^D, matching historic vi.
+func (m *vimode) insertCtrlD(e *Engine, carat rune) {
+	s := e.scr
+	literal := func() {
+		m.insertRune(e, 0x04)
+		m.insertText = append(m.insertText, 0x04)
+	}
+	if !s.opts.Bool("autoindent") {
+		literal()
+		return
+	}
+	if s.cursor.Col == 0 {
+		return // first column, nothing to erase: ignore (historic practice)
+	}
+	switch carat {
+	case '^': // ^^D: erase all the indent, restore it on the next line.
+		if m.aiCount == 0 || s.cursor.Col > m.aiCount+1 {
+			literal()
+			return
+		}
+		m.aiRestore = cloneR(s.lineRunes(s.cursor.Line)[:m.aiCount])
+		m.eraseToLeftMargin(e)
+	case '0': // 0^D: erase all the indent.
+		if m.aiCount == 0 || s.cursor.Col > m.aiCount+1 {
+			literal()
+			return
+		}
+		m.eraseToLeftMargin(e)
+	default: // ^D: erase back one shiftwidth.
+		if m.aiCount == 0 || s.cursor.Col > m.aiCount {
+			literal()
+			return
+		}
+		m.insertDedent(e)
+	}
+}
+
+// eraseToLeftMargin removes the leading whitespace up to the cursor (the
+// autoindent plus the triggering '^' or '0'), leaving the cursor at column 0.
+// This is nvi's txt() "leftmargin" step for the 0^D / ^^D forms.
+func (m *vimode) eraseToLeftMargin(e *Engine) {
 	s := e.scr
 	line := s.lineRunes(s.cursor.Line)
+	col := clampIdx(s.cursor.Col, len(line))
+	s.setLine(s.cursor.Line, cloneR(line[col:]))
+	s.cursor.Col = 0
+	m.aiCount = 0
+}
+
+// insertDedent rebuilds the leading autoindent so the first non-blank sits at the
+// previous shiftwidth boundary (nvi txt_dent with isindent=0). Everything before
+// the cursor is autoindent whitespace, so it is replaced wholesale.
+func (m *vimode) insertDedent(e *Engine) {
+	s := e.scr
+	line := s.lineRunes(s.cursor.Line)
+	col := clampIdx(s.cursor.Col, len(line))
 	ts, sw := s.opts.Int("tabstop"), s.opts.Int("shiftwidth")
-	width, i := 0, 0
-	for i < len(line) {
-		if line[i] == ' ' {
-			width++
-			i++
-		} else if line[i] == '\t' {
-			width += ts - width%ts
-			i++
+	if sw <= 0 {
+		sw = ts
+	}
+	current := 0
+	for i := 0; i < col; i++ {
+		if line[i] == '\t' {
+			current += ts - current%ts
 		} else {
-			break
+			current++
 		}
 	}
-	newWidth := width + dir*sw
-	if newWidth < 0 {
-		newWidth = 0
+	if current == 0 {
+		return
 	}
-	indent := makeIndent(newWidth, ts)
-	nl := append(cloneR(indent), line[i:]...)
+	target := ((current - 1) / sw) * sw
+	indent := makeIndent(target, ts)
+	nl := append(cloneR(indent), line[col:]...)
 	s.setLine(s.cursor.Line, nl)
-	// Adjust the cursor by the change in the indent's rune length.
-	s.cursor.Col += len(indent) - i
-	if s.cursor.Col < 0 {
-		s.cursor.Col = 0
-	}
+	s.cursor.Col = len(indent)
+	m.aiCount = len(indent)
 }
 
 func isHexDigit(r rune) bool {

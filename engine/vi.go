@@ -61,6 +61,16 @@ type vimode struct {
 	hexBuf      []rune // accumulated hex digits
 	savedInsert []rune // text of the last completed insertion (for NUL replay)
 
+	// autoindent state for insert-mode ^D (nvi v_txt.c tp->ai / carat / nochange).
+	// aiCount is the count of leading autoindent whitespace runes on the current
+	// line; ^D only erases within it, past it ^D is a literal control character.
+	// aiCarat records a just-typed '^' or '0' so the next ^D takes the ^^D / 0^D
+	// form. aiRestore holds the indent ^^D erased, to reinstate on the next
+	// autoindented line.
+	aiCount   int
+	aiCarat   rune
+	aiRestore []rune
+
 	// dot repeat
 	rec       []KeyEvent
 	dot       []KeyEvent

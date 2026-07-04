@@ -123,11 +123,21 @@ func (m *vimode) operateLines(e *Engine, op, reg rune, l1, l2 int64, doubled boo
 	case 'c':
 		e.beginChange()
 		s.regs.StoreDelete(reg, txt)
+		// With autoindent, cc/S keep the first line's leading whitespace as
+		// autoindent characters (nvi TXT_AICHARS), so ^D can then erase them.
+		var indent []rune
+		if s.opts.Bool("autoindent") {
+			indent = leadingWhitespace(s.lineRunes(l1))
+		}
 		e.deleteLines(l1, l2)
-		// Leave one empty line to type into.
+		// Leave one line (the kept indent, if any) to type into.
 		e.insertEmptyLineAt(l1)
-		s.cursor = Pos{Line: l1, Col: 0}
+		if len(indent) > 0 {
+			s.setLine(l1, cloneR(indent))
+		}
+		s.cursor = Pos{Line: l1, Col: len(indent)}
 		m.startInsert(e, s.cursor, false, 'c')
+		m.aiCount = len(indent)
 	case '~':
 		e.beginChange()
 		for ln := l1; ln <= l2; ln++ {
@@ -504,6 +514,8 @@ func (e *Engine) openLine(m *vimode, below bool) {
 		s.cursor = Pos{Line: s.cursor.Line, Col: len(indent)}
 	}
 	m.startInsert(e, s.cursor, false, map[bool]rune{true: 'o', false: 'O'}[below])
+	// The copied whitespace is autoindent: ^D may erase it (nvi tp->ai).
+	m.aiCount = len(indent)
 }
 
 // leadingWhitespace returns a copy of the run of spaces/tabs at the start of a

@@ -316,6 +316,43 @@ func TestViPrevContextMark(t *testing.T) {
 	}
 }
 
+// TestViInsertCtrlD covers CORNERS A-2: insert-mode ^D erases autoindent (nvi
+// txt_dent / K_CNTRLD), with the 0^D and ^^D forms, and is a literal control
+// character past the indent or with no autoindent. cc/S keep the first line's
+// indent as autoindent characters. Verified against nvi via the goterm A-2 probe.
+func TestViInsertCtrlD(t *testing.T) {
+	const D = "\x04" // ^D
+	cases := []struct {
+		name    string
+		initial string
+		keys    string
+		want    string
+	}{
+		// o opens an 8-col autoindented line; ^D dedents one shiftwidth to 4.
+		{"dedent-one", "        x\n", "A\r" + D + "done\x1b", "        x\n    done"},
+		{"dedent-two", "        x\n", "A\r" + D + D + "done\x1b", "        x\ndone"},
+		// 0^D and ^^D erase all the indent; ^^D reinstates it on the next line.
+		{"zero-ctrld", "        x\n", "A\r0" + D + "done\x1b", "        x\ndone"},
+		{"carat-ctrld", "        x\n", "A\r^" + D + "abc\rdef\x1b", "        x\nabc\n        def"},
+		// Past the indent, or with no autoindent chars, ^D is a literal (0x04).
+		{"past-indent", "        x\n", "A\rxy" + D + "z\x1b", "        x\n        xy\x04z"},
+		{"plain-a-literal", "        x\n", "A" + D + "z\x1b", "        x\x04z"},
+		// cc keeps the first line's indent as autoindent; ^D then dedents it.
+		{"cc-keeps-indent", "        x\n", "ccfoo\x1b", "        foo"},
+		{"cc-then-ctrld", "        x\n", "cc" + D + "foo\x1b", "    foo"},
+	}
+	for _, c := range cases {
+		e, _, _ := newTestEngine(t, c.initial)
+		if err := e.exExecute("set ai sw=4 ts=8"); err != nil {
+			t.Fatalf("%s: set: %v", c.name, err)
+		}
+		drive(e, c.keys)
+		if got := bufText(e); got != c.want {
+			t.Errorf("%s: keys %q\n got %q\nwant %q", c.name, c.keys, got, c.want)
+		}
+	}
+}
+
 func TestViGotoLine(t *testing.T) {
 	e, _, _ := newTestEngine(t, "a\nb\nc\nd\ne\n")
 	drive(e, "G")
