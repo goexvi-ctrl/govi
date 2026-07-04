@@ -409,6 +409,101 @@ func (s *screen) screenLines(lno int64) int {
 	return wrapRows(s.displayWidth(lno), s.textCols())
 }
 
+// rowAddr addresses one physical screen row: a buffer line and which of its
+// wrapped sub-rows (0-based). It is the counterpart of nvi's SMAP entry
+// (lno, soff), which the scrolling and screen-positioning commands (^F ^B ^D
+// ^U, H M L) move over -- those commands work in screen rows, not lines.
+type rowAddr struct {
+	lno int64
+	sub int
+}
+
+// rowAfter reports whether row a lies below row b.
+func rowAfter(a, b rowAddr) bool {
+	return a.lno > b.lno || a.lno == b.lno && a.sub > b.sub
+}
+
+// cursorRowAddr returns the screen row holding the cursor (nvi vs_sm_cursor).
+func (s *screen) cursorRowAddr() rowAddr {
+	sub := 0
+	if w := s.textCols(); w > 0 {
+		sub = s.displayColOf(s.cursor.Line, s.cursor.Col) / w
+	}
+	if max := s.screenLines(s.cursor.Line) - 1; sub > max {
+		sub = max
+	}
+	return rowAddr{s.cursor.Line, sub}
+}
+
+// advanceRows walks a forward by up to n screen rows, stopping at the last
+// row of the last buffer line, and returns the new address and the rows
+// actually moved.
+func (s *screen) advanceRows(a rowAddr, n int) (rowAddr, int) {
+	last := s.lineCount()
+	moved := 0
+	for moved < n {
+		switch {
+		case a.sub+1 < s.screenLines(a.lno):
+			a.sub++
+		case a.lno < last:
+			a.lno++
+			a.sub = 0
+		default:
+			return a, moved
+		}
+		moved++
+	}
+	return a, moved
+}
+
+// retreatRows walks a backward by up to n screen rows, stopping at the first
+// row of line 1.
+func (s *screen) retreatRows(a rowAddr, n int) (rowAddr, int) {
+	moved := 0
+	for moved < n {
+		switch {
+		case a.sub > 0:
+			a.sub--
+		case a.lno > 1:
+			a.lno--
+			a.sub = s.screenLines(a.lno) - 1
+		default:
+			return a, moved
+		}
+		moved++
+	}
+	return a, moved
+}
+
+// rowStartCol returns the rune column of the first character shown on screen
+// row a (nvi SMAP c_sboff).
+func (s *screen) rowStartCol(a rowAddr) int {
+	if a.sub == 0 {
+		return 0
+	}
+	return s.colAtDisplay(a.lno, a.sub*s.textCols())
+}
+
+// nnbFrom returns the column of the first non-blank rune at or after off on
+// line lno, or the last character when the rest of the line is blank (nvi
+// nonblank with a starting offset; H/M/L land on the next nonblank of their
+// screen row).
+func (s *screen) nnbFrom(lno int64, off int) int {
+	r := s.lineRunes(lno)
+	if len(r) == 0 {
+		return 0
+	}
+	if off >= len(r) {
+		return len(r) - 1
+	}
+	for i := off; i < len(r); i++ {
+		if r[i] != ' ' && r[i] != '\t' {
+			return i
+		}
+	}
+	return len(r) - 1
+}
+
 // wrapRows returns how many rows of the given width a span of dw display columns
 // occupies (at least 1).
 func wrapRows(dw, w int) int {

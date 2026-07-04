@@ -418,60 +418,85 @@ func pageOffset(count, window int) int {
 	return off - 2
 }
 
-// pageDown scrolls the viewport toward EOF by offset screen lines (nvi
-// vs_sm_scroll). For a full page (^F) with a complete scroll the cursor lands on
-// the first non-blank of the new top line; otherwise (^D, or ^F clamped at EOF)
-// the cursor advances with the scroll toward EOF. The viewport never scrolls
-// past showing the last line at the bottom row.
+// pageDown scrolls the viewport toward EOF by offset physical screen rows
+// (nvi vs_sm_up): a wrapped line counts one row per sub-row, so the paging
+// distance and the cursor's landing line are computed in screen rows, not
+// buffer lines. The screen scrolls as far as the file allows; the cursor
+// moves down by the full row count from its own screen row (nvi's SMAP
+// pointer keeps its row index while the map shifts underneath, then walks the
+// remainder), capped at the bottom row of the final screen. A full page (^F)
+// that scrolls completely instead puts the cursor on the new top row.
 func (m *vimode) pageDown(e *Engine, offset int, full bool) {
 	s := e.scr
 	if offset < 1 {
 		offset = 1
 	}
-	last := s.lineCount()
-	oldTop := s.top
-	newTop := oldTop + int64(offset)
-	if maxTop := s.topForBottom(last); newTop > maxTop {
-		newTop = maxTop
-	}
-	if newTop < oldTop {
-		newTop = oldTop
-	}
-	s.top = newTop
+	mapH := s.effectiveMapRows()
+	topA := rowAddr{lno: s.top}
+	curA := s.cursorRowAddr()
 
-	var line int64
-	if full && newTop-oldTop == int64(offset) {
-		line = newTop // ^F full page: cursor to the top of the new screen
-	} else {
-		line = s.cursor.Line + int64(offset)
+	// Rows available below the current bottom row, capped at offset: the
+	// screen scrolls one row per existing row past the bottom.
+	_, walked := s.advanceRows(topA, mapH-1+offset)
+	scroll := walked - (mapH - 1)
+	if scroll < 0 {
+		scroll = 0 // the file already ends within the screen
 	}
-	s.cursor.Line = clampToViewport(s, line, newTop)
-	s.cursor.Col = s.firstNonBlank(s.cursor.Line)
+	newTopA, _ := s.advanceRows(topA, scroll)
+	// govi's viewport starts at a whole buffer line; when the scroll stops
+	// inside a wrapped line the whole line stays visible (cataloged #44: no
+	// sub-line top).
+	s.top = newTopA.lno
+
+	var target rowAddr
+	if full && scroll == offset {
+		target = newTopA // ^F full page: cursor to the top row of the new screen
+	} else {
+		target, _ = s.advanceRows(curA, offset)
+		if maxA, _ := s.advanceRows(rowAddr{lno: s.top}, mapH-1); rowAfter(target, maxA) {
+			target = maxA // nvi stops the cursor walk at the bottom map row
+		}
+	}
+	s.cursor.Line = target.lno
+	if col := s.rowStartCol(target); col != 0 {
+		s.cursor.Col = col // landed on a continuation row: its first character
+	} else {
+		s.cursor.Col = s.firstNonBlank(target.lno)
+	}
 }
 
-// pageUp scrolls the viewport toward SOF by offset screen lines. For a full page
-// (^B) with a complete scroll the cursor lands on the new bottom line; otherwise
-// (^U, or ^B clamped at SOF) it moves up with the scroll.
+// pageUp scrolls the viewport toward SOF by offset physical screen rows (nvi
+// vs_sm_down), the mirror of pageDown. A full page (^B) with a complete
+// scroll puts the cursor on the last row of the new screen; otherwise the
+// cursor moves up by the full row count, capped at the top row.
 func (m *vimode) pageUp(e *Engine, offset int, full bool) {
 	s := e.scr
 	if offset < 1 {
 		offset = 1
 	}
-	oldTop := s.top
-	newTop := oldTop - int64(offset)
-	if newTop < 1 {
-		newTop = 1
-	}
-	s.top = newTop
+	mapH := s.effectiveMapRows()
+	topA := rowAddr{lno: s.top}
+	curA := s.cursorRowAddr()
 
-	var line int64
-	if full && oldTop-newTop == int64(offset) {
-		line = s.bottomLine(newTop) // ^B full page: cursor to the new bottom line
+	newTopA, scroll := s.retreatRows(topA, offset)
+	s.top = newTopA.lno // whole-line viewport top, as in pageDown
+
+	var target rowAddr
+	if full && scroll == offset {
+		// ^B full page: cursor to the last real row of the new screen.
+		target, _ = s.advanceRows(newTopA, mapH-1)
 	} else {
-		line = s.cursor.Line - int64(offset)
+		target, _ = s.retreatRows(curA, offset)
+		if rowAfter(newTopA, target) {
+			target = newTopA // nvi stops the cursor walk at the top map row
+		}
 	}
-	s.cursor.Line = clampToViewport(s, line, newTop)
-	s.cursor.Col = s.firstNonBlank(s.cursor.Line)
+	s.cursor.Line = target.lno
+	if col := s.rowStartCol(target); col != 0 {
+		s.cursor.Col = col
+	} else {
+		s.cursor.Col = s.firstNonBlank(target.lno)
+	}
 }
 
 // scrollDown implements ^E: roll the viewport down n lines, leaving the cursor
@@ -513,24 +538,6 @@ func (m *vimode) scrollUp(e *Engine, n int) {
 		s.cursor.Col = s.maintainedCol(bl)
 	}
 	m.preserveCol = true
-}
-
-// clampToViewport keeps line within the visible region [top, bottomLine(top)]
-// and within the buffer.
-func clampToViewport(s *screen, line, top int64) int64 {
-	if line < top {
-		line = top
-	}
-	if bl := s.bottomLine(top); line > bl {
-		line = bl
-	}
-	if line < 1 {
-		line = 1
-	}
-	if last := s.lineCount(); line > last {
-		line = last
-	}
-	return line
 }
 
 // consumeReg returns the selected register and clears the selection so it does

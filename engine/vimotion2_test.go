@@ -185,3 +185,42 @@ func TestFileInfoMessage(t *testing.T) {
 		t.Fatalf("^G message = %q kind %v", msg, kind)
 	}
 }
+
+// qaWrapFixture is the QA wrap fixture at its 12x40 geometry (11 text rows,
+// 40 columns): lines 1 and 4 are 57 characters and wrap onto two rows.
+func qaWrapFixture(t *testing.T) *Engine {
+	long := "alpha beta gamma delta epsilon zeta eta theta iota kappa"
+	lines := []string{long, "second short", "third line here", long, "fifth",
+		"sixth", "seventh", "eighth", "ninth", "tenth", "eleventh", "twelfth"}
+	e, _, _ := newTestEngine(t, strings.Join(lines, "\n")+"\n")
+	e.Resize(11, 40)
+	return e
+}
+
+// TestPageOverWraps checks that ^F/^B page in physical screen rows when
+// wrapped lines are on screen (nvi vs_sm_up/vs_sm_down): the cursor keeps its
+// screen-row index while the view scrolls under it and then walks the
+// remaining rows, so it lands on nvi's line, not offset-many logical lines
+// away (QA-11).
+func TestPageOverWraps(t *testing.T) {
+	e := qaWrapFixture(t)
+
+	// 14 content rows in an 11-row window: ^F wants 9 rows but only 3 exist
+	// below the bottom; the cursor still moves the full 9 rows (0+9 = row 6
+	// of the new screen = line 8).
+	e.Input(KeyEvent{Rune: 'f', Mods: ModCtrl})
+	if e.scr.top != 3 {
+		t.Fatalf("^F: top %d, want 3", e.scr.top)
+	}
+	curAt(t, e, 8, 0, "^F over wraps")
+
+	// From the bottom (top=3, cursor line 12 = row 10), ^B scrolls back the 3
+	// available rows and moves the cursor up 9 rows total, from (12,0) to
+	// (4,0): screen row 4 of the new screen, below the four rows of lines 1-3.
+	drive(e, "G")
+	e.Input(KeyEvent{Rune: 'b', Mods: ModCtrl})
+	if e.scr.top != 1 {
+		t.Fatalf("G^B: top %d, want 1", e.scr.top)
+	}
+	curAt(t, e, 4, 0, "^B over wraps")
+}
