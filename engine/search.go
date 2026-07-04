@@ -28,7 +28,13 @@ func (e *Engine) compilePattern(p string) (*regex.Regex, error) {
 		}
 		p = e.scr.lastPattern
 	}
-	re, err := regex.Compile(p, regex.Options{Magic: e.scr.opts.Bool("magic"), IgnoreCase: e.scr.opts.Bool("ignorecase")})
+	magic := e.scr.opts.Bool("magic")
+	// nvi re_conv: a ~ in a pattern stands for the last substitute replacement
+	// text, spliced in verbatim before compiling. The expanded pattern is what
+	// gets saved, so a later empty pattern reuses the expansion (nvi saves the
+	// converted RE the same way).
+	p = expandPatternTilde(p, e.scr.lastSubstRepl, magic)
+	re, err := regex.Compile(p, regex.Options{Magic: magic, IgnoreCase: e.scr.opts.Bool("ignorecase")})
 	if err != nil {
 		// nvi re_error: msgq "RE error: %s" with the regerror text (msgq
 		// supplies the trailing period).
@@ -36,6 +42,41 @@ func (e *Engine) compilePattern(p string) (*regex.Regex, error) {
 	}
 	e.scr.lastPattern = p
 	return re, nil
+}
+
+// expandPatternTilde implements nvi re_conv's ~ handling: in magic mode an
+// unescaped ~ stands for the last substitute replacement text and \~ is a
+// literal tilde; in nomagic the sense flips (~ literal, \~ expands). The
+// replacement text is spliced in verbatim -- any regex specials in it take
+// effect, as in nvi.
+func expandPatternTilde(p, repl string, magic bool) string {
+	if !strings.ContainsRune(p, '~') {
+		return p
+	}
+	rs := []rune(p)
+	var b strings.Builder
+	for i := 0; i < len(rs); i++ {
+		if rs[i] == '\\' && i+1 < len(rs) {
+			if rs[i+1] == '~' {
+				if magic {
+					b.WriteString(`\~`) // literal tilde
+				} else {
+					b.WriteString(repl)
+				}
+			} else {
+				b.WriteRune(rs[i])
+				b.WriteRune(rs[i+1])
+			}
+			i++
+			continue
+		}
+		if rs[i] == '~' && magic {
+			b.WriteString(repl)
+			continue
+		}
+		b.WriteRune(rs[i])
+	}
+	return b.String()
 }
 
 // searchFrom finds the next match of re from the given position in the given

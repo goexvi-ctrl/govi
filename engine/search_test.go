@@ -22,6 +22,35 @@ func TestSearchForward(t *testing.T) {
 	}
 }
 
+// nvi re_conv: a ~ in a pattern is the last substitute replacement, spliced
+// in verbatim; \~ is a literal tilde.  In nomagic the sense flips.
+func TestSearchTildePattern(t *testing.T) {
+	e, _, _ := newTestEngine(t, "one here\nx two y\na ~ b\n")
+	if err := e.exExecute("1s/one/two/"); err != nil {
+		t.Fatal(err)
+	}
+	drive(e, "1G0/~\r")
+	if e.scr.cursor != (Pos{Line: 2, Col: 2}) {
+		t.Fatalf("/~ -> %+v, want line2 col2 (the \"two\")", e.scr.cursor)
+	}
+	drive(e, `1G0/\~`+"\r")
+	if e.scr.cursor != (Pos{Line: 3, Col: 2}) {
+		t.Fatalf(`/\~ -> %+v, want line3 col2 (the literal ~)`, e.scr.cursor)
+	}
+	// nomagic flips the sense.
+	if err := e.exExecute("set nomagic"); err != nil {
+		t.Fatal(err)
+	}
+	drive(e, "1G0/~\r")
+	if e.scr.cursor != (Pos{Line: 3, Col: 2}) {
+		t.Fatalf("nomagic /~ -> %+v, want line3 col2", e.scr.cursor)
+	}
+	drive(e, `1G0/\~`+"\r")
+	if e.scr.cursor != (Pos{Line: 2, Col: 2}) {
+		t.Fatalf(`nomagic /\~ -> %+v, want line2 col2`, e.scr.cursor)
+	}
+}
+
 func TestSearchBackward(t *testing.T) {
 	e, _, _ := newTestEngine(t, "x foo\nbar\nfoo y\n")
 	drive(e, "G")      // to last line
