@@ -353,6 +353,31 @@ func TestViInsertCtrlD(t *testing.T) {
 	}
 }
 
+// TestViEmptyRegisterPut covers CORNERS B-4: an unknown register name (such as
+// the "- small-delete buffer, which nvi does not implement) or an empty named
+// register pastes nothing and reports the buffer as empty, rather than falling
+// back to the unnamed register. Verified against nvi.
+func TestViEmptyRegisterPut(t *testing.T) {
+	// A small delete fills the unnamed register; "-p must NOT paste it.
+	e, _, _ := newTestEngine(t, "two three\n")
+	drive(e, `dw"-p`)
+	if got := bufText(e); got != "three" {
+		t.Errorf(`"-p pasted %q, want "three" (nothing pasted)`, got)
+	}
+	if e.scr.msg != "Buffer - is empty" {
+		t.Errorf("message = %q, want %q", e.scr.msg, "Buffer - is empty")
+	}
+	// An empty named register reports itself, too.
+	e2, _, _ := newTestEngine(t, "abc\n")
+	drive(e2, `"zp`)
+	if got := bufText(e2); got != "abc" {
+		t.Errorf(`"zp changed buffer to %q`, got)
+	}
+	if e2.scr.msg != "Buffer z is empty" {
+		t.Errorf("message = %q, want %q", e2.scr.msg, "Buffer z is empty")
+	}
+}
+
 func TestViGotoLine(t *testing.T) {
 	e, _, _ := newTestEngine(t, "a\nb\nc\nd\ne\n")
 	drive(e, "G")

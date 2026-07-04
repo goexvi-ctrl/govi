@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"unicode"
 
 	"govi/engine/register"
@@ -290,7 +291,13 @@ func (e *Engine) put(m *vimode, after bool) {
 	m.putReg = name
 	txt := s.regs.Get(name)
 	if txt.Empty() {
-		e.fe.Bell()
+		// nvi names the empty buffer rather than just ringing the bell: the
+		// unnamed buffer is "the default buffer", others are "Buffer X".
+		if name == 0 || name == '"' {
+			s.msg, s.msgKind = "The default buffer is empty", MsgError
+		} else {
+			s.msg, s.msgKind = fmt.Sprintf("Buffer %c is empty", name), MsgError
+		}
 		return
 	}
 	count := effCount(m.count)

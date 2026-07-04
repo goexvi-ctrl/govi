@@ -62,7 +62,10 @@ func (s *Set) Get(name rune) Text {
 	case name >= '1' && name <= '9':
 		return s.numbered[name-'1']
 	default:
-		return s.unnamed
+		// An unknown buffer name (e.g. the '-' small-delete buffer, which nvi
+		// does not implement) is empty -- nvi never falls back to the unnamed
+		// buffer, it reports "Buffer X is empty".
+		return Text{}
 	}
 }
 
