@@ -480,14 +480,19 @@ func (f *Frontend) paintScreen(sv engine.ScreenView, split bool, termW int) {
 	lno := top
 	for row < mapRows && lno <= sv.LineCount() {
 		cells := engine.DisplayCells(sv.Line(lno))
-		first := true
-		// Emit at least one row even for an empty line.
-		for i := 0; (i < len(cells) || first) && row < mapRows; i += textW {
+		// Emit at least one row even for an empty line. The gutter occupies
+		// the first row only; continuation rows start at column 0 and span
+		// the full width (nvi vs_line: the number is drawn once per line).
+		i, first := 0, true
+		for (i < len(cells) || first) && row < mapRows {
+			w, x := textW, coff+gutter
+			if !first {
+				w, x = cols, coff
+			}
 			if gutter > 0 && first {
 				f.drawGutter(lno, coff, roff+row, gutter)
 			}
-			x := coff + gutter
-			for j := i; j < i+textW && j < len(cells); j++ {
+			for j := i; j < i+w && j < len(cells); j++ {
 				// Continuation cells (Rune == 0) belong to a preceding wide
 				// glyph; tcell draws the wide rune spanning both columns, so skip
 				// them but still advance the column.
@@ -496,6 +501,7 @@ func (f *Frontend) paintScreen(sv engine.ScreenView, split bool, termW int) {
 				}
 				x++
 			}
+			i += w
 			row++
 			first = false
 		}
@@ -524,7 +530,7 @@ func (f *Frontend) paintScreen(sv engine.ScreenView, split bool, termW int) {
 	}
 
 	if sv.Active() {
-		f.placeCursor(sv, coff, roff, statusRow, gutter, textW, mapRows)
+		f.placeCursor(sv, coff, roff, statusRow, gutter, cols, mapRows)
 	}
 }
 
@@ -646,7 +652,7 @@ func (f *Frontend) drawStatus(sv engine.ScreenView, coff, row, cols int, split b
 	}
 }
 
-func (f *Frontend) placeCursor(sv engine.ScreenView, coff, roff, statusRow, gutter, textW, mapRows int) {
+func (f *Frontend) placeCursor(sv engine.ScreenView, coff, roff, statusRow, gutter, cols, mapRows int) {
 	if sv.Mode() == engine.ModeExColon {
 		msg, _ := sv.Message()
 		f.scr.ShowCursor(coff+engine.DisplayStringColumns(msg, 8), statusRow) // end of the colon line
@@ -662,11 +668,12 @@ func (f *Frontend) placeCursor(sv engine.ScreenView, coff, roff, statusRow, gutt
 	// [top, cur.Line) then add the cursor's wrapped row within its own line.
 	y := 0
 	for ln := top; ln < cur.Line; ln++ {
-		y += wrapRowsOf(sv.Line(ln), textW)
+		y += wrapRowsOf(sv.Line(ln), cols, gutter)
 	}
 	dx := engine.CursorDisplayColumn(sv.Line(cur.Line), cur.Col, sv.Mode())
-	y += dx / textW
-	x := coff + gutter + dx%textW
+	sub, sx := engine.WrapCellPos(dx, cols, gutter)
+	y += sub
+	x := coff + sx
 
 	if y < 0 || y >= mapRows {
 		f.scr.HideCursor()
@@ -675,17 +682,10 @@ func (f *Frontend) placeCursor(sv engine.ScreenView, coff, roff, statusRow, gutt
 	f.scr.ShowCursor(x, roff+y)
 }
 
-// wrapRowsOf returns how many screen rows a display line occupies at the given
-// text width.
-func wrapRowsOf(dl engine.DisplayLine, textW int) int {
-	w := engine.DisplayLineWidth(dl)
-	if w <= 0 {
-		return 1
-	}
-	if textW < 1 {
-		textW = 1
-	}
-	return (w + textW - 1) / textW
+// wrapRowsOf returns how many screen rows a display line occupies at screen
+// width cols with a number gutter of g columns (drawn on the first row only).
+func wrapRowsOf(dl engine.DisplayLine, cols, g int) int {
+	return engine.WrapRowCount(engine.DisplayLineWidth(dl), cols, g)
 }
 
 func styleFor(s engine.Style) tc.Style {

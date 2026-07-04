@@ -154,13 +154,18 @@ func (g *Grid) composeScreen(sv engine.ScreenView, termW int, sel *Selection) {
 		dl := sv.Line(lno)
 		cells := engine.DisplayCells(dl)
 		ds, de := selSpan(dl, lno, sel) // selected display-column interval
-		first := true
-		for i := 0; (i < len(cells) || first) && row < mapRows; i += textW {
+		// The gutter occupies the first row only; continuation rows start at
+		// column 0 and span the full width (nvi draws the number once).
+		i, first := 0, true
+		for (i < len(cells) || first) && row < mapRows {
+			w, x := textW, coff+gutter
+			if !first {
+				w, x = cols, coff
+			}
 			if gutter > 0 && first {
 				g.drawGutter(lno, coff, roff+row, gutter)
 			}
-			x := coff + gutter
-			for j := i; j < i+textW && j < len(cells); j++ {
+			for j := i; j < i+w && j < len(cells); j++ {
 				st := cells[j].Style
 				if j >= ds && j < de {
 					st |= engine.StyleReverse
@@ -174,6 +179,7 @@ func (g *Grid) composeScreen(sv engine.ScreenView, termW int, sel *Selection) {
 				}
 				x++
 			}
+			i += w
 			row++
 			first = false
 		}
@@ -202,7 +208,7 @@ func (g *Grid) composeScreen(sv engine.ScreenView, termW int, sel *Selection) {
 	}
 
 	if sv.Active() {
-		g.placeCursorPane(sv, coff, roff, statusRow, gutter, textW, mapRows)
+		g.placeCursorPane(sv, coff, roff, statusRow, gutter, cols, mapRows)
 	}
 }
 
@@ -227,7 +233,7 @@ func (g *Grid) drawStatus(sv engine.ScreenView, coff, row, cols int) {
 
 // placeCursorPane positions the cursor for the active split pane, offsetting the
 // single-pane placeCursor math by the pane's row/column origin.
-func (g *Grid) placeCursorPane(sv engine.ScreenView, coff, roff, statusRow, gutter, textW, mapRows int) {
+func (g *Grid) placeCursorPane(sv engine.ScreenView, coff, roff, statusRow, gutter, cols, mapRows int) {
 	if sv.Mode() == engine.ModeExColon {
 		msg, _ := sv.Message()
 		g.CursorX = coff + engine.DisplayStringColumns(msg, 8)
@@ -243,11 +249,12 @@ func (g *Grid) placeCursorPane(sv engine.ScreenView, coff, roff, statusRow, gutt
 
 	y := 0
 	for ln := top; ln < cur.Line; ln++ {
-		y += wrapRowsOf(sv.Line(ln), textW)
+		y += wrapRowsOf(sv.Line(ln), cols, gutter)
 	}
 	dx := engine.CursorDisplayColumn(sv.Line(cur.Line), cur.Col, sv.Mode())
-	y += dx / textW
-	x := coff + gutter + dx%textW
+	sub, sx := engine.WrapCellPos(dx, cols, gutter)
+	y += sub
+	x := coff + sx
 
 	if y < 0 || y >= mapRows {
 		g.CursorVisible = false
@@ -345,13 +352,18 @@ func (g *Grid) composeEditor(v engine.View, sel *Selection) {
 		dl := v.Line(lno)
 		cells := engine.DisplayCells(dl)
 		ds, de := selSpan(dl, lno, sel) // selected display-column interval
-		first := true
-		for i := 0; (i < len(cells) || first) && row < mapRows; i += textW {
+		// The gutter occupies the first row only; continuation rows start at
+		// column 0 and span the full width (nvi draws the number once).
+		i, first := 0, true
+		for (i < len(cells) || first) && row < mapRows {
+			w, x := textW, gutter
+			if !first {
+				w, x = g.Cols, 0
+			}
 			if gutter > 0 && first {
 				g.drawGutter(lno, 0, row, gutter)
 			}
-			x := gutter
-			for j := i; j < i+textW && j < len(cells); j++ {
+			for j := i; j < i+w && j < len(cells); j++ {
 				st := cells[j].Style
 				if j >= ds && j < de {
 					st |= engine.StyleReverse
@@ -366,6 +378,7 @@ func (g *Grid) composeEditor(v engine.View, sel *Selection) {
 				}
 				x++
 			}
+			i += w
 			row++
 			first = false
 		}
@@ -385,7 +398,7 @@ func (g *Grid) composeEditor(v engine.View, sel *Selection) {
 	msg, _ := v.Message()
 	g.drawText(msg, rows)
 
-	g.placeCursor(v, mapRows, rows, gutter, textW)
+	g.placeCursor(v, mapRows, rows, gutter, g.Cols)
 }
 
 func (g *Grid) drawGutter(lno int64, coff, row, gutter int) {
@@ -403,7 +416,7 @@ func (g *Grid) drawGutter(lno int64, coff, row, gutter int) {
 	g.set(x, row, ' ', engine.StyleNormal)
 }
 
-func (g *Grid) placeCursor(v engine.View, mapRows, statusRow, gutter, textW int) {
+func (g *Grid) placeCursor(v engine.View, mapRows, statusRow, gutter, cols int) {
 	if v.Mode() == engine.ModeExColon {
 		msg, _ := v.Message()
 		g.CursorX = engine.DisplayStringColumns(msg, 8)
@@ -419,11 +432,12 @@ func (g *Grid) placeCursor(v engine.View, mapRows, statusRow, gutter, textW int)
 
 	y := 0
 	for ln := top; ln < cur.Line; ln++ {
-		y += wrapRowsOf(v.Line(ln), textW)
+		y += wrapRowsOf(v.Line(ln), cols, gutter)
 	}
 	dx := engine.CursorDisplayColumn(v.Line(cur.Line), cur.Col, v.Mode())
-	y += dx / textW
-	x := gutter + dx%textW
+	sub, sx := engine.WrapCellPos(dx, cols, gutter)
+	y += sub
+	x := sx
 
 	if y < 0 || y >= mapRows {
 		g.CursorVisible = false
@@ -476,19 +490,21 @@ func Locate(v engine.View, rows, cols, x, y int) engine.Pos {
 		y = tr - 1
 	}
 	gutter := engine.GutterWidth(v.LineCount(), v.Number())
-	textW := cols - gutter
-	if textW < 1 {
-		textW = 1
-	}
 
 	row := 0
 	lno := v.Viewport().Top
 	for lno <= v.LineCount() {
 		dl := v.Line(lno)
-		segs := wrapRowsOf(dl, textW)
+		segs := wrapRowsOf(dl, cols, gutter)
 		for seg := 0; seg < segs; seg++ {
 			if row == y {
-				dcol := seg*textW + (x - gutter)
+				// Continuation rows carry no gutter: their cells map from
+				// screen column 0 (nvi's once-per-line number layout).
+				off := x
+				if seg == 0 {
+					off = x - gutter
+				}
+				dcol := engine.WrapRowStart(seg, cols, gutter) + off
 				if dcol < 0 {
 					dcol = 0
 				}
@@ -515,10 +531,6 @@ func Locate(v engine.View, rows, cols, x, y int) engine.Pos {
 func CellOf(v engine.View, rows, cols int, p engine.Pos) (x, y int, visible bool) {
 	tr := textRows(rows)
 	gutter := engine.GutterWidth(v.LineCount(), v.Number())
-	textW := cols - gutter
-	if textW < 1 {
-		textW = 1
-	}
 	top := v.Viewport().Top
 	if p.Line < top {
 		return 0, 0, false
@@ -528,13 +540,14 @@ func CellOf(v engine.View, rows, cols int, p engine.Pos) (x, y int, visible bool
 		dl := v.Line(lno)
 		if lno == p.Line {
 			dcol := engine.DisplayColumn(dl, p.Col)
-			yy := row + dcol/textW
+			sub, sx := engine.WrapCellPos(dcol, cols, gutter)
+			yy := row + sub
 			if yy < 0 || yy >= tr {
 				return 0, 0, false
 			}
-			return gutter + dcol%textW, yy, true
+			return sx, yy, true
 		}
-		row += wrapRowsOf(dl, textW)
+		row += wrapRowsOf(dl, cols, gutter)
 		if row >= tr {
 			return 0, 0, false
 		}
@@ -558,14 +571,8 @@ func caretRuneIndex(dl engine.DisplayLine, dcol int) int {
 	return len(dl.Widths)
 }
 
-// wrapRowsOf returns how many screen rows a display line occupies at textW.
-func wrapRowsOf(dl engine.DisplayLine, textW int) int {
-	w := engine.DisplayLineWidth(dl)
-	if w <= 0 {
-		return 1
-	}
-	if textW < 1 {
-		textW = 1
-	}
-	return (w + textW - 1) / textW
+// wrapRowsOf returns how many screen rows a display line occupies at screen
+// width cols with a number gutter of g columns (drawn on the first row only).
+func wrapRowsOf(dl engine.DisplayLine, cols, g int) int {
+	return engine.WrapRowCount(engine.DisplayLineWidth(dl), cols, g)
 }

@@ -248,3 +248,27 @@ func TestHMLOverWraps(t *testing.T) {
 	drive(e, "H")
 	curAt(t, e, 1, 0, "H to the top row")
 }
+
+// TestNumberWrapRows checks the :set number wrap layout (nvi vs_screens): the
+// 8-column gutter is counted once, on the first row, and continuation rows
+// span the full screen width from column 0. A 65-cell line at width 40 is 2
+// rows (32 cells beside the number + 33 more), not ceil(65/32) = 3 (QA-12).
+func TestNumberWrapRows(t *testing.T) {
+	e, _, _ := newTestEngine(t, strings.Repeat("x", 65)+"\nshort\n")
+	e.Resize(11, 40)
+	if err := e.exExecute("set number"); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.scr.screenLines(1); got != 2 {
+		t.Fatalf("screenLines = %d, want 2", got)
+	}
+	// The continuation row starts at display column 32 (width 40 - gutter 8)
+	// and rune 40 (display col 40, strip col 48) sits on it.
+	if got := e.scr.rowStartCol(rowAddr{lno: 1, sub: 1}); got != 32 {
+		t.Fatalf("rowStartCol = %d, want 32", got)
+	}
+	e.scr.cursor = Pos{Line: 1, Col: 40}
+	if a := e.scr.cursorRowAddr(); a != (rowAddr{lno: 1, sub: 1}) {
+		t.Fatalf("cursorRowAddr = %+v, want {1 1}", a)
+	}
+}

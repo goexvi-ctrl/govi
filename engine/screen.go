@@ -403,10 +403,16 @@ func (s *screen) maintainedCol(lno int64) int {
 	return s.colAtDisplay(lno, s.desiredCol)
 }
 
-// screenLines returns the number of physical screen rows line lno occupies when
-// wrapped to the text width (at least 1).
+// gutterW is the active line-number gutter width (0 unless :set number).
+func (s *screen) gutterW() int {
+	return GutterWidth(s.lineCount(), s.opts.Bool("number"))
+}
+
+// screenLines returns the number of physical screen rows line lno occupies
+// (at least 1). With :set number the gutter is drawn once, on the first row,
+// and continuation rows wrap at the full screen width (nvi vs_screens).
 func (s *screen) screenLines(lno int64) int {
-	return wrapRows(s.displayWidth(lno), s.textCols())
+	return WrapRowCount(s.displayWidth(lno), s.cols, s.gutterW())
 }
 
 // rowAddr addresses one physical screen row: a buffer line and which of its
@@ -425,10 +431,7 @@ func rowAfter(a, b rowAddr) bool {
 
 // cursorRowAddr returns the screen row holding the cursor (nvi vs_sm_cursor).
 func (s *screen) cursorRowAddr() rowAddr {
-	sub := 0
-	if w := s.textCols(); w > 0 {
-		sub = s.displayColOf(s.cursor.Line, s.cursor.Col) / w
-	}
+	sub, _ := WrapCellPos(s.displayColOf(s.cursor.Line, s.cursor.Col), s.cols, s.gutterW())
 	if max := s.screenLines(s.cursor.Line) - 1; sub > max {
 		sub = max
 	}
@@ -481,7 +484,7 @@ func (s *screen) rowStartCol(a rowAddr) int {
 	if a.sub == 0 {
 		return 0
 	}
-	return s.colAtDisplay(a.lno, a.sub*s.textCols())
+	return s.colAtDisplay(a.lno, WrapRowStart(a.sub, s.cols, s.gutterW()))
 }
 
 // nnbFrom returns the column of the first non-blank rune at or after off on
@@ -502,18 +505,6 @@ func (s *screen) nnbFrom(lno int64, off int) int {
 		}
 	}
 	return len(r) - 1
-}
-
-// wrapRows returns how many rows of the given width a span of dw display columns
-// occupies (at least 1).
-func wrapRows(dw, w int) int {
-	if w < 1 {
-		w = 1
-	}
-	if dw <= 0 {
-		return 1
-	}
-	return (dw + w - 1) / w
 }
 
 // applyWindowOption re-derives the window option and the vi map after a

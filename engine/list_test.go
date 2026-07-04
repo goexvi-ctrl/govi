@@ -167,7 +167,7 @@ func TestListRuneWidthTab(t *testing.T) {
 func TestListWrapRowsOf(t *testing.T) {
 	dl := makeDisplayLine([]rune(strings.Repeat("x", 10)), 8, true)
 	// 10 chars + $ = 11 cols; at width 10 that's 2 rows.
-	if got := wrapRows(DisplayLineWidth(dl), 10); got != 2 {
-		t.Fatalf("wrapRows = %d, want 2", got)
+	if got := WrapRowCount(DisplayLineWidth(dl), 10, 0); got != 2 {
+		t.Fatalf("WrapRowCount = %d, want 2", got)
 	}
 }

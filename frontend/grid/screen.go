@@ -269,15 +269,11 @@ func editorRowKindAt(v engine.View, rows, cols, y int) editorRowKind {
 		mapRows = tr
 	}
 	gutter := engine.GutterWidth(v.LineCount(), v.Number())
-	textW := cols - gutter
-	if textW < 1 {
-		textW = 1
-	}
 
 	row := 0
 	lno := vp.Top
 	for row < mapRows && lno <= v.LineCount() {
-		segs := wrapRowsOf(v.Line(lno), textW)
+		segs := wrapRowsOf(v.Line(lno), cols, gutter)
 		for seg := 0; seg < segs; seg++ {
 			if row == y {
 				return rowBuffer

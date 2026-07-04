@@ -92,6 +92,65 @@ func DisplayLineWidth(dl DisplayLine) int {
 	return w
 }
 
+// Numbered-wrap layout. With :set number, nvi draws the 8-column gutter once,
+// on a line's FIRST screen row, and lets continuation rows use the full
+// screen width starting at column 0 (vs_screens counts the gutter in the
+// line's total display columns and divides by the full width). The engine's
+// row math and every frontend must share this layout, so it lives here. With
+// gutter 0 it degenerates to plain uniform wrapping. A gutter is clamped to
+// cols-1 so every row advances at least one text cell.
+
+// WrapRowCount returns the number of screen rows a line of w display columns
+// occupies at screen width cols with a number gutter of g columns.
+func WrapRowCount(w, cols, g int) int {
+	if cols < 1 {
+		cols = 1
+	}
+	if g > cols-1 {
+		g = cols - 1
+	}
+	if g < 0 {
+		g = 0
+	}
+	if w <= 0 {
+		return 1
+	}
+	return (g + w + cols - 1) / cols
+}
+
+// WrapCellPos maps text display column d of a line to the screen row within
+// the line and the screen x column (gutter included) where it is drawn.
+func WrapCellPos(d, cols, g int) (row, x int) {
+	if cols < 1 {
+		cols = 1
+	}
+	if g > cols-1 {
+		g = cols - 1
+	}
+	if g < 0 {
+		g = 0
+	}
+	return (g + d) / cols, (g + d) % cols
+}
+
+// WrapRowStart returns the text display column of the first cell shown on
+// screen row `row` of a line (0 for the first row).
+func WrapRowStart(row, cols, g int) int {
+	if row <= 0 {
+		return 0
+	}
+	if cols < 1 {
+		cols = 1
+	}
+	if g > cols-1 {
+		g = cols - 1
+	}
+	if g < 0 {
+		g = 0
+	}
+	return row*cols - g
+}
+
 // Cell is one display cell produced from a DisplayLine: the glyph to paint and
 // its style. Tabs and control characters expand into multiple Cells.
 type Cell struct {
