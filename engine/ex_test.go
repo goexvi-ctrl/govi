@@ -25,6 +25,22 @@ func TestExDelete(t *testing.T) {
 	exCase(t, "delete-dollar", "a\nb\nc\n", []string{"$d"}, "a\nb")
 }
 
+// TestExBackwardRange covers CORNERS B-1: a reversed two-address range is a
+// specific parse error and makes no change (nvi ex.c). Verified against nvi.
+func TestExBackwardRange(t *testing.T) {
+	const want = "The second address is smaller than the first"
+	for _, cmd := range []string{"4,2d", "4,2s/./X/", "3,1j", "5;3d", "2,1"} {
+		e, _, _ := newTestEngine(t, "a\nb\nc\nd\ne\n")
+		err := e.exExecute(cmd)
+		if err == nil || err.Error() != want {
+			t.Errorf("%q: err = %v, want %q", cmd, err, want)
+		}
+		if got := bufText(e); got != "a\nb\nc\nd\ne" {
+			t.Errorf("%q changed the buffer: %q", cmd, got)
+		}
+	}
+}
+
 func TestExMove(t *testing.T) {
 	exCase(t, "move-end", "1\n2\n3\n", []string{"1m$"}, "2\n3\n1")
 	exCase(t, "move-top", "1\n2\n3\n", []string{"3m0"}, "3\n1\n2")

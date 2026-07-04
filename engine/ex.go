@@ -216,6 +216,11 @@ func (e *Engine) parseEx(line string) (*exCmd, error) {
 	if p.err != nil {
 		return nil, p.err
 	}
+	// A reversed two-address range is a specific error (nvi ex.c: this is checked
+	// in the address parser, before the command runs, for any 2-address command).
+	if c.addrCount == 2 && c.addr2 < c.addr1 {
+		return nil, fmt.Errorf("The second address is smaller than the first")
+	}
 	c.absAddr = p.absAddr
 
 	p.skipBlanks()
