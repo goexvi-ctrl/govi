@@ -251,7 +251,9 @@ func (e *Engine) insertEmptyLineAt(lno int64) {
 // repeated by the command count.
 func (e *Engine) put(m *vimode, after bool) {
 	s := e.scr
-	txt := s.regs.Get(m.consumeReg())
+	name := m.consumeReg()
+	m.putReg = name
+	txt := s.regs.Get(name)
 	if txt.Empty() {
 		e.fe.Bell()
 		return

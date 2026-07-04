@@ -67,6 +67,13 @@ type vimode struct {
 	replaying bool
 	changed   bool // current command modified the buffer
 
+	// numbered-register put ring: putReg is the register the current command's
+	// put drew from (0 = none); dotPutReg is that register when the dot command
+	// is a numbered put ("1p..."9p), so '.' can walk the delete ring (nvi: "1p
+	// then . puts "2, "3, ...). 0 when the dot command is not a numbered put.
+	putReg    rune
+	dotPutReg rune
+
 	// undo state (nvi semantics). Undo/redo has a direction: a literal 'u'
 	// toggles the direction and takes one step, while '.' repeats the last
 	// command -- so after an undo/redo it takes another step in the SAME
@@ -145,6 +152,13 @@ func (m *vimode) finishCommand(e *Engine) {
 	if m.changed {
 		if !m.replaying && len(m.rec) > 0 {
 			m.dot = append(m.dot[:0], m.rec...)
+			// Remember whether this dot command is a numbered-register put, so
+			// a following '.' walks the delete ring rather than repeating "1.
+			if m.putReg >= '1' && m.putReg <= '9' {
+				m.dotPutReg = m.putReg
+			} else {
+				m.dotPutReg = 0
+			}
 		}
 		// A new change ends the undo/redo sequence and makes '.' repeat this
 		// change; the next 'u' should undo (so reset direction to redo, which
@@ -159,6 +173,7 @@ func (m *vimode) finishCommand(e *Engine) {
 	m.op = 0
 	m.opCount = 0
 	m.opReg = 0
+	m.putReg = 0
 }
 
 // commandKey dispatches one key in command mode.
@@ -913,6 +928,16 @@ func (m *vimode) repeatDot(e *Engine) {
 		e.fe.Bell()
 		return
 	}
+	// '.' after a numbered-register put walks the delete ring: "1p, ., . puts
+	// "1, "2, "3 (historic vi). Advance the register (capped at "9) and rewrite
+	// the recorded digit before replaying. dotPutReg being set guarantees the
+	// dot command really is a numbered put, so the rewrite is safe.
+	if m.dotPutReg >= '1' && m.dotPutReg <= '9' {
+		if m.dotPutReg < '9' {
+			m.dotPutReg++
+		}
+		setDotPutDigit(m.dot, m.dotPutReg)
+	}
 	events := m.dot
 	if m.haveCount {
 		events = overrideCount(events, m.count)
@@ -925,6 +950,18 @@ func (m *vimode) repeatDot(e *Engine) {
 		m.key(e, ev)
 	}
 	m.replaying = false
+}
+
+// setDotPutDigit rewrites the register digit of a recorded numbered-register
+// put ('"' followed by a digit) to d, so a repeated '.' advances the delete
+// ring. The caller guarantees the events are such a put.
+func setDotPutDigit(events []KeyEvent, d rune) {
+	for i := 0; i+1 < len(events); i++ {
+		if events[i].Rune == '"' {
+			events[i+1].Rune = d
+			return
+		}
+	}
 }
 
 // overrideCount strips the leading count digits of a recorded command and
