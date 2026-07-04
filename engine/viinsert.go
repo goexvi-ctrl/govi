@@ -126,19 +126,28 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 	}
 }
 
-// maybeWrapMargin implements wrapmargin: while inserting, once the cursor passes
-// the right margin (cols - wrapmargin) it breaks the line at the last blank
-// before the current word, moving that word to a new line (nvi O_WRAPMARGIN).
+// maybeWrapMargin implements automatic line breaking during insert: once the
+// cursor passes the break column it breaks the line at the last blank before the
+// current word, moving that word to a new line. wrapmargin (nvi O_WRAPMARGIN)
+// sets the break column relative to the right edge (cols - wrapmargin); wraplen
+// (O_WRAPLEN) sets it absolutely. If both are set wrapmargin wins, matching nvi.
 func (m *vimode) maybeWrapMargin(e *Engine) {
 	s := e.scr
 	wm := s.opts.Int("wrapmargin")
-	if wm <= 0 || s.cols <= 0 {
+	wl := s.opts.Int("wraplen")
+	var breakCol int
+	switch {
+	case wm > 0 && s.cols > 0:
+		breakCol = s.cols - wm
+	case wl > 0:
+		breakCol = wl
+	default:
 		return
 	}
 	line := s.lineRunes(s.cursor.Line)
 	col := clampIdx(s.cursor.Col, len(line))
 	dl := makeDisplayLine(line, s.opts.Int("tabstop"), s.opts.Bool("list"))
-	if DisplayColumn(dl, col) <= s.cols-wm {
+	if DisplayColumn(dl, col) <= breakCol {
 		return
 	}
 	// Break at the last blank before the current word; a word with no blank
