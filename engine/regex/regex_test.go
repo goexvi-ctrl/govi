@@ -84,6 +84,11 @@ func TestMatchBasic(t *testing.T) {
 		{"[a-c]x", "zbx", 1, 3},
 		{"[^0-9]", "12a3", 2, 3},
 		{"[[:digit:]]*", "42abc", 0, 2},
+		// Collating [[.c.]] and equivalence [[=c=]] elements: in the C locale
+		// each is just its own character, usable as a range endpoint.
+		{"[[=a=]]", "z a", 2, 3},
+		{"[[.-.]]x", "a-x", 1, 3},
+		{"[[.a.]-[.c.]]", "zb", 1, 2},
 		{`\(ab\)\1`, "abab", 0, 4},
 		{`a\{2,3\}`, "aaaa", 0, 3},
 		{`a\{2\}`, "aaaa", 0, 2},

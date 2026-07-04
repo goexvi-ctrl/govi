@@ -57,11 +57,17 @@ func (p *parser) parseClass() (node, error) {
 			continue
 		}
 
-		c := p.next()
+		c, err := p.parseClassElement()
+		if err != nil {
+			return nil, err
+		}
 		// Range a-z (but a trailing '-' before ']' is literal).
 		if p.peek() == '-' && p.peekAt(1) != ']' && p.peekAt(1) != 0 {
 			p.next() // '-'
-			hi := p.next()
+			hi, err := p.parseClassElement()
+			if err != nil {
+				return nil, err
+			}
 			lo := c
 			if lo > hi {
 				// Spencer REG_ERANGE, e.g. [z-a].
@@ -82,6 +88,34 @@ func (p *parser) parseClass() (node, error) {
 		return false
 	}
 	return &classNode{neg: neg, pred: pred}, nil
+}
+
+// parseClassElement returns the next single-character element of a bracket
+// expression: a plain rune, a [[.c.]] collating element, or a [[=c=]]
+// equivalence element (Spencer p_b_symbol/p_b_coll_elem). In the C locale an
+// equivalence class is just its own character. Multi-character collating
+// names are not supported: REG_ECOLLATE, as Spencer reports for names not in
+// its table.
+func (p *parser) parseClassElement() (rune, error) {
+	if p.peek() == '[' && (p.peekAt(1) == '.' || p.peekAt(1) == '=') {
+		delim := p.peekAt(1)
+		p.next() // '['
+		p.next() // '.' or '='
+		var elem []rune
+		for !p.eof() && !(p.peek() == delim && p.peekAt(1) == ']') {
+			elem = append(elem, p.next())
+		}
+		if p.eof() {
+			return 0, fmt.Errorf("brackets ([ ]) not balanced")
+		}
+		p.next() // '.' or '='
+		p.next() // ']'
+		if len(elem) != 1 {
+			return 0, fmt.Errorf("invalid collating element")
+		}
+		return elem[0], nil
+	}
+	return p.next(), nil
 }
 
 func (p *parser) parsePosixName() (string, error) {
