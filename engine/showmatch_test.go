@@ -25,10 +25,24 @@ func TestShowmatchFindsOpen(t *testing.T) {
 func TestShowmatchNested(t *testing.T) {
 	e, _, _ := newTestEngine(t, "\n")
 	e.exExecute("set sm")
-	drive(e, "i(a[b")
+	drive(e, "i(a{b")
+	e.Input(KeyEvent{Rune: '}'})
+	if !e.scr.matchActive || e.scr.matchPos.Col != 2 { // the '{'
+		t.Fatalf("nested } match = %+v active=%v, want col2", e.scr.matchPos, e.scr.matchActive)
+	}
+}
+
+// nvi flashes only for ')' and '}' (v_txt.c); ']' triggering showmatch is vim.
+func TestShowmatchNotOnRightBracket(t *testing.T) {
+	e, _, _ := newTestEngine(t, "\n")
+	e.exExecute("set sm")
+	drive(e, "i[a")
 	e.Input(KeyEvent{Rune: ']'})
-	if !e.scr.matchActive || e.scr.matchPos.Col != 2 { // the '['
-		t.Fatalf("nested ] match = %+v active=%v, want col2", e.scr.matchPos, e.scr.matchActive)
+	if e.scr.matchActive {
+		t.Fatal("']' must not trigger showmatch (nvi flashes only for ')' and '}')")
+	}
+	if bufText(e) != "[a]" {
+		t.Fatalf("']' should still be inserted: %q", bufText(e))
 	}
 }
 
