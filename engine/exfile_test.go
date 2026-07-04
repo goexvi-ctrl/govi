@@ -133,6 +133,50 @@ func writeTemp(t *testing.T, dir, name, content string) string {
 	return p
 }
 
+// TestExBackup covers CORNERS A-4: the backup option copies a file's current
+// contents to a backup before :w overwrites it (nvi file_backup). '%' expands to
+// the file name; a leading 'N' versions the backup. Verified against nvi (which
+// creates f.txt.bak holding the pre-write content).
+func TestExBackup(t *testing.T) {
+	dir := t.TempDir()
+	p := writeTemp(t, dir, "f.txt", "original\n")
+	e := New(&captureFrontend{}, Options{})
+	if err := e.OpenArgs([]string{p}); err != nil {
+		t.Fatal(err)
+	}
+	e.Resize(10, 40)
+	e.exExecute("set backup=%.bak")
+	drive(e, "cwCHANGED\x1b")
+	if err := e.exExecute("w"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if bak, err := os.ReadFile(p + ".bak"); err != nil {
+		t.Fatalf("no backup created: %v", err)
+	} else if string(bak) != "original\n" {
+		t.Errorf("backup content = %q, want %q", bak, "original\n")
+	}
+	if cur, _ := os.ReadFile(p); string(cur) != "CHANGED\n" {
+		t.Errorf("file content = %q, want %q", cur, "CHANGED\n")
+	}
+	// The backup file must be private (0600), like nvi's.
+	if info, err := os.Stat(p + ".bak"); err == nil && info.Mode().Perm()&0o077 != 0 {
+		t.Errorf("backup perms = %v, want no group/other access", info.Mode().Perm())
+	}
+
+	// Versioned backups: a leading N appends an incrementing number.
+	e.exExecute("set backup=N%.bak")
+	drive(e, "cwAGAIN\x1b")
+	e.exExecute("w")
+	drive(e, "cwMORE\x1b")
+	e.exExecute("w")
+	if _, err := os.Stat(p + ".bak1"); err != nil {
+		t.Errorf("versioned backup .bak1 missing: %v", err)
+	}
+	if _, err := os.Stat(p + ".bak2"); err != nil {
+		t.Errorf("versioned backup .bak2 missing: %v", err)
+	}
+}
+
 func TestMultiFileNavigation(t *testing.T) {
 	dir := t.TempDir()
 	a := writeTemp(t, dir, "a.txt", "file a\n")

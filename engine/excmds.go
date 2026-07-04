@@ -502,6 +502,11 @@ func (e *Engine) Save(path string) error {
 		return fmt.Errorf("No current filename")
 	}
 	target := e.resolvePath(given)
+	// Back up the file's current contents first when the backup option is set
+	// (nvi file_backup), before the write replaces it.
+	if err := e.makeBackup(target); err != nil {
+		return err
+	}
 	n, b, err := e.writeFile(target)
 	if err != nil {
 		return err
