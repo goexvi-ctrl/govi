@@ -445,6 +445,12 @@ func (m *vimode) finishInsert(e *Engine) {
 	// s ...) simply retype the text on the same line.
 	if m.insertCount > 1 && len(m.insertText) > 0 && !containsNewline(m.insertText) {
 		openEach := m.insertCmd == 'o' || m.insertCmd == 'O'
+		// A counted R overtypes on the first pass but INSERTS the repeat passes
+		// (nvi: "2Rab" on "alpha" gives "ababpha", the line growing by 2), so
+		// drop replace mode before repeating.
+		if m.insertCmd == 'R' {
+			m.replaceMode = false
+		}
 		for i := 1; i < m.insertCount; i++ {
 			if openEach {
 				m.insertNewline(e)
