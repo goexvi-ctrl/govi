@@ -66,6 +66,8 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 	e.beginChange()
 	any := false
 	var lastLine int64
+	lastCol := 0
+	orig := s.cursor
 	lno := l1
 	end := l2
 	for lno <= end {
@@ -74,10 +76,11 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 			return errInterrupted
 		}
 		in := s.lineRunes(lno)
-		out, n, replaced := substituteLine(re, in, replRunes, global, s.opts.Bool("magic"))
+		out, n, replaced, lastStart := substituteLine(re, in, replRunes, global, s.opts.Bool("magic"))
 		if replaced {
 			any = true
 			lastLine = lno
+			lastCol = lastStart
 			// out may contain newlines (from a literal ^V-quoted CR in the
 			// replacement): split it into one or more buffer lines.
 			segs := splitRunes(out, '\n')
@@ -96,8 +99,24 @@ func (e *Engine) exSubstitute(c *exCmd) error {
 	if !any {
 		return fmt.Errorf("No match on lines %d,%d", l1, l2)
 	}
-	s.cursor = Pos{Line: clampLine(s, lastLine), Col: s.firstNonBlank(clampLine(s, lastLine))}
+	e.substFinalCursor(orig, lastLine, lastCol)
 	return nil
+}
+
+// substFinalCursor sets the cursor after a substitution. nvi tracks the last
+// substituted position (line, start of the last replaced match) and moves to
+// the first nonblank of that line only if that position differs from where
+// the cursor started; when the last change happened exactly at the starting
+// position the cursor stays put (ex_subst.c: the slno/scno comparison).
+func (e *Engine) substFinalCursor(orig Pos, lastLine int64, lastCol int) {
+	s := e.scr
+	if lastLine == orig.Line && lastCol == orig.Col {
+		s.cursor = orig
+		s.clampCursor()
+		return
+	}
+	ln := clampLine(s, lastLine)
+	s.cursor = Pos{Line: ln, Col: s.firstNonBlank(ln)}
 }
 
 // confirmPrompt is nvi's status-line question for each :s///c candidate.
@@ -271,7 +290,8 @@ func (e *Engine) repeatSubst() error {
 	global := strings.ContainsRune(s.lastSubstFlags, 'g')
 	lno := s.cursor.Line
 	in := s.lineRunes(lno)
-	out, _, replaced := substituteLine(re, in, []rune(s.lastSubstRepl), global, s.opts.Bool("magic"))
+	orig := s.cursor
+	out, _, replaced, lastStart := substituteLine(re, in, []rune(s.lastSubstRepl), global, s.opts.Bool("magic"))
 	if !replaced {
 		return fmt.Errorf("No match")
 	}
@@ -282,7 +302,7 @@ func (e *Engine) repeatSubst() error {
 		s.appendLine(lno+int64(i-1), segs[i])
 	}
 	e.endChange()
-	s.cursor = Pos{Line: lno, Col: s.firstNonBlank(lno)}
+	e.substFinalCursor(orig, lno, lastStart)
 	return nil
 }
 
@@ -313,7 +333,7 @@ func (e *Engine) exAmp(c *exCmd) error {
 			return errInterrupted
 		}
 		in := s.lineRunes(lno)
-		out, _, replaced := substituteLine(re, in, replRunes, global, s.opts.Bool("magic"))
+		out, _, replaced, _ := substituteLine(re, in, replRunes, global, s.opts.Bool("magic"))
 		if replaced {
 			any = true
 			last = lno
@@ -342,11 +362,13 @@ func (e *Engine) exTilde(c *exCmd) error { return e.exAmp(c) }
 
 // substituteLine applies re to a single line, replacing the first match or all
 // matches (global). It returns the new line runes (which may contain '\n'), the
-// number of replacements, and whether anything changed.
-func substituteLine(re *regex.Regex, in, repl []rune, global, magic bool) ([]rune, int, bool) {
+// number of replacements, whether anything changed, and the start column of
+// the last replaced match in the input line (nvi keeps sp->cno there).
+func substituteLine(re *regex.Regex, in, repl []rune, global, magic bool) ([]rune, int, bool, int) {
 	var out []rune
 	pos := 0
 	count := 0
+	lastStart := 0
 	prevEnd := -1 // end of the previous match, to reject adjacent empty matches
 	for {
 		m, ok := re.MatchAt(in, pos)
@@ -367,6 +389,7 @@ func substituteLine(re *regex.Regex, in, repl []rune, global, magic bool) ([]run
 		out = append(out, in[pos:m.Start]...)
 		out = append(out, buildReplacement(repl, in, m, magic)...)
 		count++
+		lastStart = m.Start
 		prevEnd = m.End
 		if m.End == m.Start {
 			// Empty match: emit one char and advance to avoid looping.
@@ -382,12 +405,12 @@ func substituteLine(re *regex.Regex, in, repl []rune, global, magic bool) ([]run
 		}
 	}
 	if count == 0 {
-		return in, 0, false
+		return in, 0, false, 0
 	}
 	if pos <= len(in) {
 		out = append(out, in[pos:]...)
 	}
-	return out, count, true
+	return out, count, true, lastStart
 }
 
 // buildReplacement expands a substitution replacement, handling the whole

@@ -92,6 +92,32 @@ func TestSubstReplacementEscapes(t *testing.T) {
 	exCase(t, "repl-literal-cr-escaped", "one two three\n", []string{"s/two/X\\\rY/"}, "one X\nY three")
 }
 
+// nvi's :s cursor rule (ex_subst.c slno/scno): after a substitution the
+// cursor goes to the first nonblank of the last substituted line, UNLESS the
+// last replaced match started exactly at the pre-command cursor position, in
+// which case the cursor stays put.
+func TestSubstCursor(t *testing.T) {
+	// /two leaves the cursor at (1,4); s/two/T/ replaces the match starting
+	// there, so the cursor stays at column 4.
+	e, _, _ := newTestEngine(t, "one two three\n")
+	drive(e, "/two\r")
+	if err := e.exExecute("s/two/T/"); err != nil {
+		t.Fatal(err)
+	}
+	if e.scr.cursor != (Pos{Line: 1, Col: 4}) {
+		t.Fatalf("kept: cursor %+v, want 1,4", e.scr.cursor)
+	}
+	// Cursor at end of line; the match starts elsewhere: first nonblank.
+	e2, _, _ := newTestEngine(t, "  one two\n")
+	drive(e2, "$")
+	if err := e2.exExecute("s/two/T/"); err != nil {
+		t.Fatal(err)
+	}
+	if e2.scr.cursor != (Pos{Line: 1, Col: 2}) {
+		t.Fatalf("moved: cursor %+v, want 1,2", e2.scr.cursor)
+	}
+}
+
 // nvi regsub checks the magic option per special: under nomagic & is a
 // literal ampersand and \& is the whole match; ~ / \~ flip the same way.
 func TestSubstReplacementNomagic(t *testing.T) {
