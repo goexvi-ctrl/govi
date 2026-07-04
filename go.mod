@@ -18,7 +18,7 @@ require (
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/gdamore/tcell/v2 v2.13.10
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
-	golang.org/x/term v0.44.0 // indirect
+	golang.org/x/term v0.44.0
 )
 
-replace github.com/gdamore/tcell/v2 => github.com/goexvi-ctrl/tcell/v2 v2.13.11
+replace github.com/gdamore/tcell/v2 => github.com/goexvi-ctrl/tcell/v2 v2.13.12
