@@ -7,6 +7,11 @@ type colonEditOpts struct {
 	leaveOnEmptyBackspace bool // vi colon: backspace past start cancels the line
 	onEnter               func(line string)
 	onEscape              func()
+
+	// onCedit, when set, enables the cedit trigger (nvi TXT_CEDIT): typing
+	// the cedit character ends the input and opens the colon history window.
+	// Only the vi ':' prompt sets it. line is any text already typed.
+	onCedit func(line string)
 }
 
 // colonEditKey handles one key on a colon-style input line: control characters
@@ -38,6 +43,23 @@ func (e *Engine) colonEditKey(ev KeyEvent, opts colonEditOpts) {
 			opts.onEscape()
 		}
 		return
+	}
+
+	// cedit trigger (nvi v_txt.c: checked when not quoted, before the special
+	// character handling, so a cedit of <escape> or a control character wins
+	// over the cancel/edit-key meanings). When cedit and filec share the same
+	// character, cedit wins only at the first input column (govi's colon
+	// editor is append-only, so that degenerates to "the line is empty");
+	// otherwise fall through to file completion.
+	if opts.onCedit != nil && e.ceditTriggerKey(ev) {
+		fc := s.opts.Str("filec")
+		ce := s.opts.Str("cedit")
+		if fc == "" || fc[0] != ce[0] || len(s.colon) == 0 {
+			line := string(s.colon)
+			s.resetColonEdit()
+			opts.onCedit(line)
+			return
+		}
 	}
 
 	if colonControlKey(ev, s) {

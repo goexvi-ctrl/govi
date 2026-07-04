@@ -56,17 +56,27 @@ func (e *Engine) newSiblingScreen() *screen {
 // bottom half of the current screen the new screen takes the top, otherwise the
 // current screen keeps the top and the new screen takes the bottom. In govi a
 // screen's display height is rows+1 (text rows plus its own status row).
-func (e *Engine) splitHoriz(ns *screen) error {
+func (e *Engine) splitHoriz(ns *screen) error { return e.vsSplit(ns, false) }
+
+// splitHorizCcl is the colon command-line window form (nvi vs_split ccl=1):
+// the new screen always opens below and its height is capped small.
+func (e *Engine) splitHorizCcl(ns *screen) error { return e.vsSplit(ns, true) }
+
+func (e *Engine) vsSplit(ns *screen, ccl bool) error {
 	s := e.scr
 	disp := s.rows + 1 // total display rows of the screen being split
 	if disp < 4 {
 		return fmt.Errorf("Screen must be larger than %d lines to split", 3)
 	}
 	half := disp / 2
+	if ccl && half > 6 {
+		half = 6 // nvi vs_split caps the ccl window at 6 rows
+	}
 
-	// 0-based screen row of the cursor within the current screen.
+	// 0-based screen row of the cursor within the current screen. A ccl
+	// window never takes the top (nvi: splitup = !ccl && ...).
 	curRow := s.screenRowOf(s.cursor.Line, s.top)
-	splitup := curRow+1 >= half // cursor is in the bottom half
+	splitup := !ccl && curRow+1 >= half // cursor is in the bottom half
 
 	ns.cols = s.cols
 	ns.coff = s.coff

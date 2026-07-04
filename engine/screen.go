@@ -72,6 +72,11 @@ type screen struct {
 	tagMatches  []tagMatch
 	tagMatchIdx int
 
+	// comedit marks the colon command-line edit window (nvi SC_COMEDIT): the
+	// screen opened on the cedit history buffer, where <CR> executes the
+	// current line in the originating screen and :q closes silently.
+	comedit bool
+
 	mode          Mode
 	showModeLabel string // showmode text: Command, Insert, Append, Change, Replace
 	msg           string

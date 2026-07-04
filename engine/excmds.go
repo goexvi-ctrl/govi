@@ -552,6 +552,12 @@ func (e *Engine) samePath(a, b string) bool {
 }
 
 func (e *Engine) exWriteQuit(c *exCmd) error {
+	// :wq in a comedit window just closes it; the history buffer has no
+	// backing file to write (see exQuit).
+	if e.scr.comedit {
+		e.ceditClose()
+		return nil
+	}
 	// :wq with no name on a temporary buffer would write the throwaway temp file;
 	// warn instead. :wq file writes (and adopts) a real name, so allow it.
 	if strings.TrimSpace(c.arg) == "" {
@@ -624,6 +630,12 @@ func (e *Engine) exAt(c *exCmd) error {
 
 // exXit implements :x and ZZ -- write only if the buffer was modified, then quit.
 func (e *Engine) exXit(c *exCmd) error {
+	// :x/ZZ in a comedit window just closes it; the history buffer has no
+	// backing file to write (see exQuit).
+	if e.scr.comedit {
+		e.ceditClose()
+		return nil
+	}
 	if strings.TrimSpace(c.arg) == "" {
 		if err := e.tempExitWarning(c.force); err != nil {
 			return err
@@ -639,6 +651,14 @@ func (e *Engine) exXit(c *exCmd) error {
 }
 
 func (e *Engine) exQuit(c *exCmd) error {
+	// A colon command-line edit window closes silently, without the modified
+	// warning: in nvi the ccl screen holds a permanent extra reference to the
+	// history file, so its quit is never the last reference and file_m2 stays
+	// quiet. The shared history buffer (and any edits) survives.
+	if e.scr.comedit {
+		e.ceditClose()
+		return nil
+	}
 	if err := e.tempExitWarning(c.force); err != nil {
 		return err
 	}

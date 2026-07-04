@@ -201,6 +201,18 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 		return
 	}
 
+	// In a colon command-line edit window <CR> executes the current history
+	// line in the originating screen (nvi v_cr checks SC_COMEDIT before
+	// anything else, so it fires even with an operator pending). Only the
+	// carriage return does this; '+' and '\n' keep their motion meanings.
+	if s.comedit && (ev.Key == KeyEnter || ev.Rune == '\r') {
+		m.op, m.opCount, m.opReg = 0, 0, 0
+		m.reg = 0
+		m.count, m.haveCount = 0, false
+		e.ceditExec()
+		return
+	}
+
 	r := normalizeKey(ev)
 	if r == 0 {
 		return
@@ -364,7 +376,13 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 			s.msg, s.msgKind = err.Error(), MsgError
 		}
 	case 'w': // ^W: switch to the next split screen (nvi v_screen)
-		e.switchScreen()
+		if s.comedit {
+			// You can't leave a colon command-line edit window (nvi
+			// v_screen.c SC_COMEDIT).
+			s.msg, s.msgKind = "Enter <CR> to execute a command, :q to exit", MsgError
+		} else {
+			e.switchScreen()
+		}
 	case 'l', 'r': // ^L / ^R: force a full redraw (nvi v_redraw), recovering the
 		// display from tty output another program produced
 		e.redrawRequested = true

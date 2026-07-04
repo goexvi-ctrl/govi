@@ -45,6 +45,11 @@ type Engine struct {
 	cclStore buffer.LineStore
 	cclLog   *undo.Log
 
+	// cclParent is the screen that opened the current comedit window (nvi
+	// sp->ccl_parent); closing the window focuses it. nil when no comedit
+	// window is open.
+	cclParent *screen
+
 	// termH/termCols are the full terminal geometry last given to Resize: termH
 	// is the total number of display rows (text rows of all screens plus one
 	// status row per screen), termCols the width.
@@ -537,7 +542,7 @@ func (e *Engine) enterCmdline(prefix rune) {
 
 func (e *Engine) cmdlineKey(ev KeyEvent) {
 	s := e.scr
-	e.colonEditKey(ev, colonEditOpts{
+	opts := colonEditOpts{
 		leaveOnEmptyBackspace: true,
 		onEnter: func(line string) {
 			prefix := s.cmdPrefix
@@ -551,7 +556,23 @@ func (e *Engine) cmdlineKey(ev KeyEvent) {
 			s.filterL1, s.filterL2 = 0, 0
 			e.vi.searchOp = 0 // cancel a deferred operator-search (d/pat aborted)
 		},
-	})
+	}
+	// The cedit trigger applies only to the ':' prompt (nvi passes TXT_CEDIT
+	// only in v_ex, never for the / ? search or ! filter prompts).
+	if s.cmdPrefix == ':' {
+		opts.onCedit = func(line string) {
+			s.mode = ModeCommand
+			s.colon = nil
+			s.filterL1, s.filterL2 = 0, 0
+			// Text already typed moves into the history, unexecuted (nvi
+			// v_ex: TERM_CEDIT with tp->len > 1 logs the partial line).
+			if line != "" {
+				e.ceditLog(line)
+			}
+			e.ceditOpen()
+		}
+	}
+	e.colonEditKey(ev, opts)
 }
 
 // runCmdline dispatches a completed command line by its prompt prefix.
