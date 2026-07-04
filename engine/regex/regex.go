@@ -15,11 +15,12 @@
 //     backtracker (continuation-passing), which is what backreferences require
 //     and can be exponential on pathological patterns -- the same trade nvi
 //     makes. For human-authored single-line search this is the right choice.
-//   - Some vi-/search-layer constructs are folded into this one package rather
-//     than living above Spencer's regcomp: \< \> word boundaries (Spencer's C
-//     only spells these [[:<:]] / [[:>:]], which are also accepted), \|
-//     alternation, and the \n \t escapes. These are vi-documented, not
-//     Spencer-core.
+//   - One vi-/search-layer construct is folded into this package rather than
+//     living above Spencer's regcomp: \< \> word boundaries (Spencer's C only
+//     spells these [[:<:]] / [[:>:]], which are also accepted; nvi's re_conv
+//     rewrites \< \> into them). Everything else is Spencer BRE: no
+//     alternation (\| is a literal '|'), and an escaped ordinary character is
+//     that literal character.
 //   - Runes, not bytes. Historic nvi is byte/locale oriented; operating on
 //     []rune is a deliberate modernization (correct UTF-8 handling) rather than
 //     an attempt at ASCII byte-for-byte reproduction.
@@ -36,6 +37,12 @@ type Options struct {
 	// nomagic -- '.', '*' and '[' are literal unless backslash-escaped (\. \* \[
 	// take on their special meaning) -- NOT Spencer's REG_NOSPEC ("all literal").
 	Magic bool
+	// Alt enables \| alternation. User patterns never get this: POSIX BRE has
+	// no alternation and Spencer/nvi match \| as a literal '|'. It exists for
+	// the internally generated cscope patterns, whose blank-run expression
+	// needs alternation -- nvi compiles those with REG_EXTENDED for the same
+	// reason (re_compile SEARCH_CSCOPE).
+	Alt bool
 }
 
 // Regex is a compiled pattern.
@@ -55,7 +62,7 @@ type Match struct {
 
 // Compile parses pattern under the given options.
 func Compile(pattern string, opts Options) (*Regex, error) {
-	p := &parser{src: []rune(pattern), magic: opts.Magic}
+	p := &parser{src: []rune(pattern), magic: opts.Magic, alt: opts.Alt}
 	root, err := p.parseAlternation(true)
 	if err != nil {
 		return nil, err

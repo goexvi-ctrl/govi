@@ -31,7 +31,9 @@ func TestMatchBasic(t *testing.T) {
 		{`a\{2,3\}`, "aaaa", 0, 3},
 		{`a\{2\}`, "aaaa", 0, 2},
 		{`\<word\>`, "a word here", 2, 6},
-		{`foo\|bar`, "xbar", 1, 4},
+		// No BRE alternation: \| is an escaped ordinary '|' (Spencer/nvi).
+		{`foo\|bar`, "a foo|bar b", 2, 9},
+		{`foo\|bar`, "xbar", -1, -1},
 		{`\.`, "a.b", 1, 2},
 		{"xyz", "abc", -1, -1},
 		// POSIX/nvi: an escaped ordinary character is that literal character.

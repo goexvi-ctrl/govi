@@ -12,10 +12,11 @@ import (
 )
 
 // compileCscopePattern compiles a cscope-converted pattern. cscope searches are
-// always magic and case-sensitive, independent of the editor's options (nvi
-// passes SEARCH_CSCOPE, which forces extended REs and ignores ignorecase/magic).
+// always magic and case-sensitive, independent of the editor's options, and
+// need \| alternation for the blank-run expression (nvi passes SEARCH_CSCOPE,
+// which forces extended REs and ignores ignorecase/magic).
 func compileCscopePattern(p string) (*regex.Regex, error) {
-	return regex.Compile(p, regex.Options{Magic: true})
+	return regex.Compile(p, regex.Options{Magic: true, Alt: true})
 }
 
 // cscopeFind implements "cscope find <type> <pattern>": query every connection,

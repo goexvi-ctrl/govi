@@ -78,6 +78,8 @@ func (n *concatNode) match(m *machine, pos int, k func(int) bool) bool {
 	return rec(0, pos)
 }
 
+// altNode is reachable only from patterns compiled with Options.Alt (the
+// internal cscope patterns); user BREs have no alternation.
 type altNode struct{ alts []node }
 
 func (n *altNode) match(m *machine, pos int, k func(int) bool) bool {

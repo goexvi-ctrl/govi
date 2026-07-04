@@ -6,6 +6,7 @@ type parser struct {
 	src     []rune
 	pos     int
 	magic   bool
+	alt     bool // \| alternation (internal cscope patterns only; see Options.Alt)
 	ngroups int
 	closed  map[int]bool // groups whose \) has been parsed (valid backref targets)
 }
@@ -29,8 +30,12 @@ func (p *parser) skip(n int) { p.pos += n }
 // atGroupClose reports whether the parser is at a "\)" sequence.
 func (p *parser) atGroupClose() bool { return p.peek() == '\\' && p.peekAt(1) == ')' }
 
-// atAlt reports whether the parser is at a "\|" alternation separator.
-func (p *parser) atAlt() bool { return p.peek() == '\\' && p.peekAt(1) == '|' }
+// atAlt reports whether the parser is at a "\|" alternation separator. For
+// user patterns this is always false: POSIX BRE has no alternation, and in
+// Spencer's regcomp (nvi's) a \| is simply an escaped ordinary character,
+// matching a literal '|' (BRE \| is a GNU/vim extension). Only the internal
+// cscope patterns compile with alternation enabled (Options.Alt).
+func (p *parser) atAlt() bool { return p.alt && p.peek() == '\\' && p.peekAt(1) == '|' }
 
 func (p *parser) parseAlternation(atStart bool) (node, error) {
 	first, err := p.parseConcat(atStart)
@@ -165,18 +170,15 @@ func (p *parser) parseAtom(first bool) (node, error) {
 	}
 }
 
-// isEndAnchor reports whether the '$' just consumed position is an end anchor:
-// at end of pattern, or right before \) or \|.
+// isEndAnchor reports whether the '$' just consumed is an end anchor: at the
+// end of the pattern, or right before a group's \) (Spencer's p_bre treats a
+// trailing $ of each subexpression as the anchor).
 func (p *parser) isEndAnchor() bool {
 	// p.pos points just past '$'.
 	if p.pos >= len(p.src) {
 		return true
 	}
-	if p.src[p.pos] == '\\' && p.pos+1 < len(p.src) {
-		n := p.src[p.pos+1]
-		return n == ')' || n == '|'
-	}
-	return false
+	return p.src[p.pos] == '\\' && p.pos+1 < len(p.src) && p.src[p.pos+1] == ')'
 }
 
 func (p *parser) parseEscape() (node, error) {
