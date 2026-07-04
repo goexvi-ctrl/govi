@@ -114,6 +114,12 @@ func (e *Engine) computeMotion(key rune, count int, explicit bool, charArg rune)
 		line := s.lineCount()
 		if explicit {
 			line = int64(count)
+			// An explicit line number past the last line is an error in nvi (the
+			// cursor stays put), not a clamp to the last line.
+			if line > s.lineCount() {
+				s.msg, s.msgKind = "Movement past the end-of-file", MsgError
+				return motion{}, false
+			}
 		}
 		return motion{to: Pos{Line: line, Col: s.firstNonBlank(clampLine(s, line))}, linewise: true}, true
 	case 'H':
