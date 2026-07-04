@@ -440,9 +440,15 @@ func (m *vimode) finishInsert(e *Engine) {
 	}
 
 	// Repeat the inserted text for a count (e.g. 3ifoo<ESC>), for single-line
-	// insertions.
+	// insertions. For o/O each repeat opens a fresh line first, so "2onew" makes
+	// two lines rather than "newnew" on one (nvi); the in-line inserts (i a I A
+	// s ...) simply retype the text on the same line.
 	if m.insertCount > 1 && len(m.insertText) > 0 && !containsNewline(m.insertText) {
+		openEach := m.insertCmd == 'o' || m.insertCmd == 'O'
 		for i := 1; i < m.insertCount; i++ {
+			if openEach {
+				m.insertNewline(e)
+			}
 			for _, r := range m.insertText {
 				m.insertRune(e, r)
 			}
