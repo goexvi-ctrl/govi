@@ -221,6 +221,7 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 			return
 		}
 		mot := lineMotion(s.cursor.Line, last)
+		mot.doubled = true // dd/cc/yy: land on the first non-blank, not column 0
 		m.operate(e, op, reg, mot)
 		return
 	}

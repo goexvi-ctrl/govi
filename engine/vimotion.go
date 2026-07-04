@@ -18,6 +18,10 @@ type motion struct {
 	// which forces line mode for an operator when the cursor starts in column 0
 	// (see v_sentence.c VM_LMODE).
 	endFlag bool
+	// doubled marks the doubled-operator current-line form (dd, cc, yy). nvi
+	// leaves the cursor on the first non-blank of the landing line for these, but
+	// at column 0 for a linewise d over a real motion (dj, d2j, d'a).
+	doubled bool
 }
 
 // Synthetic motion keys for the mark motions, which carry a char argument.

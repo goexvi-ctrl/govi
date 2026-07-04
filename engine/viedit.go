@@ -46,7 +46,7 @@ func (m *vimode) operate(e *Engine, op, reg rune, mot motion) {
 	if mot.linewise {
 		l1, l2 := minmaxLine(s.cursor.Line, mot.to.Line)
 		l1, l2 = clampLine(s, l1), clampLine(s, l2)
-		m.operateLines(e, op, reg, l1, l2)
+		m.operateLines(e, op, reg, l1, l2, mot.doubled)
 		return
 	}
 
@@ -56,7 +56,7 @@ func (m *vimode) operate(e *Engine, op, reg rune, mot motion) {
 	if mot.promote && mot.endFlag && s.cursor.Col == 0 {
 		l1, l2 := minmaxLine(s.cursor.Line, mot.to.Line)
 		l1, l2 = clampLine(s, l1), clampLine(s, l2)
-		m.operateLines(e, op, reg, l1, l2)
+		m.operateLines(e, op, reg, l1, l2, false)
 		return
 	}
 
@@ -72,14 +72,14 @@ func (m *vimode) operate(e *Engine, op, reg rune, mot motion) {
 		// For the line-oriented motions, if the start is at or before the first
 		// non-blank the whole span becomes linewise.
 		if mot.promote && p1.Col <= s.firstNonBlank(p1.Line) {
-			m.operateLines(e, op, reg, p1.Line, p2.Line)
+			m.operateLines(e, op, reg, p1.Line, p2.Line, false)
 			return
 		}
 	}
 	m.operateChars(e, op, reg, p1, p2)
 }
 
-func (m *vimode) operateLines(e *Engine, op, reg rune, l1, l2 int64) {
+func (m *vimode) operateLines(e *Engine, op, reg rune, l1, l2 int64, doubled bool) {
 	s := e.scr
 	txt := e.collectLines(l1, l2)
 	txt.Kind = register.LineWise
@@ -93,7 +93,13 @@ func (m *vimode) operateLines(e *Engine, op, reg rune, l1, l2 int64) {
 		e.deleteLines(l1, l2)
 		e.endChange()
 		tl := clampLine(s, l1)
-		s.cursor = Pos{Line: tl, Col: s.firstNonBlank(tl)}
+		// nvi lands dd on the first non-blank of the new current line, but a
+		// linewise d over a real motion (dj, d2j, d'a) at column 0.
+		col := 0
+		if doubled {
+			col = s.firstNonBlank(tl)
+		}
+		s.cursor = Pos{Line: tl, Col: col}
 		m.changed = true
 	case 'c':
 		e.beginChange()
