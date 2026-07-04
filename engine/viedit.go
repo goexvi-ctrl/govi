@@ -402,7 +402,6 @@ func (e *Engine) joinLines(m *vimode) {
 			i++
 		}
 		b = b[i:]
-		joinCol := len(a)
 		var sep []rune
 		if len(a) > 0 && a[len(a)-1] != ' ' && a[len(a)-1] != '\t' && (len(b) == 0 || b[0] != ')') {
 			if c := a[len(a)-1]; c == '.' || c == '?' || c == '!' {
@@ -410,6 +409,13 @@ func (e *Engine) joinLines(m *vimode) {
 			} else {
 				sep = []rune{' '}
 			}
+		}
+		// nvi leaves the cursor just before the second line's text in the joined
+		// line -- on the separator it added, or, when the first line already ended
+		// in a blank (no separator), on that trailing blank.
+		joinCol := len(a) + len(sep) - 1
+		if joinCol < 0 {
+			joinCol = 0
 		}
 		nl := append(append(a, sep...), b...)
 		s.setLine(s.cursor.Line, nl)
