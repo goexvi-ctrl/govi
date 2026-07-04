@@ -565,15 +565,19 @@ func (e *Engine) runCmdline(prefix rune, line string) {
 	}
 }
 
-// writeFile saves the buffer to path, atomically via a temp file + rename, and
-// returns the line and byte counts written.
 // writeRange writes buffer lines [l1,l2] to path. When appendMode is true the
 // lines are appended to path (nvi ":[range]w >> file", LF_APPEND) and path is
 // created if absent; otherwise path is replaced atomically via temp+rename.
 // Used for partial-range and appended writes; the whole-file write goes through
-// writeFile, which additionally handles the emptied-buffer case.
+// writeFile.
 func (e *Engine) writeRange(path string, l1, l2 int64, appendMode bool) (lines, bytes int64, err error) {
 	s := e.scr
+	// The range is addressed against lineCount(), which reports a phantom blank
+	// line for an emptied store; clamp to the real line count so writing an
+	// emptied buffer produces 0 bytes, not a spurious "\n" (like writeFile).
+	if n := s.store.Lines(); l2 > n {
+		l2 = n
+	}
 	var f *os.File
 	var tmpName string
 	if appendMode {
@@ -626,6 +630,8 @@ func (e *Engine) writeRange(path string, l1, l2 int64, appendMode bool) (lines, 
 	return nOut, bytesOut, nil
 }
 
+// writeFile saves the buffer to path, atomically via a temp file + rename, and
+// returns the line and byte counts written.
 func (e *Engine) writeFile(path string) (lines, bytes int64, err error) {
 	s := e.scr
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".govi-*")

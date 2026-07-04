@@ -81,6 +81,38 @@ func TestSaveAsFromTemp(t *testing.T) {
 	}
 }
 
+func TestWriteAppendEmptiedBuffer(t *testing.T) {
+	e, _, _ := newTestEngine(t, "a\nb\n")
+	dir := t.TempDir()
+	target := filepath.Join(dir, "out.txt")
+	if err := os.WriteFile(target, []byte("keep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.exExecute("w >> " + target); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "keep\na\nb\n" {
+		t.Fatalf("append = %q, want %q", data, "keep\na\nb\n")
+	}
+	// Emptying the buffer leaves the store with 0 lines; appending it must
+	// write nothing, not the phantom blank line serialized as "\n".
+	drive(e, "dG")
+	if err := e.exExecute("w >> " + target); err != nil {
+		t.Fatal(err)
+	}
+	data, err = os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "keep\na\nb\n" {
+		t.Fatalf("append from emptied buffer changed the file to %q, want unchanged", data)
+	}
+}
+
 func TestSaveUntitledAdoptsName(t *testing.T) {
 	e, _, _ := newTestEngine(t, "hello\n")
 	e.scr.name = ""
