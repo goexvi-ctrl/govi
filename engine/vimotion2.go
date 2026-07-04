@@ -32,11 +32,15 @@ func isBracket(r rune) rune {
 		return '}'
 	case '}':
 		return '{'
+	case '<':
+		return '>'
+	case '>':
+		return '<'
 	}
 	return 0
 }
 
-func isOpenBracket(r rune) bool { return r == '(' || r == '[' || r == '{' }
+func isOpenBracket(r rune) bool { return r == '(' || r == '[' || r == '{' || r == '<' }
 
 // matchMotion implements %: find the next bracket on the line and jump to its
 // match, tracking nesting across lines. Inclusive for operators.

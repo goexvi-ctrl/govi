@@ -22,6 +22,19 @@ func TestMatchMotion(t *testing.T) {
 	curAt(t, e, 1, 1, "% back to opening")
 }
 
+// nvi's v_match pairs angle brackets too (vim's default matchpairs does not).
+func TestMatchMotionAngle(t *testing.T) {
+	e, _, _ := newTestEngine(t, "a <b> c\n")
+	drive(e, "%") // first bracket at/after col 0 is the '<'
+	curAt(t, e, 1, 4, "% to closing '>'")
+	drive(e, "%")
+	curAt(t, e, 1, 2, "% back to opening '<'")
+	drive(e, "d%") // inclusive operator span, backward
+	if got := bufText(e); got != "a  c" {
+		t.Fatalf("d%% over <b>: buffer = %q, want %q", got, "a  c")
+	}
+}
+
 func TestParagraphMotions(t *testing.T) {
 	e, _, _ := newTestEngine(t, "a\nb\n\nc\nd\n\ne\n")
 	drive(e, "}")
