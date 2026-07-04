@@ -125,6 +125,14 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 		m.insertText = append(m.insertText, '\n')
 	case ev.Key == KeyBackspace || ev.Rune == 0x7f || ev.Rune == '\b':
 		m.insertBackspace(e)
+	case ev.Key == KeyLeft:
+		m.insertArrowHoriz(e, -1)
+	case ev.Key == KeyRight:
+		m.insertArrowHoriz(e, +1)
+	case ev.Key == KeyUp:
+		m.insertArrowVert(e, -1)
+	case ev.Key == KeyDown:
+		m.insertArrowVert(e, +1)
 	case ev.Rune != 0:
 		// Typing a non-word character triggers abbreviation expansion of the
 		// word just completed.
@@ -210,6 +218,49 @@ func (m *vimode) insertRune(e *Engine, r rune) {
 			s.matchActive = true
 			s.matchPos = mp
 		}
+	}
+}
+
+// insertArrowHoriz and insertArrowVert move the cursor during insert mode when
+// an arrow key is pressed, staying in insert. This is a deliberate improvement
+// over nvi, which input-maps the arrows to "ESC <motion> a" (cl_term.c); govi
+// instead moves the cursor cleanly and keeps one continuous insertion (matching
+// vim's visible behavior). Each move starts a fresh insert segment: it re-bounds
+// ^U/^W to the new position and cancels any pending autoindent-erase state, so
+// those keys never reach across a cursor jump.
+func (m *vimode) insertArrowHoriz(e *Engine, dir int) {
+	s := e.scr
+	col := s.cursor.Col + dir
+	if col < 0 {
+		col = 0 // at column 0 a left arrow stays put (no line wrap, like vi default)
+	}
+	if max := s.lineLen(s.cursor.Line); col > max {
+		col = max // in insert the cursor may sit one past the last rune
+	}
+	s.cursor.Col = col
+	m.insertArrowReset(e, false)
+}
+
+func (m *vimode) insertArrowVert(e *Engine, dir int) {
+	s := e.scr
+	target := s.cursor.Line + int64(dir)
+	if target < 1 || target > s.lineCount() {
+		return // at the first/last line the arrow is a no-op
+	}
+	col := s.cursor.Col
+	if max := s.lineLen(target); col > max {
+		col = max
+	}
+	s.cursor = Pos{Line: target, Col: col}
+	m.insertArrowReset(e, true)
+}
+
+// insertArrowReset re-anchors the insert session after an arrow move.
+func (m *vimode) insertArrowReset(e *Engine, changedLine bool) {
+	m.insertEnter = e.scr.cursor
+	m.aiCarat = 0
+	if changedLine {
+		m.aiCount = 0 // the autoindent count is specific to the line we left
 	}
 }
 

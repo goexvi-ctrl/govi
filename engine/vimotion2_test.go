@@ -217,6 +217,65 @@ func TestInsertCtrlWModes(t *testing.T) {
 	}
 }
 
+// TestInsertArrowKeys covers the deliberate deviation from nvi: arrow keys move
+// the cursor within insert mode and stay in insert (vim-style), rather than
+// nvi's ESC-motion-a input map. So iAB<Left>C gives "ACB" (nvi/govi historically
+// gave different results; this is a chosen improvement, not a parity fix).
+func TestInsertArrowKeys(t *testing.T) {
+	left := KeyEvent{Key: KeyLeft}
+	right := KeyEvent{Key: KeyRight}
+	up := KeyEvent{Key: KeyUp}
+	down := KeyEvent{Key: KeyDown}
+
+	// Left arrow moves back and keeps inserting.
+	e, _, _ := newTestEngine(t, "xyz\n")
+	drive(e, "iAB")
+	e.Input(left)
+	drive(e, "C\x1b")
+	if got := bufText(e); got != "ACBxyz" {
+		t.Errorf("iAB<Left>C = %q, want ACBxyz", got)
+	}
+	// Still in insert after the arrow (the C above was inserted, not a command).
+	// Right arrow at end of run is a no-op; Left at column 0 stops.
+	e2, _, _ := newTestEngine(t, "\n")
+	drive(e2, "iabc")
+	e2.Input(left)
+	e2.Input(left)
+	e2.Input(left)
+	e2.Input(left) // one past column 0: stays at 0
+	drive(e2, "Z\x1b")
+	if got := bufText(e2); got != "Zabc" {
+		t.Errorf("Left past col 0 = %q, want Zabc", got)
+	}
+	// Vertical arrows move between lines, staying in insert.
+	e3, _, _ := newTestEngine(t, "one\ntwo\nthree\n")
+	drive(e3, "jjA") // append at end of "three"
+	e3.Input(up)     // to "two"
+	e3.Input(up)     // to "one"
+	drive(e3, "!\x1b")
+	if got := bufText(e3); got != "one!\ntwo\nthree" {
+		t.Errorf("Up-arrow insert = %q, want one!/two/three", got)
+	}
+	// Down arrow returns and inserts on a lower line.
+	e4, _, _ := newTestEngine(t, "aaa\nbbb\n")
+	drive(e4, "i")
+	e4.Input(down)
+	drive(e4, "X\x1b")
+	if got := bufText(e4); got != "aaa\nXbbb" {
+		t.Errorf("Down-arrow insert = %q, want aaa/Xbbb", got)
+	}
+	// Right arrow moves forward within the line.
+	e5, _, _ := newTestEngine(t, "\n")
+	drive(e5, "iab")
+	e5.Input(left)
+	e5.Input(left)  // column 0
+	e5.Input(right) // column 1
+	drive(e5, "X\x1b")
+	if got := bufText(e5); got != "aXb" {
+		t.Errorf("Right-arrow insert = %q, want aXb", got)
+	}
+}
+
 func TestFileInfoMessage(t *testing.T) {
 	e, _, _ := newTestEngine(t, "a\nb\nc\n")
 	drive(e, "j")
