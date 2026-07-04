@@ -353,7 +353,23 @@ func (f *Frontend) handleEvent(ev tc.Event) {
 func (f *Frontend) inputKey(ev engine.Event) {
 	if k, ok := ev.(engine.KeyEvent); ok && k.Key == engine.KeyNone && k.Mods&engine.ModAlt != 0 {
 		f.eng.Input(engine.KeyEvent{Key: engine.KeyEscape})
-		f.eng.Input(engine.KeyEvent{Rune: k.Rune, Mods: k.Mods &^ engine.ModAlt})
+		rest := engine.KeyEvent{Rune: k.Rune, Mods: k.Mods &^ engine.ModAlt}
+		// tcell's merge turned a control byte into letter+Ctrl (input.go
+		// inpStateEsc: r += 0x60, ModCtrl). Deliver the remainder as the event
+		// the byte would have produced on its own, matching translateKey's
+		// aliases (Enter=^M, Tab=^I, Backspace=^H); otherwise "<esc><cr>" in
+		// one read leaves a literal ^M on the colon line instead of entering it.
+		if rest.Mods&engine.ModCtrl != 0 {
+			switch rest.Rune {
+			case 'm':
+				rest = engine.KeyEvent{Key: engine.KeyEnter, Mods: rest.Mods &^ engine.ModCtrl}
+			case 'i':
+				rest = engine.KeyEvent{Rune: '\t', Mods: rest.Mods &^ engine.ModCtrl}
+			case 'h':
+				rest = engine.KeyEvent{Key: engine.KeyBackspace, Mods: rest.Mods &^ engine.ModCtrl}
+			}
+		}
+		f.eng.Input(rest)
 		return
 	}
 	f.eng.Input(ev)
