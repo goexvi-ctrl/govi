@@ -41,6 +41,35 @@ func TestExBackwardRange(t *testing.T) {
 	}
 }
 
+// TestExPipeSeparator covers CORNERS B-3: '|' separates ex commands, except
+// inside a substitute RE (literal), and for the whole-line commands (!, global,
+// v). '\|' is a literal pipe. Verified against nvi.
+func TestExPipeSeparator(t *testing.T) {
+	cases := []struct{ name, content, cmd, want string }{
+		{"delete-then-subst", "aaa\nbbb\nccc\n", "1d|2s/c/Z/", "bbb\nZcc"},
+		{"subst-then-subst", "aaa\nbbb\n", "1s/a/X/|s/X/Y/", "Yaa\nbbb"},
+		{"pipe-literal-in-pattern", "axb\n", `s/a|b/Z/`, "axb"},
+		{"pipe-literal-in-repl", "aaa\n", `s/a/x|y/`, "x|yaa"},
+		{"escaped-pipe", "a\n", `s/a/b\|c/`, "b|c"},
+		{"set-then-set", "x\n", "set noai|set sw=9", "x"},
+		{"global-body-pipe", "x1\ny\nx2\n", "g/x/s/x/Q/|s/Q/W/", "W1\ny\nW2"},
+	}
+	for _, c := range cases {
+		e, _, _ := newTestEngine(t, c.content)
+		e.exExecute(c.cmd) // a no-match :s reports an error but must not change the buffer
+		if got := bufText(e); got != c.want {
+			t.Errorf("%s: %q -> %q, want %q", c.name, c.cmd, got, c.want)
+		}
+	}
+	// set-then-set really applied both options.
+	e, _, _ := newTestEngine(t, "x\n")
+	e.exExecute("set noautoindent|set shiftwidth=9")
+	if e.scr.opts.Bool("autoindent") || e.scr.opts.Int("shiftwidth") != 9 {
+		t.Errorf("compound :set did not apply both: ai=%v sw=%d",
+			e.scr.opts.Bool("autoindent"), e.scr.opts.Int("shiftwidth"))
+	}
+}
+
 func TestExMove(t *testing.T) {
 	exCase(t, "move-end", "1\n2\n3\n", []string{"1m$"}, "2\n3\n1")
 	exCase(t, "move-top", "1\n2\n3\n", []string{"3m0"}, "3\n1\n2")

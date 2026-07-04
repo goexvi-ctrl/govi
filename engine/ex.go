@@ -19,7 +19,8 @@ type exCmd struct {
 	buffer       rune  // register name, or 0
 	arg          string
 	def          *exCmdDef
-	newScreen    bool // command was given capitalized: act in a new split screen
+	newScreen    bool   // command was given capitalized: act in a new split screen
+	pipeRest     string // text after an unescaped '|' separator, run as the next command
 }
 
 // exCmdDef describes one ex command: its full name, the minimum number of
@@ -32,6 +33,13 @@ type exCmdDef struct {
 	fn        func(*Engine, *exCmd) error
 	newScreen bool // capable of acting in a new screen when capitalized (nvi E_NEWSCREEN)
 	autoprint bool // print the new current line afterward in ex mode (nvi E_AUTOPRINT)
+	// wholeLine: '|' is not a command separator for this command -- it takes the
+	// rest of the line (nvi: !, global, v, and the first-arg-ex commands edit, ex,
+	// next, visual, vsplit; read/write are this way only for their '!' filter form,
+	// handled in code). substArg: the argument begins with a delimited RE (s / & /
+	// ~), so '|' inside the RE is literal and only a '|' after the flags splits.
+	wholeLine bool
+	substArg  bool
 }
 
 // exCmds is populated in init() rather than as a static initializer: some
@@ -57,18 +65,18 @@ func init() {
 		{full: ">", min: 1, fn: (*Engine).exShiftRight, autoprint: true},
 		{full: "<", min: 1, fn: (*Engine).exShiftLeft, autoprint: true},
 		{full: "=", min: 1, fn: (*Engine).exLineNumber},
-		{full: "substitute", min: 1, fn: (*Engine).exSubstitute},
-		{full: "global", min: 1, fn: (*Engine).exGlobal},
-		{full: "vglobal", min: 1, fn: (*Engine).exVglobal},
+		{full: "substitute", min: 1, fn: (*Engine).exSubstitute, substArg: true},
+		{full: "global", min: 1, fn: (*Engine).exGlobal, wholeLine: true},
+		{full: "vglobal", min: 1, fn: (*Engine).exVglobal, wholeLine: true},
 		{full: "set", min: 2, fn: (*Engine).exSet},
 		{full: "source", min: 2, fn: (*Engine).exSource},
 		{full: "map", min: 3, fn: (*Engine).exMap},
 		{full: "unmap", min: 3, fn: (*Engine).exUnmap},
 		{full: "abbreviate", min: 2, fn: (*Engine).exAbbreviate},
 		{full: "unabbreviate", min: 3, fn: (*Engine).exUnabbreviate},
-		{full: "edit", min: 1, fn: (*Engine).exEdit, newScreen: true},
-		{full: "ex", min: 2, fn: (*Engine).exEdit, newScreen: true}, // nvi: :ex is an alias of :edit (both are ex_edit)
-		{full: "next", min: 1, fn: (*Engine).exNext, newScreen: true},
+		{full: "edit", min: 1, fn: (*Engine).exEdit, newScreen: true, wholeLine: true},
+		{full: "ex", min: 2, fn: (*Engine).exEdit, newScreen: true, wholeLine: true}, // nvi: :ex is an alias of :edit (both are ex_edit)
+		{full: "next", min: 1, fn: (*Engine).exNext, newScreen: true, wholeLine: true},
 		{full: "previous", min: 4, fn: (*Engine).exPrev, newScreen: true},
 		{full: "rewind", min: 3, fn: (*Engine).exRewind},
 		{full: "args", min: 2, fn: (*Engine).exArgs},
@@ -87,7 +95,7 @@ func init() {
 		{full: "stop", min: 4, fn: (*Engine).exStop},
 		{full: "suspend", min: 3, fn: (*Engine).exStop},
 		{full: "version", min: 2, fn: (*Engine).exVersion},
-		{full: "!", min: 1, fn: (*Engine).exBang},
+		{full: "!", min: 1, fn: (*Engine).exBang, wholeLine: true},
 		{full: "&", min: 1, fn: (*Engine).exAmp},
 		{full: "~", min: 1, fn: (*Engine).exTilde},
 		{full: "k", min: 1, fn: (*Engine).exMark},
@@ -95,8 +103,8 @@ func init() {
 		{full: "print", min: 1, fn: (*Engine).exPrint},
 		{full: "number", min: 2, fn: (*Engine).exNumber},
 		{full: "list", min: 1, fn: (*Engine).exList},
-		{full: "visual", min: 2, fn: (*Engine).exVisual, newScreen: true},
-		{full: "vsplit", min: 2, fn: (*Engine).exVsplit},
+		{full: "visual", min: 2, fn: (*Engine).exVisual, newScreen: true, wholeLine: true},
+		{full: "vsplit", min: 2, fn: (*Engine).exVsplit, wholeLine: true},
 		{full: "bg", min: 2, fn: (*Engine).exBg},
 		{full: "fg", min: 2, fn: (*Engine).exFg, newScreen: true},
 		{full: "resize", min: 3, fn: (*Engine).exResize},
@@ -158,6 +166,10 @@ func (e *Engine) exExecute(line string) error {
 	if c.def.autoprint && e.scr.mode == ModeExText && e.scr.gMarks == nil && !e.exSilent &&
 		e.scr.opts.Bool("autoprint") && e.scr.store.Lines() > 0 {
 		e.printLine(string(e.scr.lineRunes(e.scr.cursor.Line)))
+	}
+	// Run any command after a '|' separator (nvi ex.c command loop).
+	if c.pipeRest != "" {
+		return e.exExecute(c.pipeRest)
 	}
 	return nil
 }
@@ -261,8 +273,92 @@ func (e *Engine) parseEx(line string) (*exCmd, error) {
 		c.force = true
 	}
 	p.skipBlanks()
-	c.arg = strings.TrimSpace(string(p.s[p.pos:]))
+	c.arg, c.pipeRest = p.parseArgPipe(c)
 	return c, nil
+}
+
+// parseArgPipe reads a command's argument, honoring '|' as a command separator
+// (nvi ex.c). Most commands end their argument at the first unescaped '|', with
+// the remainder returned as the next command; '\|' is a literal '|'. Commands
+// flagged wholeLine (and the '!' filter form of :read/:write) take the rest of
+// the line verbatim. A substitute keeps its delimited RE intact so a '|' inside
+// the pattern or replacement does not split -- only a '|' after the flags does.
+func (p *exParser) parseArgPipe(c *exCmd) (arg, rest string) {
+	s := p.s
+	i := p.pos
+	whole := func() (string, string) { return strings.TrimSpace(string(s[i:])), "" }
+
+	if c.def.wholeLine {
+		return whole()
+	}
+	// :read !cmd and :write !cmd (a '!' as the first non-blank) are filters: the
+	// rest of the line is the shell command and '|' is a shell pipe.
+	if c.def.full == "read" || c.def.full == "write" {
+		j := i
+		for j < len(s) && (s[j] == ' ' || s[j] == '\t') {
+			j++
+		}
+		if j < len(s) && s[j] == '!' {
+			return whole()
+		}
+	}
+
+	var b strings.Builder
+	// A substitute's RE (up to two more delimiters) is copied verbatim first, so
+	// a '|' used as the RE delimiter or appearing inside the pattern is literal.
+	if c.def.substArg {
+		i = copySubstRE(s, i, &b)
+	}
+	for ; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) && s[i+1] == '|' {
+			b.WriteRune('|')
+			i++
+			continue
+		}
+		if s[i] == '|' {
+			return strings.TrimSpace(b.String()), string(s[i+1:])
+		}
+		b.WriteRune(s[i])
+	}
+	return strings.TrimSpace(b.String()), ""
+}
+
+// copySubstRE copies a substitute's leading delimited RE (the /pattern/replace
+// portion) from s[i:] into b verbatim and returns the index just past it, so the
+// caller can scan the trailing flags for a '|' separator. If the first non-blank
+// is not a delimiter (a bare :s, or ":s g" flag form) nothing is copied.
+func copySubstRE(s []rune, i int, b *strings.Builder) int {
+	j := i
+	for j < len(s) && (s[j] == ' ' || s[j] == '\t') {
+		j++
+	}
+	if j >= len(s) {
+		return i
+	}
+	delim := s[j]
+	// A bare repeat or a flags-only form (alnum or '|' next) has no RE to skip.
+	if delim == '|' || delim == '\\' || (delim >= 'a' && delim <= 'z') ||
+		(delim >= 'A' && delim <= 'Z') || (delim >= '0' && delim <= '9') {
+		return i
+	}
+	// Copy the blanks and opening delimiter, then up to two more unescaped
+	// delimiters (end of pattern, end of replacement).
+	for ; i <= j; i++ {
+		b.WriteRune(s[i])
+	}
+	for cnt := 2; i < len(s) && cnt > 0; i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			b.WriteRune(s[i])
+			b.WriteRune(s[i+1])
+			i++
+			continue
+		}
+		if s[i] == delim {
+			cnt--
+		}
+		b.WriteRune(s[i])
+	}
+	return i
 }
 
 // parseName reads the command name: a run of letters, or a single special-char
