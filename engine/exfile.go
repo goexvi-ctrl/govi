@@ -170,8 +170,17 @@ func (e *Engine) exEdit(c *exCmd) error {
 	if e.scr.dirty() && !c.force {
 		return fmt.Errorf("No write since last change (use :e! to override)")
 	}
+	// Re-editing the current file (":e!" to discard changes) restores the cursor
+	// to where it was, rather than homing to line 1 (nvi remembers the position
+	// across the reload). Editing a different file starts at the top as usual.
+	reediting := plusCmd == "" && e.samePath(path, e.scr.name)
+	savedCursor := e.scr.cursor
 	if err := e.Open(path); err != nil {
 		return err
+	}
+	if reediting {
+		e.scr.cursor = savedCursor
+		e.scr.clampCursor()
 	}
 	// A "+cmd" argument runs once the file is loaded (:e +N file, :e +/pat file),
 	// like the command-line +cmd form (nvi ex_edit -> the same c_option path).
