@@ -354,6 +354,7 @@ func (e *Engine) global(c *exCmd, invert bool) error {
 		}
 	}
 	s.gMarks = matches
+	s.gLastEdit = 0
 	defer func() { s.gMarks = nil }()
 
 	// Run the whole global as one undo group: nvi undoes an entire :g with a
@@ -369,9 +370,20 @@ func (e *Engine) global(c *exCmd, invert bool) error {
 		if target < 1 || target > s.lineCount() {
 			continue // visited line was deleted by an earlier body command
 		}
+		s.gLastEdit = target
 		if err := e.exExecute(fmt.Sprintf("%d%s", target, cmd)); err != nil {
 			return err
 		}
+	}
+	// nvi's final cursor is the line of the last insert/delete a body command
+	// performed (or the last visited match if none), clamped to the last line
+	// when that line is gone (ex.c range_lno fixup).
+	if ln := s.gLastEdit; ln != 0 {
+		if n := s.lineCount(); ln > n {
+			ln = n
+		}
+		s.cursor.Line = ln
+		s.clampCursor()
 	}
 	return nil
 }

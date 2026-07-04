@@ -79,3 +79,39 @@ func TestExGlobal(t *testing.T) {
 	exCase(t, "global-subst", "a1\nb\na2\n", []string{"g/a/s/a/X/"}, "X1\nb\nX2")
 	exCase(t, "vglobal-delete", "a\nb\na\nc\n", []string{"v/a/d"}, "a\na")
 }
+
+// TestExGlobalCursor checks the final cursor of a :g whose body edits lines:
+// nvi leaves it on the line of the last insert/delete the body performed
+// (ex.c range_lno), which for :m0 is the line after the last moved-from
+// position, not the moved line's new home at the top (QA-18).
+func TestExGlobalCursor(t *testing.T) {
+	e, _, _ := newTestEngine(t, "foo bar foo baz\nsecond line here\nthird here\nfourth line\n")
+	if err := e.exExecute("g/here/m0"); err != nil {
+		t.Fatal(err)
+	}
+	if got := bufText(e); got != "third here\nsecond line here\nfoo bar foo baz\nfourth line" {
+		t.Fatalf("buffer after :g/here/m0 = %q", got)
+	}
+	if e.scr.cursor.Line != 4 {
+		t.Errorf(":g/here/m0 cursor line %d, want 4", e.scr.cursor.Line)
+	}
+
+	// A body command with no line inserts/deletes leaves the cursor on the
+	// last visited match.
+	e2, _, _ := newTestEngine(t, "a1\nb\na2\nc\n")
+	if err := e2.exExecute("g/a/s/a/X/"); err != nil {
+		t.Fatal(err)
+	}
+	if e2.scr.cursor.Line != 3 {
+		t.Errorf(":g/a/s cursor line %d, want 3", e2.scr.cursor.Line)
+	}
+
+	// When the last touched line is gone, the cursor clamps to the last line.
+	e3, _, _ := newTestEngine(t, "keep\ndrop\nkeep\ndrop\n")
+	if err := e3.exExecute("g/drop/d"); err != nil {
+		t.Fatal(err)
+	}
+	if e3.scr.cursor.Line != 2 {
+		t.Errorf(":g/drop/d cursor line %d, want 2", e3.scr.cursor.Line)
+	}
+}

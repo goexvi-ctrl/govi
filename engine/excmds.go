@@ -202,15 +202,21 @@ func (e *Engine) exMove(c *exCmd) error {
 	lines := e.collectLinesRaw(l1, l2)
 	n := l2 - l1 + 1
 	e.beginChange()
-	e.deleteLines(l1, l2)
-	if dest > l2 {
-		dest -= n
-	}
+	// nvi appends the copy at the destination first and deletes the shifted
+	// source after; the order is observable through a running global's
+	// last-edit line (ex_g_insdel), so keep it.
 	for i, ln := range lines {
 		s.appendLine(dest+int64(i), ln)
 	}
+	cur := dest // moving down: the block settles at dest-n+1..dest
+	src1, src2 := l1, l2
+	if dest < l1 {
+		src1, src2 = l1+n, l2+n
+		cur = dest + n // moving up: the block settles at dest+1..dest+n
+	}
+	e.deleteLines(src1, src2)
 	e.endChange()
-	s.cursor = Pos{Line: clampLine(s, dest+n), Col: 0}
+	s.cursor = Pos{Line: clampLine(s, cur), Col: 0}
 	return nil
 }
 

@@ -132,6 +132,12 @@ type screen struct {
 	// mistrack later matches (nvi flags each matched line in its recno record).
 	// A visited/deleted entry is set to -1. nil when no global is running.
 	gMarks []int64
+
+	// gLastEdit is the line number of the last line insert/delete a running
+	// global's body commands performed (nvi ecp->range_lno, fed by the
+	// ex_g_insdel callback); the global's final cursor lands there. 0 when no
+	// insert/delete has happened yet.
+	gLastEdit int64
 }
 
 // lineCount returns the number of lines in the buffer, treating an empty buffer
@@ -238,6 +244,10 @@ func (s *screen) deleteLine(lno int64) {
 // gMarksInserted/gMarksDeleted mirror mark.Set's line fixups for the transient
 // :g match list (see gMarks). They are no-ops when no global is running.
 func (s *screen) gMarksInserted(at int64) {
+	if s.gMarks == nil {
+		return
+	}
+	s.gLastEdit = at
 	for i, ln := range s.gMarks {
 		if ln >= at {
 			s.gMarks[i] = ln + 1
@@ -246,6 +256,10 @@ func (s *screen) gMarksInserted(at int64) {
 }
 
 func (s *screen) gMarksDeleted(at int64) {
+	if s.gMarks == nil {
+		return
+	}
+	s.gLastEdit = at
 	for i, ln := range s.gMarks {
 		switch {
 		case ln == at:
