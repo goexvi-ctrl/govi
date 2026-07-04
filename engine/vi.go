@@ -818,6 +818,9 @@ func (m *vimode) editKey(e *Engine, r rune) {
 	case 'X':
 		e.synthOperator(m, 'd', 'h')
 	case 'D':
+		// nvi ignores a count on D (delete to end of the current line only);
+		// "2D" does not also take the next line as vim would.
+		m.count, m.haveCount = 0, false
 		e.synthOperator(m, 'd', '$')
 	case 'C':
 		e.synthOperator(m, 'c', '$')
