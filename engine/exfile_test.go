@@ -177,6 +177,54 @@ func TestExBackup(t *testing.T) {
 	}
 }
 
+// TestExAlternateName covers CORNERS B-2: nvi's set_alt_name rules -- a
+// file-argument ex command sets the alternate name (# / ^^) to that argument
+// (:w file, :r file, and even a failed :e file), while a successful :e sets it
+// to the file being left. Verified against nvi via `!echo #`.
+func TestExAlternateName(t *testing.T) {
+	dir := t.TempDir()
+	a := writeTemp(t, dir, "a.txt", "aaa\n")
+	b := writeTemp(t, dir, "b.txt", "bbb\n")
+	c := filepath.Join(dir, "c.txt")
+
+	// Successful :e sets alt to the file being left (rule 2).
+	e := New(&captureFrontend{}, Options{})
+	e.OpenArgs([]string{a})
+	e.Resize(10, 40)
+	if err := e.exExecute("edit " + b); err != nil {
+		t.Fatalf("edit b: %v", err)
+	}
+	if !e.samePath(e.scr.altFile, a) {
+		t.Errorf("after :e b, alt = %q, want a", e.scr.altFile)
+	}
+	// A failed :e (buffer modified) still sets alt to the target (rule 1).
+	drive(e, "iX\x1b")
+	if err := e.exExecute("edit " + c); err == nil {
+		t.Fatal("edit of a modified buffer should fail")
+	}
+	if !e.samePath(e.scr.altFile, c) {
+		t.Errorf("after failed :e c, alt = %q, want c", e.scr.altFile)
+	}
+
+	// :w file sets alt to the target.
+	e2 := New(&captureFrontend{}, Options{})
+	e2.OpenArgs([]string{a})
+	e2.Resize(10, 40)
+	if err := e2.exExecute("w " + c); err != nil {
+		t.Fatalf("w c: %v", err)
+	}
+	if !e2.samePath(e2.scr.altFile, c) {
+		t.Errorf("after :w c, alt = %q, want c", e2.scr.altFile)
+	}
+	// :r file sets alt to the source.
+	if err := e2.exExecute("r " + b); err != nil {
+		t.Fatalf("r b: %v", err)
+	}
+	if !e2.samePath(e2.scr.altFile, b) {
+		t.Errorf("after :r b, alt = %q, want b", e2.scr.altFile)
+	}
+}
+
 func TestMultiFileNavigation(t *testing.T) {
 	dir := t.TempDir()
 	a := writeTemp(t, dir, "a.txt", "file a\n")

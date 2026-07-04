@@ -360,6 +360,8 @@ func (e *Engine) exWrite(c *exCmd) error {
 		if len(names) == 1 {
 			arg = names[0]
 		}
+		// nvi set_alt_name rule 1: :w file sets the alternate name to the target.
+		e.noteAltName(arg)
 	}
 	named := arg != ""
 	// nvi readonly guard (common/exf.c file_write): writing the buffer's own file
@@ -665,6 +667,8 @@ func (e *Engine) exRead(c *exCmd) error {
 		if len(names) == 1 {
 			arg = names[0]
 		}
+		// nvi set_alt_name rule 1: :r file sets the alternate name to the source.
+		e.noteAltName(arg)
 		lines, err := readFileLines(e.resolvePath(arg))
 		if err != nil {
 			return err

@@ -79,6 +79,18 @@ func (e *Engine) fileStatus() string {
 	return b.String()
 }
 
+// noteAltName records name as the alternate file (# / ^^) when the buffer has a
+// current file distinct from it -- nvi's set_alt_name rule 1 (common/exf.c): an
+// ex command that takes a file-name argument (:w file, :r file, and even a :e
+// that then fails) sets the alternate name to that argument. A successful :e
+// instead sets it to the previous file (rule 2), which Open handles and which
+// overrides this because Open runs afterward.
+func (e *Engine) noteAltName(name string) {
+	if name != "" && e.scr.name != "" && !e.samePath(name, e.scr.name) {
+		e.scr.altFile = name
+	}
+}
+
 // exFile implements :f[ile] [name] — show status and optionally rename the buffer.
 func (e *Engine) exFile(c *exCmd) error {
 	name := strings.TrimSpace(c.arg)
@@ -151,6 +163,12 @@ func (e *Engine) exEdit(c *exCmd) error {
 			return c.usageError()
 		}
 		path = names[0]
+		// nvi set_alt_name rule 1: the target becomes the alternate name even if
+		// the edit then fails the modification check; a successful edit overrides
+		// this in Open (rule 2: alt = the file being left).
+		if !c.newScreen {
+			e.noteAltName(path)
+		}
 	}
 	// :E[dit] (capitalized) opens the file -- or the current file when no name is
 	// given -- in a new split screen, leaving the current screen untouched.
