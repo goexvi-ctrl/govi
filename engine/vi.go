@@ -213,6 +213,19 @@ func (m *vimode) commandKey(e *Engine, ev KeyEvent) {
 		return
 	}
 
+	// nvi seeds command-mode maps from terminfo for the paging keys
+	// (cl/cl_term.c c_tklist: kpp -> ^B, knp -> ^F); Insert (kich1 -> i) is
+	// a plain rune and goes through normalizeKey below. A preceding count
+	// applies as it would to the typed control key.
+	switch ev.Key {
+	case KeyPageUp:
+		m.ctrlKey(e, 'b')
+		return
+	case KeyPageDown:
+		m.ctrlKey(e, 'f')
+		return
+	}
+
 	r := normalizeKey(ev)
 	if r == 0 {
 		return
@@ -1099,6 +1112,9 @@ func normalizeKey(ev KeyEvent) rune {
 		return '+'
 	case KeyDelete:
 		return 'x'
+	case KeyInsert:
+		// nvi maps the terminal's kich1 key to 'i' (cl/cl_term.c).
+		return 'i'
 	case KeyEscape:
 		return 0 // cancel; handled by state reset
 	case KeyNone:
