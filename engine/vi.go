@@ -388,6 +388,13 @@ func (m *vimode) ctrlKey(e *Engine, r rune) {
 		if err := e.tagPop(); err != nil {
 			s.msg, s.msgKind = err.Error(), MsgError
 		}
+	case 'c': // ^C: nvi's vi loop reports a consumed interrupt (vi.c "236|Interrupted")
+		// and the partial command is gone. This also keeps the message visible
+		// when the ^C that aborted a long operation arrives as a trailing key
+		// event: commandKey cleared the message, and this restores it.
+		m.op, m.opCount, m.opReg = 0, 0, 0
+		m.reg = 0
+		s.msg, s.msgKind = "Interrupted", MsgError
 	case 'w': // ^W: switch to the next split screen (nvi v_screen)
 		if s.comedit {
 			// You can't leave a colon command-line edit window (nvi

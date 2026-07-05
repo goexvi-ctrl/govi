@@ -66,3 +66,23 @@ func TestInterruptClearedAtNextInput(t *testing.T) {
 		t.Fatal("interrupt flag survived into the next command")
 	}
 }
+
+// TestCtrlCKeyShowsInterrupted pins nvi's idle-^C behavior (vi/vi.c
+// "236|Interrupted", probed live 2026-07-04): a ^C key in vi command mode
+// reports Interrupted and discards any partial command. It also keeps the
+// message on screen when the ^C that aborted a long operation arrives as a
+// trailing key event after the abort.
+func TestCtrlCKeyShowsInterrupted(t *testing.T) {
+	e, _, _ := newTestEngine(t, "one\n")
+	e.Input(KeyEvent{Rune: 'c', Mods: ModCtrl})
+	if msg, k := e.scr.msg, e.scr.msgKind; k != MsgError || msg != "Interrupted" {
+		t.Fatalf("idle ^C msg = %q/%v, want Interrupted", msg, k)
+	}
+	// A pending operator is discarded, so the next key starts fresh.
+	drive(e, "d")
+	e.Input(KeyEvent{Rune: 'c', Mods: ModCtrl})
+	drive(e, "x") // would be "dx" (delete-motion) if the d survived
+	if got := string(e.scr.lineRunes(1)); got != "ne" {
+		t.Fatalf("after d ^C x line = %q, want ne (x alone)", got)
+	}
+}
