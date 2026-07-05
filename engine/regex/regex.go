@@ -43,6 +43,13 @@ type Options struct {
 	// needs alternation -- nvi compiles those with REG_EXTENDED for the same
 	// reason (re_compile SEARCH_CSCOPE).
 	Alt bool
+	// Interrupt, when set, is polled during matching (every pollEvery
+	// quantifier iterations); returning true aborts the attempt, which then
+	// reports no match. It exists because the backtracker is exponential on
+	// pathological nested quantifiers (\(a*\)*b) -- without it such a match
+	// would hang the editor beyond even ^C (qa/CORNERS.md Part C #12). The
+	// engine passes its ^C flag; nil means never interrupted.
+	Interrupt func() bool
 }
 
 // Regex is a compiled pattern.
@@ -50,6 +57,7 @@ type Regex struct {
 	root    node
 	ngroups int
 	ic      bool
+	intr    func() bool
 }
 
 // Match is the result of a successful match: rune offsets into the input.
@@ -72,7 +80,7 @@ func Compile(pattern string, opts Options) (*Regex, error) {
 		// REG_EPAREN).
 		return nil, fmt.Errorf("parentheses not balanced")
 	}
-	return &Regex{root: root, ngroups: p.ngroups, ic: opts.IgnoreCase}, nil
+	return &Regex{root: root, ngroups: p.ngroups, ic: opts.IgnoreCase, intr: opts.Interrupt}, nil
 }
 
 // MatchAt returns the leftmost-longest match beginning at or after start, or
@@ -82,11 +90,22 @@ func Compile(pattern string, opts Options) (*Regex, error) {
 // the captures from the first walk that reached the longest end; exploration
 // stops early once a match runs to the end of the input, since nothing can be
 // longer.
-func (re *Regex) MatchAt(in []rune, start int) (Match, bool) {
+func (re *Regex) MatchAt(in []rune, start int) (mm Match, ok bool) {
 	if start < 0 {
 		start = 0
 	}
-	m := &machine{in: in, ic: re.ic, caps: make([]int, 2*(re.ngroups+1))}
+	// An interrupt during the match unwinds as a matchInterrupted panic from
+	// machine.poll; report it as no match -- the search/substitute layers see
+	// the failure with the interrupt flag set and message "Interrupted".
+	defer func() {
+		if r := recover(); r != nil {
+			if _, isIntr := r.(matchInterrupted); !isIntr {
+				panic(r)
+			}
+			mm, ok = Match{}, false
+		}
+	}()
+	m := &machine{in: in, ic: re.ic, caps: make([]int, 2*(re.ngroups+1)), intr: re.intr}
 	bestCaps := make([]int, len(m.caps))
 	for s := start; s <= len(in); s++ {
 		for i := range m.caps {
@@ -120,6 +139,9 @@ func (re *Regex) MatchLast(in []rune, start int) (Match, bool) {
 		start = len(in)
 	}
 	for s := start; s >= 0; s-- {
+		if re.intr != nil && re.intr() {
+			break // interrupted: stop rescanning earlier positions
+		}
 		if mm, ok := re.MatchAt(in, s); ok && mm.Start == s {
 			return mm, true
 		}

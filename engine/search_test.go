@@ -1,6 +1,10 @@
 package engine
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestSearchForward(t *testing.T) {
 	e, _, _ := newTestEngine(t, "alpha\nbeta\ngamma\nbeta\n")
@@ -90,5 +94,29 @@ func TestSearchRegex(t *testing.T) {
 	drive(e, "/[0-9]\r")
 	if e.scr.cursor.Col != 3 {
 		t.Fatalf("/[0-9] -> col %d, want 3", e.scr.cursor.Col)
+	}
+}
+
+// TestSearchInterruptibleInsideOneLine pins the ^C escape hatch for a match
+// that blows up exponentially within a single line (qa/CORNERS.md Part C
+// #12): the regex Interrupt hook (compilePattern passes e.Interrupted) must
+// break the match; the per-line poll in the search loop cannot see it. The
+// search would otherwise run for ~2^64 steps.
+func TestSearchInterruptibleInsideOneLine(t *testing.T) {
+	e, _, _ := newTestEngine(t, strings.Repeat("a", 64)+"\n")
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		drive(e, "/\\(a*\\)*b\r")
+	}()
+	time.Sleep(100 * time.Millisecond) // let the match start blowing up
+	e.Interrupt()                      // the frontend-safe ^C entry point
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("search did not return after ^C; single-line match not interruptible")
+	}
+	if msg, k := e.scr.msg, e.scr.msgKind; k != MsgError || msg != "Interrupted" {
+		t.Fatalf("msg = %q/%v, want Interrupted", msg, k)
 	}
 }

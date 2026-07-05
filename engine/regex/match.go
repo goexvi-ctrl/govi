@@ -7,6 +7,30 @@ type machine struct {
 	in   []rune
 	ic   bool  // ignore case
 	caps []int // 2*(ngroups+1) slots; -1 when unset
+
+	intr  func() bool // optional host interrupt check (vi ^C); nil = never
+	steps int         // quantifier iterations since the attempt started
+}
+
+// matchInterrupted unwinds a match attempt when the host's interrupt check
+// fires; MatchAt recovers it and reports no match. The layers above already
+// turn a failed operation with the interrupt flag set into "Interrupted".
+type matchInterrupted struct{}
+
+// pollEvery is how many quantifier iterations pass between interrupt checks.
+const pollEvery = 1024
+
+// poll is called from the quantifier and alternation recursions -- the only
+// places a pathological pattern (nested stars/bounds) spends exponential
+// time -- so a blown-up match can be broken from the keyboard instead of
+// hanging the editor. Inert when no interrupt hook was supplied.
+func (m *machine) poll() {
+	if m.intr == nil {
+		return
+	}
+	if m.steps++; m.steps%pollEvery == 0 && m.intr() {
+		panic(matchInterrupted{})
+	}
 }
 
 func (m *machine) eq(a, b rune) bool {
@@ -84,6 +108,7 @@ type altNode struct{ alts []node }
 
 func (n *altNode) match(m *machine, pos int, k func(int) bool) bool {
 	for _, a := range n.alts {
+		m.poll()
 		if a.match(m, pos, k) {
 			return true
 		}
@@ -96,6 +121,7 @@ type starNode struct{ sub node }
 func (n *starNode) match(m *machine, pos int, k func(int) bool) bool {
 	var rec func(pos int) bool
 	rec = func(pos int) bool {
+		m.poll()
 		if n.sub.match(m, pos, func(p int) bool {
 			if p == pos { // no progress: stop expanding to avoid infinite loop
 				return false
@@ -117,6 +143,7 @@ type intervalNode struct {
 func (n *intervalNode) match(m *machine, pos int, k func(int) bool) bool {
 	var rec func(count, pos int) bool
 	rec = func(count, pos int) bool {
+		m.poll()
 		if n.hi == -1 || count < n.hi {
 			if n.sub.match(m, pos, func(p int) bool {
 				if p == pos && count >= n.lo {

@@ -1,6 +1,9 @@
 package regex
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func mustCompile(t *testing.T, pat string, ic bool) *Regex {
 	t.Helper()
@@ -208,5 +211,50 @@ func TestBackrefValidation(t *testing.T) {
 		if _, err := Compile(p, Options{Magic: true}); err != nil {
 			t.Errorf("Compile(%q): unexpected error %v", p, err)
 		}
+	}
+}
+
+// TestInterruptAbortsPathologicalMatch pins the ^C escape hatch: a match that
+// blows up exponentially (nested quantifiers, qa/CORNERS.md Part C #12) must
+// abort promptly once the interrupt hook fires, instead of hanging the
+// editor. Without the hook this pattern/input would run for years (2^64).
+func TestInterruptAbortsPathologicalMatch(t *testing.T) {
+	calls := 0
+	re, err := Compile(`\(a*\)*b`, Options{Magic: true, Interrupt: func() bool { calls++; return true }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := make([]rune, 64)
+	for i := range in {
+		in[i] = 'a'
+	}
+	start := time.Now()
+	if _, ok := re.MatchAt(in, 0); ok {
+		t.Fatal("must not match")
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("interrupt did not abort the match (took %v)", d)
+	}
+	if calls == 0 {
+		t.Fatal("interrupt hook was never polled")
+	}
+	if _, ok := re.MatchLast(in, len(in)); ok {
+		t.Fatal("MatchLast must not match either")
+	}
+}
+
+// TestInterruptFalseLeavesMatchingIntact: with a hook installed that never
+// fires, results are identical to matching without one.
+func TestInterruptFalseLeavesMatchingIntact(t *testing.T) {
+	re, err := Compile(`\(ab\)*c`, Options{Magic: true, Interrupt: func() bool { return false }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, ok := re.MatchAt([]rune("xababc"), 0)
+	if !ok || m.Start != 1 || m.End != 6 {
+		t.Fatalf("match = %+v ok=%v, want [1,6)", m, ok)
+	}
+	if g := m.Groups[1]; g != [2]int{3, 5} {
+		t.Fatalf("group 1 = %v, want [3,5) (last iteration)", g)
 	}
 }

@@ -42,7 +42,10 @@ func (e *Engine) compilePattern(p string) (*regex.Regex, error) {
 	// gets saved, so a later empty pattern reuses the expansion (nvi saves the
 	// converted RE the same way).
 	p = expandPatternTilde(p, e.scr.lastSubstRepl, magic)
-	re, err := regex.Compile(p, regex.Options{Magic: magic, IgnoreCase: ic})
+	// The Interrupt hook lets ^C break a match that blows up inside ONE line
+	// (pathological nested quantifiers); the per-line poll in the search
+	// loops cannot see those.
+	re, err := regex.Compile(p, regex.Options{Magic: magic, IgnoreCase: ic, Interrupt: e.Interrupted})
 	if err != nil {
 		// nvi re_error: msgq "RE error: %s" with the regerror text (msgq
 		// supplies the trailing period).
