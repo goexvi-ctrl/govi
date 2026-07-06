@@ -998,6 +998,18 @@ func GoviEndPos(h C.longlong, line *C.longlong, col *C.int) {
 	})
 }
 
+// GoviModeLabel returns the active screen's showmode label ("Command",
+// "Insert", "Append", "Change", "Replace") for a host mode indicator
+// (malloc'd; caller frees).
+//
+//export GoviModeLabel
+func GoviModeLabel(h C.longlong) *C.char {
+	if in := get(h); in != nil {
+		return C.CString(in.eng.ModeLabel())
+	}
+	return C.CString("")
+}
+
 // GoviExActive reports whether the editor is in line-oriented ex (Q) mode, in
 // which the window shows a scrolling transcript rather than the buffer.
 //

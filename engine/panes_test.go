@@ -170,6 +170,28 @@ func TestDragDividerCols(t *testing.T) {
 	}
 }
 
+// ModeLabel exposes the showmode text for the host's mode indicator.
+func TestModeLabel(t *testing.T) {
+	e, _, _ := newTestEngine(t, "hello\n")
+	steps := []struct{ keys, want string }{
+		{"", "Command"},
+		{"i", "Insert"},
+		{"\x1b", "Command"},
+		{"A", "Append"},
+		{"\x1b", "Command"},
+		{"cw", "Change"},
+		{"\x1b", "Command"},
+		{"R", "Replace"},
+		{"\x1b", "Command"},
+	}
+	for _, st := range steps {
+		drive(e, st.keys)
+		if got := e.ModeLabel(); got != st.want {
+			t.Fatalf("after %q: ModeLabel = %q, want %q", st.keys, got, st.want)
+		}
+	}
+}
+
 // Dragging the horizontal divider between a whole pane and a vertically split
 // half moves the entire border: all three panes resize.
 func TestDragDividerRowsAcrossVsplit(t *testing.T) {

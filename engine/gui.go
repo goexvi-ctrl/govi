@@ -115,6 +115,11 @@ func setScreenTop(s *screen, top int64) {
 	s.top = top
 }
 
+// ModeLabel returns the active screen's showmode label -- "Command",
+// "Insert", "Append", "Change", or "Replace" -- for a host mode indicator
+// (the same text :set showmode appends to the status line).
+func (e *Engine) ModeLabel() string { return e.scr.showModeLabel }
+
 // Panes: the GUI addresses split screens by their index in display order
 // (top-to-bottom, then left-to-right), the same order View.Screens() reports.
 // These back per-pane scroll bars and mouse-driven pane switching/resizing.

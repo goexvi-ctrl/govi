@@ -149,6 +149,15 @@ final class GoviView: NSView, NSTextInputClient {
     private func observeSettings() {
         NotificationCenter.default.addObserver(
             self, selector: #selector(settingsChanged), name: Settings.changed, object: nil)
+        // A closing window may be a sibling tab: reconcile the tab bar and the
+        // mode indicator once the close has landed, not on the next keystroke.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(someWindowClosed), name: NSWindow.willCloseNotification,
+            object: nil)
+    }
+
+    @objc private func someWindowClosed(_ note: Notification) {
+        DispatchQueue.main.async { [weak self] in self?.updateTitle() }
     }
 
     private func applyColors() {
@@ -478,6 +487,82 @@ final class GoviView: NSView, NSTextInputClient {
         } else {
             w.subtitle = ""
         }
+        updateModeIndicator()
+        reconcileTabBar()
+    }
+
+    // Mode indicator: a small label at the right end of the title bar showing
+    // the editor mode (Command/Insert/Append/Change/Replace, or Ex) and the
+    // selection mode (term/gui/hybrid). The title bar always belongs to the
+    // visible tab's window, so this is the one place the mode needs to live.
+    private lazy var titleModeLabel: NSTextField = {
+        let l = NSTextField(labelWithString: "")
+        l.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        l.textColor = .secondaryLabelColor
+        return l
+    }()
+
+    // Single-tab tab-bar preference (see reconcileTabBar): what the user last
+    // chose with Show/Hide Tab Bar while the window had one tab, and the tab
+    // count last observed (to tell a closed tab from a user toggle).
+    private var wantsTabBarWhenSingle = false
+    private var lastTabCount = 1
+
+    private lazy var titleModeVC: NSTitlebarAccessoryViewController = {
+        let vc = NSTitlebarAccessoryViewController()
+        let container = NSView()
+        container.addSubview(titleModeLabel)
+        vc.view = container
+        vc.layoutAttribute = .trailing
+        return vc
+    }()
+
+    private func updateModeIndicator() {
+        guard let w = window else { return }
+        var mode = bridgeString(GoviModeLabel(handle))
+        if GoviExActive(handle) != 0 {
+            mode = "Ex"
+        }
+        let sel: String
+        switch selectionMode() {
+        case .terminal: sel = "term"
+        case .gui: sel = "gui"
+        case .contextual: sel = "hybrid"
+        }
+        let text = "\(mode) \u{00B7} \(sel)"
+        if titleModeLabel.stringValue != text {
+            titleModeLabel.stringValue = text
+            titleModeLabel.sizeToFit()
+            let sz = titleModeLabel.frame.size
+            titleModeVC.view.setFrameSize(NSSize(width: sz.width + 10, height: sz.height + 6))
+            titleModeLabel.setFrameOrigin(NSPoint(x: 0, y: 3))
+        }
+        // Attach to this view's window, following a tab torn off to a new one.
+        if titleModeVC.view.window !== w {
+            titleModeVC.removeFromParent() // no-op when not yet attached
+            w.addTitlebarAccessoryViewController(titleModeVC)
+        }
+    }
+
+    // reconcileTabBar makes a single-tab window remember whether its tab bar
+    // should show: Show/Hide Tab Bar while single-tab records the preference,
+    // and closing back down to one tab restores it (AppKit would leave the
+    // bar up). With several tabs the bar is a given, and any visibility
+    // change seen while the count stays 1 can only be the user's toggle.
+    private func reconcileTabBar() {
+        guard let w = window else { return }
+        let tabCount = w.tabGroup?.windows.count ?? 1
+        let barVisible = w.tabGroup?.isTabBarVisible ?? false
+        if tabCount <= 1 {
+            if lastTabCount > 1 {
+                if barVisible != wantsTabBarWhenSingle {
+                    w.toggleTabBar(nil)
+                }
+            } else {
+                wantsTabBarWhenSingle = barVisible
+            }
+        }
+        lastTabCount = tabCount
     }
 
     private func armTimer() {

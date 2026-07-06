@@ -195,9 +195,11 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         // together and dragged between windows; .automatic respects the user's
         // "prefer tabs" setting for Cmd-N while still allowing explicit tabs.
         window.tabbingIdentifier = "govi"
-        // .automatic respects the system "prefer tabs" setting; .disallowed gives
-        // standalone windows with no tab bar (Settings: "Use window tabs" off).
-        window.tabbingMode = Settings.useTabs ? .automatic : .disallowed
+        // Tabbing stays .automatic even with "Use window tabs" off: that
+        // setting decides where new files open (openPaths), while the window
+        // itself keeps a working Show/Hide Tab Bar menu -- .disallowed would
+        // gray those items out and pin the tab bar in whatever state it was in.
+        window.tabbingMode = .automatic
     }
 
     private func showStandalone() {
