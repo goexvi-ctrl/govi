@@ -92,6 +92,13 @@ func TestMatchBasic(t *testing.T) {
 		{"[[=a=]]", "z a", 2, 3},
 		{"[[.-.]]x", "a-x", 1, 3},
 		{"[[.a.]-[.c.]]", "zb", 1, 2},
+		// Named collating elements resolve through Spencer's cname.h table:
+		// [[.tab.]] matches a tab, [[.comma.]] a ',', and a named endpoint
+		// works in a range (nvi regcomp.c p_b_coll_elem, fixed 2026-07-06).
+		{"[[.tab.]]", "a\tb", 1, 2},
+		{"[[.comma.]]x", "a,x", 1, 3},
+		{"[[.newline.]]", "a\nb", 1, 2},
+		{"[[.space.]-[.tilde.]]", "\t!", 1, 2},
 		{`\(ab\)\1`, "abab", 0, 4},
 		{`a\{2,3\}`, "aaaa", 0, 3},
 		{`a\{2\}`, "aaaa", 0, 2},

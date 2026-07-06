@@ -69,6 +69,15 @@ var regexCases = []struct {
 	{"bracket-word-start", "cat scatter cat\n", []string{`%s/[[:<:]]cat/X/g`}},
 	{"bracket-word-end", "cat scatter cat\n", []string{`%s/cat[[:>:]]/X/g`}},
 	{"bracket-word-both", "cat category cat\n", []string{`%s/[[:<:]]cat[[:>:]]/X/g`}},
+	// named collating elements [[.name.]] resolve through Spencer's cname.h
+	// (nvi regcomp.c p_b_coll_elem, fixed 2026-07-06): [[.tab.]] is a tab,
+	// [[.comma.]] a ',', and a named endpoint anchors a range.
+	{"coll-tab", "a\tb\tc\n", []string{`%s/[[.tab.]]/X/g`}},
+	{"coll-comma", "a,b,c\n", []string{`%s/[[.comma.]]/X/g`}},
+	{"coll-period", "a.b.c\n", []string{`%s/[[.period.]]/X/g`}},
+	{"coll-single-char", "a-b\n", []string{`%s/[[.-.]]/X/`}},
+	{"coll-range", "abcXYZ\n", []string{`%s/[[.a.]-[.c.]]/_/g`}},
+	{"coll-class-tab", "a\tb c\n", []string{`%s/[[.tab.] ]/X/g`}},
 
 	// empty matches and global behavior
 	{"empty-global", "abc\n", []string{`%s/x*/-/g`}},

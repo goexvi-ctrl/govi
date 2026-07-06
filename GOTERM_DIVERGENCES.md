@@ -1107,6 +1107,24 @@ command-building fields (op, count, pending, inserting) are already idle when a
 file switch runs, so nothing transient leaks. Regression: goterm
 TestCoverageMultiFile "dot-next" (`dw:n!\r.` -> both show "BBB CCC").
 
+### 56. named collating elements (`[[.tab.]]`, `[[.comma.]]`, ...) were not resolved  [FIXED 2026-07-06]
+In a bracket expression, a symbolic collating-element name such as `[[.tab.]]`
+or `[[.comma.]]` must resolve to the named character (POSIX; Spencer's regex via
+his cname.h character-name table). govi's parseClassElement (engine/regex/
+class.go) accepted only a single-character element between the `[.`/`.]` (or
+`[=`/`=]`) delimiters and reported "invalid collating element" for any multi-
+character name, so `[[.tab.]]` never matched a tab and `[[.comma.]]` never a
+comma. This mirrored a real bug nvi itself had: regcomp.c p_b_coll_elem tested
+`MEMCMP(...)` (nonzero == "differs") as if it were "matches", so it never found
+a name either (nvi fix d8757ff0, 2026-07-06). Fixed by porting the cname.h table
+into a `collatingNames` map and looking the name up first; a single character
+still stands for itself, and an unknown name is still REG_ECOLLATE. The lookup
+serves both `[[.name.]]` and `[[=name=]]` (nvi routes both through
+p_b_coll_elem, the latter via p_b_eclass). Verified against the rebuilt oracle:
+`:s/[[.tab.]]/T/` + `:s/[[.comma.]]/C/` on "a<tab>b,c" -> both "aTbCc", and an
+unknown `[[.nosuch.]]` errors identically. Regression: engine/regex
+TestMatch `[[.tab.]]`, `[[.comma.]]x`, `[[.newline.]]`, `[[.space.]-[.tilde.]]`.
+
 ## Undocumented but functional (note, not a divergence)
 - vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes
   in ex mode and returns cleanly with `vi` -- but `^\` is NOT listed in govi's
