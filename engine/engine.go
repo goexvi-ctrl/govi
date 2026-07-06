@@ -364,11 +364,66 @@ func (e *Engine) Resize(rows, cols int) {
 	e.fe.Render(e.curView(), ChangeSet{Full: true})
 }
 
-// relayout redistributes the full terminal height across the currently displayed
-// (horizontally stacked) screens, in proportion to their previous heights, and
-// gives every screen the full terminal width. Exact nvi resize parity is a later
-// refinement; this keeps a split layout valid across a terminal resize.
+// relayout rescales the split layout to the new terminal size, preserving its
+// topology: stacked screens stay stacked and side-by-side screens stay side by
+// side. Every screen border is mapped proportionally from the old terminal
+// rectangle to the new one -- a screen's bottom border is its own status row
+// at roff+rows, a vertical border is the sacrificed divider column at
+// coff+cols -- so borders shared between screens stay shared and the tiling
+// has no gaps or overlaps at the new size. When the new size cannot keep every
+// screen at its minimum (a divider would collide), it falls back to stacking
+// the screens full-width.
 func (e *Engine) relayout() {
+	oldH, oldW := 0, 0
+	for _, s := range e.screens {
+		if b := s.roff + s.rows + 1; b > oldH {
+			oldH = b
+		}
+		if r := s.coff + s.cols; r > oldW {
+			oldW = r
+		}
+	}
+	if oldH <= 0 || oldW <= 0 {
+		e.relayoutStack()
+		return
+	}
+	mapRow := func(b int) int { return (b*e.termH + oldH/2) / oldH }
+	mapCol := func(b int) int { return (b*e.termCols + oldW/2) / oldW }
+
+	type geom struct{ roff, coff, rows, cols int }
+	mapped := make([]geom, len(e.screens))
+	for i, s := range e.screens {
+		top := mapRow(s.roff)
+		bot := mapRow(s.roff + s.rows + 1)
+		left := 0
+		if s.coff > 0 {
+			// The screen starts one past the divider column its left border
+			// shares with its neighbor; map the divider, not the offset, so
+			// both sides agree on where it lands.
+			left = mapCol(s.coff-1) + 1
+		}
+		right := e.termCols
+		if s.coff+s.cols < oldW {
+			right = mapCol(s.coff + s.cols)
+		}
+		g := geom{roff: top, coff: left, rows: bot - top - 1, cols: right - left}
+		if g.rows < minScreenRows || g.cols < 1 {
+			e.relayoutStack()
+			return
+		}
+		mapped[i] = g
+	}
+	for i, s := range e.screens {
+		g := mapped[i]
+		s.roff, s.coff, s.rows, s.cols = g.roff, g.coff, g.rows, g.cols
+		e.finishRelayout(s)
+	}
+}
+
+// relayoutStack is the fallback layout when proportional rescaling cannot fit:
+// the screens are stacked top to bottom in display order, full-width, keeping
+// their relative heights. Any vertical split collapses.
+func (e *Engine) relayoutStack() {
 	n := len(e.screens)
 	tot := 0
 	for _, s := range e.screens {
@@ -384,9 +439,6 @@ func (e *Engine) relayout() {
 			disp = e.termH - roff // remainder to the last screen
 		} else {
 			disp = (s.rows + 1) * e.termH / tot
-			if disp < 2 {
-				disp = 2
-			}
 		}
 		if disp < 2 {
 			disp = 2
@@ -395,14 +447,20 @@ func (e *Engine) relayout() {
 		s.coff = 0
 		s.cols = e.termCols
 		s.rows = disp - 1
-		s.applyWindowOption()
-		s.defScroll = 0
-		s.opts.i["columns"] = e.termCols
-		s.opts.i["lines"] = e.termH
-		s.clampCursor()
-		s.scrollToCursor()
+		e.finishRelayout(s)
 		roff += disp
 	}
+}
+
+// finishRelayout re-derives a screen's display state after relayout moved or
+// resized it.
+func (e *Engine) finishRelayout(s *screen) {
+	s.applyWindowOption()
+	s.defScroll = 0
+	s.opts.i["columns"] = e.termCols
+	s.opts.i["lines"] = e.termH
+	s.clampCursor()
+	s.scrollToCursor()
 }
 
 // snapshot of the presentation-relevant fields, used to compute a ChangeSet.

@@ -246,6 +246,12 @@ func (g *Grid) placeCursorPane(sv engine.ScreenView, coff, roff, statusRow, gutt
 		cur = mp // showmatch: flash the cursor at the matching bracket
 	}
 	top := sv.Viewport().Top
+	if cur.Line < top {
+		// GUI scrolling can move the viewport below the cursor line; there is
+		// no cell to draw the cursor on.
+		g.CursorVisible = false
+		return
+	}
 
 	y := 0
 	for ln := top; ln < cur.Line; ln++ {
@@ -429,6 +435,12 @@ func (g *Grid) placeCursor(v engine.View, mapRows, statusRow, gutter, cols int) 
 		cur = mp // showmatch: flash the cursor at the matching bracket
 	}
 	top := v.Viewport().Top
+	if cur.Line < top {
+		// GUI scrolling can move the viewport below the cursor line; there is
+		// no cell to draw the cursor on.
+		g.CursorVisible = false
+		return
+	}
 
 	y := 0
 	for ln := top; ln < cur.Line; ln++ {
