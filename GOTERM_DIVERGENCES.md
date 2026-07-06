@@ -1093,6 +1093,20 @@ default-buffer row. Both are display-only; needs homebrew-nvi format
 reverse-engineering (this tree's ex_tag.c does not match the 1.81.6 binary's
 spacing exactly), so recorded rather than fixed.
 
+### 55. `.` dot-repeat buffer was dropped by a file switch  [FIXED 2026-07-06]
+The `.` command lost its memory across `:n`/`:e`/tag-jump: after changing a
+line in one file and switching to the next (the `govi *.go` workflow), `.` did
+nothing. Cause: replaceBuffer (engine/engine.go) recreated the vi state machine
+(`e.vi = newVimode()`) on every file switch, discarding the dot replay buffer
+(and the f/t char-search repeat and undo direction with it). nvi's `:n` reuses
+the same screen and only swaps the underlying file, so the vi-private state
+survives -- and even its conservative new-screen path (v_init.c v_screen_copy)
+deliberately carries the replay buffer: "User can replay the last input, but
+nothing else." Fixed by not recreating vimode in replaceBuffer; the
+command-building fields (op, count, pending, inserting) are already idle when a
+file switch runs, so nothing transient leaks. Regression: goterm
+TestCoverageMultiFile "dot-next" (`dw:n!\r.` -> both show "BBB CCC").
+
 ## Undocumented but functional (note, not a divergence)
 - vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes
   in ex mode and returns cleanly with `vi` -- but `^\` is NOT listed in govi's

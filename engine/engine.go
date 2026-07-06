@@ -156,7 +156,13 @@ func (e *Engine) replaceBuffer(store buffer.LineStore, name string) {
 	s.showModeLabel = "Command"
 	s.modified = false
 	s.colon = nil
-	e.vi = newVimode()
+	// Keep the vi state machine across the file switch. nvi's :n reuses the
+	// same screen and only swaps the underlying file, so the vi-private state
+	// -- the '.' dot replay buffer, f/t char-search repeat, undo direction --
+	// survives (v_init.c v_screen_copy: "User can replay the last input").
+	// Recreating it here would drop '.' when stepping through :n a/b/c or an
+	// argument list like `govi *.go`. The command-building fields (op, count,
+	// pending, inserting) are already idle at :n time, so nothing stale leaks.
 }
 
 // Open loads path into the active buffer. A missing file starts an empty,
