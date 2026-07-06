@@ -641,6 +641,81 @@ transcript; **`:visual`** returns to the normal editor view.
 
 ---
 
+## Regular expressions
+
+Searches (**`/`**, **`?`**) and the **`:s`** pattern use POSIX **Basic Regular
+Expressions** (BRE), driven by the same Henry Spencer engine nvi uses. The ERE
+metacharacters **`+`  `?`  `|`  `(`  `)`  `{`  `}`** are ordinary literals in a
+BRE; the operator forms are backslash-escaped instead. `\t` and `\n` in a
+pattern are the plain letters `t` and `n`, never tab/newline (use a bracket
+collating name — below — to match a real tab).
+
+| Pattern | Matches |
+|---------|---------|
+| **`.`** | any single character |
+| **`*`** | zero or more of the preceding item |
+| **`^`  `$`** | start / end of line |
+| **`[...]`  `[^...]`** | bracket expression (any / none of the listed characters) |
+| **`\(  \)`** | grouping; **`\1`**–**`\9`** backreference a group |
+| **`\{n\}`  `\{n,\}`  `\{n,m\}`** | interval: exactly / at least / between n and m |
+| **`\<`  `\>`** | start / end of word (also spelled `[[:<:]]` / `[[:>:]]`) |
+| **`\.`  `\*`  `\[`** … | a backslash makes a metacharacter literal |
+
+Case is honored unless **`:set ignorecase`** is on; **`:set nomagic`** demotes
+`.` `*` `[` to literals unless backslash-escaped (as in nvi).
+
+### Bracket expressions
+
+Inside **`[...]`** a **`]`** is literal if it comes first (`[]ab]`), and a `-`
+is literal if it comes first or last (`[-a]`, `[a-]`). Three POSIX-named forms
+are also understood:
+
+- **`[[:class:]]`** — a named character class. Accepted: `alpha`, `digit`,
+  `alnum`, `upper`, `lower`, `space`, `blank`, `punct`, `cntrl`, `xdigit`,
+  `print`, `graph`. Example: `[[:digit:]]` is any digit.
+- **`[[.name.]]`** — a *collating element*: a symbolic name for one character.
+- **`[[=name=]]`** — an *equivalence class*: in the C locale, the same as the
+  named character itself.
+
+A collating name is the readable way to put a hard-to-type character into a
+pattern — for example **`[[.tab.]]`** matches a tab and **`[[.comma.]]`** a
+`,`. A name also works as a range endpoint: `[[.space.]-[.tilde.]]` is every
+printable ASCII character. A single character between the delimiters stands for
+itself (`[[.-.]]` is a literal `-`); an unrecognized name is an error.
+
+### Collating element names
+
+`[[.name.]]` (and `[[=name=]]`) accept these names:
+
+| Name(s) | Char | Name(s) | Char |
+|---------|------|---------|------|
+| `space` | (space) | `question-mark` | `?` |
+| `exclamation-mark` | `!` | `commercial-at` | `@` |
+| `quotation-mark` | `"` | `left-square-bracket` | `[` |
+| `number-sign` | `#` | `backslash`, `reverse-solidus` | `\` |
+| `dollar-sign` | `$` | `right-square-bracket` | `]` |
+| `percent-sign` | `%` | `circumflex`, `circumflex-accent` | `^` |
+| `ampersand` | `&` | `underscore`, `low-line` | `_` |
+| `apostrophe` | `'` | `grave-accent` | `` ` `` |
+| `left-parenthesis` | `(` | `left-brace`, `left-curly-bracket` | `{` |
+| `right-parenthesis` | `)` | `vertical-line` | `\|` |
+| `asterisk` | `*` | `right-brace`, `right-curly-bracket` | `}` |
+| `plus-sign` | `+` | `tilde` | `~` |
+| `comma` | `,` | `zero` … `nine` | `0`–`9` |
+| `hyphen`, `hyphen-minus` | `-` | `colon` | `:` |
+| `period`, `full-stop` | `.` | `semicolon` | `;` |
+| `slash`, `solidus` | `/` | `less-than-sign` | `<` |
+| `equals-sign` | `=` | `greater-than-sign` | `>` |
+
+Control characters are named too, by their ASCII abbreviation and (where one
+exists) a long form: `NUL`, `SOH`, `STX`, `ETX`, `EOT`, `ENQ`, `ACK`,
+`BEL`/`alert`, `BS`/`backspace`, `HT`/`tab`, `LF`/`newline`, `VT`/`vertical-tab`,
+`FF`/`form-feed`, `CR`/`carriage-return`, `SO`, `SI`, `DLE`, `DC1`–`DC4`, `NAK`,
+`SYN`, `ETB`, `CAN`, `EM`, `SUB`, `ESC`, `IS4`/`FS`, `IS3`/`GS`, `IS2`/`RS`,
+`IS1`/`US`, and `DEL`.
+
+---
+
 ## Building and testing
 
 ```sh
