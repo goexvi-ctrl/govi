@@ -589,8 +589,10 @@ func GoviRowStyle(h C.longlong, y C.int) *C.char {
 	return C.CString(string(flags[:last+1]))
 }
 
-// GoviCellToPos maps a screen cell (x, y) to the buffer caret it sits on,
-// writing the 1-based line into *line and the rune index into *col.
+// GoviCellToPos maps a screen cell (x, y) to the buffer caret it sits on in
+// the active pane, writing the 1-based line into *line and the rune index into
+// *col. Coordinates are clamped into the pane, so a drag that leaves it keeps
+// extending from the pane edge.
 //
 //export GoviCellToPos
 func GoviCellToPos(h C.longlong, x, y C.int, line *C.longlong, col *C.int) {
@@ -599,7 +601,7 @@ func GoviCellToPos(h C.longlong, x, y C.int, line *C.longlong, col *C.int) {
 		return
 	}
 	in.eng.WithView(func(v engine.View) {
-		p := grid.Locate(v, in.rows, in.cols, int(x), int(y))
+		p := grid.LocateActive(v, int(x), int(y))
 		*line, *col = C.longlong(p.Line), C.int(p.Col)
 	})
 }
@@ -614,7 +616,7 @@ func GoviWordRange(h C.longlong, x, y C.int, l1 *C.longlong, c1 *C.int, l2 *C.lo
 		return
 	}
 	in.eng.WithView(func(v engine.View) {
-		p := grid.Locate(v, in.rows, in.cols, int(x), int(y))
+		p := grid.LocateActive(v, int(x), int(y))
 		a, b := in.eng.WordRange(p.Line, p.Col)
 		*l1, *c1 = C.longlong(a.Line), C.int(a.Col)
 		*l2, *c2 = C.longlong(b.Line), C.int(b.Col)
@@ -631,7 +633,7 @@ func GoviLineRange(h C.longlong, x, y C.int, l1 *C.longlong, c1 *C.int, l2 *C.lo
 		return
 	}
 	in.eng.WithView(func(v engine.View) {
-		p := grid.Locate(v, in.rows, in.cols, int(x), int(y))
+		p := grid.LocateActive(v, int(x), int(y))
 		a, b := in.eng.LineSelectRange(p.Line)
 		*l1, *c1 = C.longlong(a.Line), C.int(a.Col)
 		*l2, *c2 = C.longlong(b.Line), C.int(b.Col)
@@ -718,7 +720,7 @@ func GoviScreenToBuffer(h C.longlong, x, y C.int, line *C.longlong, col *C.int) 
 	var p engine.Pos
 	var ok bool
 	in.eng.WithView(func(v engine.View) {
-		p, ok = grid.ScreenToBuffer(v, in.rows, in.cols, int(x), int(y))
+		p, ok = grid.ScreenToBufferActive(v, int(x), int(y))
 	})
 	if !ok {
 		return 0
@@ -743,7 +745,7 @@ func GoviSelectionEditRange(h C.longlong, l1 *C.longlong, c1 *C.int, l2 *C.longl
 	var a, b engine.Pos
 	var ok bool
 	in.eng.WithView(func(v engine.View) {
-		a, b, ok = grid.SelectionEditRange(v, in.rows, in.cols, sel)
+		a, b, ok = grid.SelectionEditRangeActive(v, sel)
 	})
 	if !ok {
 		return 0
@@ -760,6 +762,174 @@ func GoviSelectionEditRange(h C.longlong, l1 *C.longlong, c1 *C.int, l2 *C.longl
 func GoviScroll(h C.longlong, delta C.int) {
 	if in := get(h); in != nil {
 		in.eng.ScrollLines(int(delta))
+	}
+}
+
+// Panes. Split screens are addressed by their index in display order
+// (top-to-bottom, then left-to-right); a lone screen is pane 0 covering the
+// whole grid. These back the host's per-pane scroll bars, click-to-focus, and
+// draggable split dividers.
+
+// GoviPaneCount returns the number of displayed panes.
+//
+//export GoviPaneCount
+func GoviPaneCount(h C.longlong) C.int {
+	in := get(h)
+	if in == nil {
+		return 0
+	}
+	return C.int(in.eng.PaneCount())
+}
+
+// GoviPaneGeom writes pane i's placement in grid cells: text-area origin
+// (*roff, *coff) and extent (*rows text rows by *cols columns; the status row
+// sits at *roff + *rows), and whether it is the active pane. Returns 1, or 0
+// when the pane does not exist.
+//
+//export GoviPaneGeom
+func GoviPaneGeom(h C.longlong, i C.int, roff, coff, rows, cols, active *C.int) C.int {
+	in := get(h)
+	if in == nil {
+		return 0
+	}
+	ok := false
+	in.eng.WithView(func(v engine.View) {
+		svs := v.Screens()
+		if int(i) < 0 || int(i) >= len(svs) {
+			return
+		}
+		sv := svs[i]
+		*roff, *coff = C.int(sv.Roff()), C.int(sv.Coff())
+		*rows, *cols = C.int(sv.Rows()), C.int(sv.Cols())
+		*active = boolToC(sv.Active())
+		ok = true
+	})
+	return boolToC(ok)
+}
+
+// GoviPaneScrollInfo writes pane i's scroll state: the first visible buffer
+// line (*top), the buffer's line count (*lines), the pane's text rows
+// (*viewRows), and whether a scroll bar applies (*scrollable; 0 in ex (Q)
+// transcript mode). Returns 1, or 0 when the pane does not exist.
+//
+//export GoviPaneScrollInfo
+func GoviPaneScrollInfo(h C.longlong, i C.int, top, lines *C.longlong, viewRows, scrollable *C.int) C.int {
+	in := get(h)
+	if in == nil {
+		return 0
+	}
+	ok := false
+	in.eng.WithView(func(v engine.View) {
+		svs := v.Screens()
+		if int(i) < 0 || int(i) >= len(svs) {
+			return
+		}
+		sv := svs[i]
+		*top = C.longlong(sv.Viewport().Top)
+		*lines = C.longlong(sv.LineCount())
+		*viewRows = C.int(sv.Rows())
+		*scrollable = boolToC(sv.Mode() != engine.ModeExText)
+		ok = true
+	})
+	return boolToC(ok)
+}
+
+// GoviPaneScrollBy scrolls pane i by delta lines without moving the cursor
+// (the wheel scrolls the pane under the pointer).
+//
+//export GoviPaneScrollBy
+func GoviPaneScrollBy(h C.longlong, i, delta C.int) {
+	if in := get(h); in != nil {
+		in.eng.ScrollLinesPane(int(i), int(delta))
+	}
+}
+
+// GoviPaneSetTop scrolls pane i so line top is first visible, clamped into the
+// buffer (scroller thumb drags position absolutely).
+//
+//export GoviPaneSetTop
+func GoviPaneSetTop(h C.longlong, i C.int, top C.longlong) {
+	if in := get(h); in != nil {
+		in.eng.SetPaneTop(int(i), int64(top))
+	}
+}
+
+// GoviPaneAt hit-tests grid cell (x, y) against the pane layout, returning the
+// pane index and writing the region into *region: 0 none (ex transcript or
+// outside every pane), 1 text area, 2 status row, 3 vertical divider column.
+//
+//export GoviPaneAt
+func GoviPaneAt(h C.longlong, x, y C.int, region *C.int) C.int {
+	in := get(h)
+	if in == nil {
+		*region = C.int(grid.PaneNone)
+		return 0
+	}
+	idx := 0
+	in.eng.WithView(func(v engine.View) {
+		i, r := grid.PaneAt(v, in.cols, int(x), int(y))
+		idx = i
+		*region = C.int(r)
+	})
+	return C.int(idx)
+}
+
+// GoviPaneBelow returns the index of the pane a drag of pane i's status-row
+// divider resizes against (the full-border pane directly below), or -1 when
+// that status row is not a draggable divider.
+//
+//export GoviPaneBelow
+func GoviPaneBelow(h C.longlong, i C.int) C.int {
+	in := get(h)
+	if in == nil {
+		return -1
+	}
+	idx := -1
+	in.eng.WithView(func(v engine.View) { idx = grid.PaneBelow(v, int(i)) })
+	return C.int(idx)
+}
+
+// GoviPaneRight returns the index of the pane a drag of pane i's divider
+// column resizes against (the full-border pane directly to its right), or -1.
+//
+//export GoviPaneRight
+func GoviPaneRight(h C.longlong, i C.int) C.int {
+	in := get(h)
+	if in == nil {
+		return -1
+	}
+	idx := -1
+	in.eng.WithView(func(v engine.View) { idx = grid.PaneRight(v, int(i)) })
+	return C.int(idx)
+}
+
+// GoviPaneFocus makes pane i the active screen (click-to-focus).
+//
+//export GoviPaneFocus
+func GoviPaneFocus(h C.longlong, i C.int) {
+	if in := get(h); in != nil {
+		in.eng.FocusPane(int(i))
+	}
+}
+
+// GoviDragDividerRows moves the divider below pane i by delta rows (positive =
+// down, growing pane i); clamped at the panes' minimum heights.
+//
+//export GoviDragDividerRows
+func GoviDragDividerRows(h C.longlong, i, delta C.int) {
+	if in := get(h); in != nil {
+		in.eng.DragDividerRows(int(i), int(delta))
+	}
+}
+
+// GoviDragDividerCols moves the divider column right of pane i by delta
+// columns (positive = right, growing pane i); clamped at the panes' minimum
+// widths.
+//
+//export GoviDragDividerCols
+func GoviDragDividerCols(h C.longlong, i, delta C.int) {
+	if in := get(h); in != nil {
+		in.eng.DragDividerCols(int(i), int(delta))
 	}
 }
 
@@ -908,7 +1078,7 @@ func GoviPosToCell(h C.longlong, line C.longlong, col C.int, x *C.int, y *C.int,
 		return
 	}
 	in.eng.WithView(func(v engine.View) {
-		cx, cy, ok := grid.CellOf(v, in.rows, in.cols, engine.Pos{Line: int64(line), Col: int(col)})
+		cx, cy, ok := grid.CellOfActive(v, engine.Pos{Line: int64(line), Col: int(col)})
 		*x, *y = C.int(cx), C.int(cy)
 		*visible = boolToC(ok)
 	})

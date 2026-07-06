@@ -91,6 +91,33 @@ final class GoviView: NSView, NSTextInputClient {
     private enum SelGranularity { case character, word, line }
     private var selGranularity: SelGranularity = .character
 
+    // Panes mirror the engine's split-screen layout (GoviPaneGeom /
+    // GoviPaneScrollInfo), refreshed after every recompose. Each pane gets its
+    // own overlay scroller; dividers between panes are draggable.
+    private struct Pane {
+        var roff = 0, coff = 0, rows = 0, cols = 0
+        var active = false
+        var top: Int64 = 1
+        var lines: Int64 = 0
+        var viewRows = 0
+        var scrollable = false
+    }
+    private var panes: [Pane] = []
+    private var scrollers: [NSScroller] = []
+
+    // Overlay-style scrollers flash in when the content scrolls and fade back
+    // out (like NSScrollView's); with the legacy preferred style they stay
+    // visible. scrollersVisible is the flashed-in state.
+    private var scrollersVisible = false
+    private var scrollerFadeTimer: Timer?
+
+    // An active divider drag: which pane's divider (below it for .rows, right
+    // of it for .cols), the cell the drag started on, and the pane's size at
+    // that moment. Each mouseDragged resizes toward start size + travel, so the
+    // divider tracks the pointer and sticks at the engine's minimums.
+    private enum DividerKind { case rows, cols }
+    private var dividerDrag: (kind: DividerKind, pane: Int, startCell: Int, startSize: Int)?
+
     // Spell checking (continuous): red squiggles under misspelled words on the
     // visible lines. Results are cached by line text so unchanged lines are not
     // re-checked. Ranges are rune (Unicode scalar) indices, matching engine cols.
@@ -163,6 +190,7 @@ final class GoviView: NSView, NSTextInputClient {
         resizeWindowToCells() // keep the same rows x cols; grow/shrink the window to fit
         updateGeometry()      // refits only if the window could not take the target size
         updateSpelling()
+        syncPanes()           // scroller frames follow the new cell metrics
         updateTitle()
         needsDisplay = true
     }
@@ -293,6 +321,132 @@ final class GoviView: NSView, NSTextInputClient {
         GoviCompose(handle, Int32(rows), Int32(cols))
         syncColorsFromEngine()
         updateSpelling()
+        syncPanes()
+    }
+
+    // MARK: - Panes and scroll bars
+
+    // syncPanes refreshes the pane layout and scroll state from the engine,
+    // updates the per-pane scrollers, and flashes them when content scrolled.
+    private func syncPanes() {
+        var new: [Pane] = []
+        let n = Int(GoviPaneCount(handle))
+        for i in 0..<n {
+            var roff: Int32 = 0, coff: Int32 = 0, prows: Int32 = 0, pcols: Int32 = 0
+            var active: Int32 = 0
+            guard GoviPaneGeom(handle, Int32(i), &roff, &coff, &prows, &pcols, &active) != 0 else { continue }
+            var top: Int64 = 0, lines: Int64 = 0
+            var viewRows: Int32 = 0, scrollable: Int32 = 0
+            guard GoviPaneScrollInfo(handle, Int32(i), &top, &lines, &viewRows, &scrollable) != 0 else { continue }
+            new.append(Pane(roff: Int(roff), coff: Int(coff), rows: Int(prows), cols: Int(pcols),
+                            active: active != 0, top: top, lines: lines,
+                            viewRows: Int(viewRows), scrollable: scrollable != 0))
+        }
+        let scrolled = new.count != panes.count || new.map(\.top) != panes.map(\.top)
+        panes = new
+        if scrolled {
+            flashScrollers() // calls syncScrollers
+        } else {
+            syncScrollers()
+        }
+        window?.invalidateCursorRects(for: self)
+    }
+
+    // syncScrollers keeps one vertical NSScroller per pane, framed over the
+    // right edge of the pane's text area, with the knob reflecting the pane's
+    // viewport. Scrollers are overlay-style over the character grid, so the
+    // engine's cell layout never changes.
+    private func syncScrollers() {
+        while scrollers.count < panes.count {
+            let s = NSScroller(frame: NSRect(x: 0, y: 0, width: 10, height: 100))
+            s.isEnabled = true
+            s.target = self
+            s.action = #selector(scrollerChanged(_:))
+            s.controlSize = .regular
+            s.scrollerStyle = .overlay
+            s.tag = scrollers.count
+            addSubview(s)
+            scrollers.append(s)
+        }
+        while scrollers.count > panes.count {
+            scrollers.removeLast().removeFromSuperview()
+        }
+        let overlay = NSScroller.preferredScrollerStyle == .overlay
+        let hideAll = GoviExActive(handle) != 0 || GoviOverlayActive(handle) != 0
+        let w = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .overlay)
+        for (i, pane) in panes.enumerated() {
+            let s = scrollers[i]
+            s.frame = NSRect(x: padding + CGFloat(pane.coff + pane.cols) * cellW - w,
+                             y: padding + CGFloat(pane.roff) * cellH,
+                             width: w, height: CGFloat(pane.rows) * cellH)
+            let needed = pane.scrollable && !hideAll && pane.lines > Int64(pane.viewRows)
+            s.isHidden = !needed || (overlay && !scrollersVisible)
+            if !s.isHidden { s.alphaValue = 1 }
+            s.knobStyle = darkBackground() ? .light : .dark
+            if pane.lines > 0 {
+                s.knobProportion = CGFloat(min(1.0, Double(pane.viewRows) / Double(pane.lines)))
+                let denom = max(Int64(1), pane.lines - Int64(pane.viewRows))
+                s.doubleValue = min(1.0, max(0.0, Double(pane.top - 1) / Double(denom)))
+            }
+        }
+    }
+
+    private func darkBackground() -> Bool {
+        let rgb = bgColor.usingColorSpace(.deviceRGB) ?? bgColor
+        var brightness: CGFloat = 1
+        rgb.getHue(nil, saturation: nil, brightness: &brightness, alpha: nil)
+        return brightness < 0.5
+    }
+
+    // flashScrollers shows the overlay scrollers and re-arms their fade-out.
+    // With the legacy preferred style they are simply kept visible.
+    private func flashScrollers() {
+        scrollersVisible = true
+        syncScrollers()
+        scrollerFadeTimer?.invalidate()
+        scrollerFadeTimer = nil
+        guard NSScroller.preferredScrollerStyle == .overlay else { return }
+        scrollerFadeTimer = Timer.scheduledTimer(withTimeInterval: 1.2, repeats: false) { [weak self] _ in
+            self?.fadeOutScrollers()
+        }
+    }
+
+    private func fadeOutScrollers() {
+        scrollersVisible = false
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.25
+            for s in scrollers { s.animator().alphaValue = 0 }
+        }, completionHandler: { [weak self] in
+            guard let self = self, !self.scrollersVisible else { return }
+            for s in self.scrollers { s.isHidden = true }
+        })
+    }
+
+    // scrollerChanged is the scrollers' action: the knob (and clicks in the
+    // slot) position the pane's viewport absolutely; track/arrow parts page or
+    // step it. The cursor stays put throughout, like any macOS scroll.
+    @objc private func scrollerChanged(_ sender: NSScroller) {
+        let i = sender.tag
+        guard i >= 0 && i < panes.count else { return }
+        let pane = panes[i]
+        let page = Int32(max(1, pane.viewRows - 1))
+        switch sender.hitPart {
+        case .knob, .knobSlot:
+            let denom = max(Int64(1), pane.lines - Int64(pane.viewRows))
+            let top = Int64((sender.doubleValue * Double(denom)).rounded()) + 1
+            engineInput { GoviPaneSetTop(self.handle, Int32(i), top) }
+        case .decrementPage:
+            engineInput { GoviPaneScrollBy(self.handle, Int32(i), -page) }
+        case .incrementPage:
+            engineInput { GoviPaneScrollBy(self.handle, Int32(i), page) }
+        case .decrementLine:
+            engineInput { GoviPaneScrollBy(self.handle, Int32(i), -1) }
+        case .incrementLine:
+            engineInput { GoviPaneScrollBy(self.handle, Int32(i), 1) }
+        default:
+            break
+        }
+        flashScrollers()
     }
 
     // syncWorkingDirectory sets the process cwd to this tab's directory so
@@ -652,6 +806,27 @@ final class GoviView: NSView, NSTextInputClient {
         }
 
         let c = cellAt(event)
+
+        // Split-pane affordances: grabbing a divider starts a resize drag, and
+        // a click in an inactive pane's text focuses that pane first (so the
+        // caret/word/line lands in the pane that was clicked). In terminal mode
+        // while inserting the mouse is copy-only and must not switch panes,
+        // matching the caret exception below.
+        var region: Int32 = 0
+        let pane = Int(GoviPaneAt(handle, c.x, c.y, &region))
+        if region == 2, GoviPaneBelow(handle, Int32(pane)) >= 0, pane < panes.count {
+            dividerDrag = (.rows, pane, Int(c.y), panes[pane].rows)
+            return
+        }
+        if region == 3, GoviPaneRight(handle, Int32(pane)) >= 0, pane < panes.count {
+            dividerDrag = (.cols, pane, Int(c.x), panes[pane].cols)
+            return
+        }
+        if region == 1, pane < panes.count, !panes[pane].active,
+           !(selectionMode() == .terminal && GoviInsertActive(handle) != 0) {
+            GoviPaneFocus(handle, Int32(pane))
+        }
+
         if event.clickCount == 2 || event.clickCount == 3 {
             dragging = true
             if event.clickCount == 2 {
@@ -697,12 +872,44 @@ final class GoviView: NSView, NSTextInputClient {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if let drag = dividerDrag {
+            dragDivider(drag, to: event)
+            return
+        }
         guard dragging else { return }
         extendSelection(to: event)
     }
 
     override func mouseUp(with event: NSEvent) {
         dragging = false
+        dividerDrag = nil
+    }
+
+    // dragDivider resizes the divider's pane toward "size at mouse-down plus
+    // pointer travel". Working from the pane's current size each event keeps
+    // the divider stuck at the engine's minimum until the pointer comes back,
+    // like a native split view.
+    private func dragDivider(_ drag: (kind: DividerKind, pane: Int, startCell: Int, startSize: Int),
+                             to event: NSEvent) {
+        guard drag.pane < panes.count else { return }
+        let p = convert(event.locationInWindow, from: nil)
+        let desired: Int
+        let current: Int
+        switch drag.kind {
+        case .rows:
+            desired = drag.startSize + Int(floor((p.y - padding) / cellH)) - drag.startCell
+            current = panes[drag.pane].rows
+        case .cols:
+            desired = drag.startSize + Int(floor((p.x - padding) / cellW)) - drag.startCell
+            current = panes[drag.pane].cols
+        }
+        guard desired != current else { return }
+        let delta = Int32(desired - current)
+        let i = Int32(drag.pane)
+        switch drag.kind {
+        case .rows: engineInput { GoviDragDividerRows(self.handle, i, delta) }
+        case .cols: engineInput { GoviDragDividerCols(self.handle, i, delta) }
+        }
     }
 
     // Wheel / trackpad scrolling moves the viewport like any windowed app; the
@@ -719,9 +926,39 @@ final class GoviView: NSView, NSTextInputClient {
         let lines = Int(scrollAccum.rounded(.towardZero))
         guard lines != 0 else { return }
         scrollAccum -= CGFloat(lines)
-        // Positive scrollingDeltaY reveals earlier lines (top decreases).
-        GoviScroll(handle, Int32(-lines))
+        // Positive scrollingDeltaY reveals earlier lines (top decreases). The
+        // pane under the pointer scrolls, active or not, like any macOS view;
+        // in ex (Q) mode there are no panes and the active screen takes it.
+        if GoviExActive(handle) != 0 {
+            GoviScroll(handle, Int32(-lines))
+        } else {
+            var region: Int32 = 0
+            let pane = GoviPaneAt(handle, cellAt(event).x, cellAt(event).y, &region)
+            GoviPaneScrollBy(handle, pane, Int32(-lines))
+        }
         step()
+    }
+
+    // Hovering a draggable divider shows the matching resize cursor: the
+    // status row between stacked panes resizes up/down, the divider column
+    // between side-by-side panes resizes left/right.
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard panes.count > 1, GoviExActive(handle) == 0 else { return }
+        for (i, pane) in panes.enumerated() {
+            if GoviPaneBelow(handle, Int32(i)) >= 0 {
+                addCursorRect(NSRect(x: padding + CGFloat(pane.coff) * cellW,
+                                     y: padding + CGFloat(pane.roff + pane.rows) * cellH,
+                                     width: CGFloat(pane.cols) * cellW, height: cellH),
+                              cursor: .resizeUpDown)
+            }
+            if GoviPaneRight(handle, Int32(i)) >= 0 {
+                addCursorRect(NSRect(x: padding + CGFloat(pane.coff + pane.cols) * cellW,
+                                     y: padding + CGFloat(pane.roff) * cellH,
+                                     width: cellW, height: CGFloat(pane.rows + 1) * cellH),
+                              cursor: .resizeLeftRight)
+            }
+        }
     }
 
     // The tab bar's "+" button is shown by AppKit when this is found in the key
@@ -1314,6 +1551,8 @@ final class GoviView: NSView, NSTextInputClient {
             drawRow(y)
         }
 
+        drawPaneChrome()
+
         if !misspellings.isEmpty {
             drawSpelling()
         }
@@ -1360,6 +1599,38 @@ final class GoviView: NSView, NSTextInputClient {
                 let outline = NSBezierPath(rect: rect.insetBy(dx: 0.5, dy: 0.5))
                 outline.lineWidth = 1
                 outline.stroke()
+            }
+        }
+    }
+
+    // drawPaneChrome frames split panes as subwindows: the '|' character
+    // column between vertical splits is repainted as a native hairline
+    // divider, each pane (text plus its status line) gets a 1px border, and
+    // inactive panes are washed toward the background to read as unfocused.
+    private func drawPaneChrome() {
+        guard panes.count > 1, GoviExActive(handle) == 0 else { return }
+        let sep = NSColor.separatorColor
+        for pane in panes {
+            let frame = NSRect(x: padding + CGFloat(pane.coff) * cellW,
+                               y: padding + CGFloat(pane.roff) * cellH,
+                               width: CGFloat(pane.cols) * cellW,
+                               height: CGFloat(pane.rows + 1) * cellH)
+            if pane.coff + pane.cols < cols {
+                // The sacrificed divider column: erase the composed '|' glyphs
+                // and draw a centered hairline instead.
+                let strip = NSRect(x: frame.maxX, y: frame.minY, width: cellW, height: frame.height)
+                bgColor.setFill()
+                strip.fill()
+                sep.setFill()
+                NSRect(x: strip.midX - 0.5, y: strip.minY, width: 1, height: strip.height).fill()
+            }
+            sep.setStroke()
+            let border = NSBezierPath(rect: frame.insetBy(dx: 0.5, dy: 0.5))
+            border.lineWidth = 1
+            border.stroke()
+            if !pane.active {
+                bgColor.withAlphaComponent(0.35).setFill()
+                frame.fill()
             }
         }
     }
