@@ -32,6 +32,19 @@ func localeCodeset() string {
 	return "utf-8"
 }
 
+// defaultRecdir is the default recovery directory (the recdir option). Normally
+// /var/tmp/vi.recover, but conformance harnesses set GOTERM_ORACLE_PRESERVE to a
+// throwaway directory they clean up, so test runs of govi (and the nvi oracle,
+// which honors the same variable in common/options.c) don't scatter recover.*
+// files into the shared system directory. An explicit `:set recdir=...` still
+// overrides this default, matching nvi.
+func defaultRecdir() string {
+	if d := os.Getenv("GOTERM_ORACLE_PRESERVE"); d != "" {
+		return d
+	}
+	return "/var/tmp/vi.recover"
+}
+
 // Options are stored generically by name so the full nvi option set is easy to
 // carry. Only some options drive implemented behavior; the rest are recognized,
 // settable (and listed by :set all), and inert until wired up. This mirrors
@@ -102,7 +115,7 @@ var optDefs = []optDef{
 	{name: "print", typ: optStr},
 	{name: "prompt", typ: optBool, dB: true},
 	{name: "readonly", abbr: "ro", typ: optBool},
-	{name: "recdir", typ: optStr, dS: "/var/tmp/vi.recover"},
+	{name: "recdir", typ: optStr, dS: defaultRecdir()},
 	{name: "refresh", typ: optStr, dS: "20ms"}, // govi/tcell: min interval between screen updates during fast input; 0 = no limit
 	{name: "redraw", abbr: "re", typ: optBool},
 	{name: "remap", typ: optBool, dB: true},
