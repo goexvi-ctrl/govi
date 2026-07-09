@@ -1169,10 +1169,13 @@ TestMatch `[[.tab.]]`, `[[.comma.]]x`, `[[.newline.]]`, `[[.space.]-[.tilde.]]`.
   (vim); nvi has NEITHER -- `"0p` / `"-p` are no-ops in nvi. govi correctly does
   not shift the numbered ring "1.."9 on a sub-line delete. These are govi
   supersets that never change behavior on registers nvi accepts; accepted.
-- `\|` alternation in search/regex: govi supports it (vim/GNU extension); nvi uses
-  POSIX BRE which has no `\|`, so `/cat\|dog` matches nothing in nvi. govi superset
-  (its regex engine is otherwise a match: `\<`/`\>`, `[...]`, `[^...]`, `^`/`$`,
-  `*`, `.`, `\(...\)`, `\{n\}`, nomagic, and ignorecase all agree). Accepted.
+- `\|` in user search/substitute: both govi and nvi treat it as a literal '|'
+  (POSIX BRE has no alternation; Spencer matches an escaped ordinary char).
+  govi's `Options.Alt` exists only for *internal* cscope patterns (nvi compiles
+  those with REG_EXTENDED for the same blank-run expression). User paths
+  (search.go) never set Alt. The old "govi supports \| as a vim/GNU superset"
+  note was wrong and is withdrawn. ERE `|` remains gated on a future
+  `:set extended` implementation and is not enabled today.
 - count + CHARWISE put (e.g. `ye3p`, `yw3p`): govi replicates the text cleanly
   (matches vim: "abc" x3 -> "abcabcabc", giving "aabcabcabcbc.def"); nvi produces
   a garbled interleaving ("aaabcabcbcbc.def"). nvi appears buggy here; govi is

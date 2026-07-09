@@ -441,16 +441,6 @@ func buildReplacement(repl, in []rune, m regex.Match, magic bool) []rune {
 		}
 		out = append(out, r)
 	}
-	emitGroup := func(g int) {
-		if g < len(m.Groups) {
-			s, en := m.Groups[g][0], m.Groups[g][1]
-			if s >= 0 && en >= 0 {
-				for _, r := range in[s:en] {
-					emit(r)
-				}
-			}
-		}
-	}
 	// emitRepl emits a character coming from the replacement string itself:
 	// a literal CR or NL breaks the line (untouched by case conversion),
 	// anything else goes through emit. Group text bypasses this (nvi OUTCH
@@ -461,6 +451,23 @@ func buildReplacement(repl, in []rune, m regex.Match, magic bool) []rune {
 			return
 		}
 		emit(r)
+	}
+	emitGroup := func(g int) {
+		if g < len(m.Groups) {
+			s, en := m.Groups[g][0], m.Groups[g][1]
+			if s >= 0 && en >= 0 {
+				for _, r := range in[s:en] {
+					emit(r)
+				}
+				return
+			}
+		}
+		// nvi regsub: a \N whose group is out of range or did not participate
+		// inserts the digit character N (not the empty string). \0 is the
+		// whole match and is always set on a successful match.
+		if g >= 1 && g <= 9 {
+			emitRepl(rune('0' + g))
+		}
 	}
 
 	for i := 0; i < len(repl); i++ {

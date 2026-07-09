@@ -104,6 +104,23 @@ var regexCases = []struct {
 	{"leading-star-after-group", "a)b\n", []string{`%s/)/]/`}},
 	{"whole-line", "anything here\n", []string{`%s/.*/REPLACED/`}},
 	{"multi-substitute", "aaa\nbbb\nccc\n", []string{`%s/a/1/g`, `%s/b/2/g`, `%s/c/3/g`}},
+
+	// ERE (:set extended) -- nvi REG_EXTENDED / Spencer p_ere via the editor surface.
+	{"ere-alt", "xcdy\nacbd\n", []string{`set extended`, `%s/ab|cd/X/g`}},
+	{"ere-plus", "aaab\nb\naab\n", []string{`set extended`, `%s/a+b/X/g`}},
+	{"ere-quest", "ac\nabc\nabbc\n", []string{`set extended`, `%s/ab?c/X/g`}},
+	{"ere-group-alt", "abd\nacd\nad\n", []string{`set extended`, `%s/a(b|c)d/X/g`}},
+	{"ere-group-plus", "ababc\n", []string{`set extended`, `%s/(ab)+c/X/`}},
+	{"ere-brace", "aaaa\n", []string{`set extended`, `%s/a{2,3}/X/g`}},
+	{"ere-brace-exact", "aaaa\n", []string{`set extended`, `%s/a{2}/X/g`}},
+	{"ere-leftmost-longest", "xabcy\n", []string{`set extended`, `%s/ab|abc/X/`}},
+	// Spencer ERE has no backrefs: \1 is literal '1' (matches a1, not aa).
+	{"ere-no-backref", "aa\na1\n", []string{`set extended`, `%s/(a)\1/X/g`}},
+	{"ere-bre-plus-literal", "xa+y\n", []string{`%s/a+/X/`}},    // BRE: + literal
+	{"ere-off-paren-literal", "(ab)\n", []string{`%s/(ab)/X/`}}, // BRE: parens literal
+	{"ere-word-boundary", "cat scatter cat\n", []string{`set extended`, `%s/\<cat\>/X/g`}},
+	{"ere-nomagic-dot", "axc\na.c\n", []string{`set extended`, `set nomagic`, `%s/a.c/X/g`}},
+	{"ere-drop-caret", "abc\n", []string{`set extended`, `%s/.{0}^/X/g`}},
 }
 
 func TestRegexConformance(t *testing.T) {
@@ -111,19 +128,32 @@ func TestRegexConformance(t *testing.T) {
 	if oracle == "" {
 		t.Skip("no nvi oracle found")
 	}
+	govi, err := GoviBinary()
+	if err != nil {
+		t.Fatalf("GoviBinary: %v", err)
+	}
+	// Binary-to-binary so RE errors / "No match found" (non-zero exit) still
+	// compare buffer content, not just successful compiles.
 	for _, tc := range regexCases {
 		t.Run(tc.name, func(t *testing.T) {
 			sess := ExSession{Input: tc.input, Commands: tc.cmds}
-			want, err := RunOracleEx(oracle, sess)
-			if err != nil {
-				t.Skipf("oracle error (pattern may be rejected by nvi): %v", err)
+			want := RunBatchBinaryFull(oracle, sess, 0)
+			got := RunBatchBinaryFull(govi, sess, 0)
+			if isInfraErr(want.ExitErr) {
+				t.Fatalf("oracle infra: %v", want.ExitErr)
 			}
-			got, err := RunGoviEx(sess)
-			if err != nil {
-				t.Fatalf("govi error: %v", err)
+			if isInfraErr(got.ExitErr) {
+				t.Fatalf("govi infra: %v", got.ExitErr)
 			}
-			if got != want {
-				t.Errorf("cmds %v on %q\n govi %q\n nvi  %q", tc.cmds, tc.input, got, want)
+			wantOK := want.ExitErr == nil
+			gotOK := got.ExitErr == nil
+			if wantOK != gotOK {
+				t.Errorf("exit nvi_ok=%v govi_ok=%v nvi_err=%v govi_err=%v",
+					wantOK, gotOK, want.ExitErr, got.ExitErr)
+			}
+			if normalizeBuf(got.Content) != normalizeBuf(want.Content) {
+				t.Errorf("cmds %v on %q\n govi %q\n nvi  %q",
+					tc.cmds, tc.input, normalizeBuf(got.Content), normalizeBuf(want.Content))
 			}
 		})
 	}

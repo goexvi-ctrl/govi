@@ -2,12 +2,14 @@ package conformance
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // The engine-level runners (govi.go) pin behavior; this file pins the binary:
@@ -97,4 +99,74 @@ func stripBatchNoise(out string) string {
 		kept = append(kept, line)
 	}
 	return strings.Join(kept, "\n")
+}
+
+// BatchOutcome is the observable result of one ex-batch run: the on-disk
+// buffer after the script, any script stdout, and whether the process exited
+// zero / timed out. Content is returned even on a non-zero exit so callers can
+// compare RE-error paths (nvi leaves the file unchanged and aborts the script).
+type BatchOutcome struct {
+	Content  string
+	Stdout   string
+	Stderr   string
+	ExitErr  error // nil on exit 0
+	TimedOut bool
+}
+
+// RunBatchBinaryFull is RunBatchBinary plus timeout and "read file even on
+// failure". timeout <= 0 means no deadline. The binary is always invoked as
+// `BIN -e -s FILE` with the script on stdin -- the same public surface a user
+// (and nvi's re_conv / option layer) sees; it does not link Spencer's regcomp.
+func RunBatchBinaryFull(bin string, s ExSession, timeout time.Duration) BatchOutcome {
+	var out BatchOutcome
+	dir, err := os.MkdirTemp("", "govi-bin-conf-*")
+	if err != nil {
+		out.ExitErr = err
+		return out
+	}
+	defer os.RemoveAll(dir)
+
+	file := filepath.Join(dir, "buf.txt")
+	if err := os.WriteFile(file, []byte(s.Input), 0o644); err != nil {
+		out.ExitErr = err
+		return out
+	}
+
+	var script strings.Builder
+	for _, c := range s.Commands {
+		script.WriteString(c)
+		script.WriteByte('\n')
+	}
+	script.WriteString("wq\n")
+
+	ctx := context.Background()
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	stdout := new(bytes.Buffer)
+	stderr := new(bytes.Buffer)
+	cmd := exec.CommandContext(ctx, bin, "-e", "-s", file)
+	cmd.Dir = dir
+	cmd.Stdin = strings.NewReader(script.String())
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	cmd.Env = append(os.Environ(), "NEXINIT=", "EXINIT=", "HOME="+dir, "TMPDIR="+dir)
+	runErr := cmd.Run()
+	out.Stdout = stripBatchNoise(stdout.String())
+	out.Stderr = stderr.String()
+	if runErr != nil {
+		out.ExitErr = runErr
+		if ctx.Err() == context.DeadlineExceeded {
+			out.TimedOut = true
+		}
+	}
+	// Best-effort read even after failure or kill: RE errors leave the buffer
+	// as-written; a timeout may leave a partial write or the original.
+	if b, err := os.ReadFile(file); err == nil {
+		out.Content = string(b)
+	}
+	return out
 }

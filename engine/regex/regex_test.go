@@ -30,6 +30,12 @@ func TestCompileErrors(t *testing.T) {
 		{`a\{256\}`, "invalid repetition count(s)"},
 		{`a\{2x\}`, "invalid repetition count(s)"},
 		{`a\{2`, "braces not balanced"},
+		// Spencer repeat REP(0,0) drops the operand; a pattern left empty is
+		// REG_EMPTY. \{0,\} / \{0,n>0\} stay valid.
+		{`a\{0\}`, "empty (sub)expression"},
+		{`a\{0,0\}`, "empty (sub)expression"},
+		{`\(a\{0\}\)`, "empty (sub)expression"},
+		{`a\{0\}b\{0\}`, "empty (sub)expression"},
 		{`[z-a]`, "invalid character range"},
 		{`[abc`, "brackets ([ ]) not balanced"},
 		{`[[:bogus:]]`, "invalid character class"},
@@ -55,10 +61,15 @@ func TestCompileErrors(t *testing.T) {
 		t.Errorf(`nomagic \*x: got %+v ok=%v, want 1-3`, m, ok)
 	}
 	// Still-valid forms.
-	for _, ok := range []string{`*a`, `^*a`, `a\{2,\}`, `a\{0,255\}`, `x\(\)y`, `[]a]`, `[a-]`} {
+	for _, ok := range []string{`*a`, `^*a`, `a\{2,\}`, `a\{0,255\}`, `a\{0,1\}`, `a\{0,\}`, `x\(\)y`, `[]a]`, `[a-]`} {
 		if _, err := Compile(ok, Options{Magic: true}); err != nil {
 			t.Errorf("compile %q: unexpected error %v", ok, err)
 		}
+	}
+	// \{0\} drops the atom: a\{0\}b is just b (Spencer DROP).
+	reDrop := mustCompileOpts(t, `a\{0\}b`, Options{Magic: true})
+	if m, ok := reDrop.MatchAt([]rune("abc"), 0); !ok || m.Start != 1 || m.End != 2 {
+		t.Errorf(`a\{0\}b on "abc": got %+v ok=%v, want 1-2`, m, ok)
 	}
 }
 
@@ -149,6 +160,116 @@ func TestIgnoreCase(t *testing.T) {
 	re := mustCompile(t, "abc", true)
 	if _, ok := re.MatchAt([]rune("xABCy"), 0); !ok {
 		t.Fatal("ignorecase match failed")
+	}
+}
+
+// TestEREMatch pins POSIX ERE syntax (nvi :set extended / REG_EXTENDED) against
+// Spencer's p_ere rules: unescaped ( ) | + ? {m,n}, no backreferences (\1 is
+// literal '1'), empty branches REG_EMPTY, {0} drops like BRE \{0\}.
+func TestEREMatch(t *testing.T) {
+	ere := Options{Magic: true, Extended: true}
+	cases := []struct {
+		pat, in    string
+		start, end int
+	}{
+		{"ab|cd", "xcdy", 1, 3},
+		{"ab|cd", "acbd", -1, -1},
+		{"a+b", "aaab", 0, 4},
+		{"a+b", "b", -1, -1},
+		{"ab?c", "ac", 0, 2},
+		{"ab?c", "abc", 0, 3},
+		{"(ab)+c", "ababc", 0, 5},
+		{"a(b|c)d", "acd", 0, 3},
+		{"ab|abc", "xabcy", 1, 4}, // leftmost-longest
+		{"a{2,3}", "aaaa", 0, 3},
+		{"a{2}", "aaaa", 0, 2},
+		{"(ab)", "xaby", 1, 3},
+		{`foo\|bar`, "a foo|bar b", 2, 9}, // \| still literal |
+		{`\<word\>`, "a word here", 2, 6}, // vi-layer word boundary
+		{`(a)\1`, "a1", 0, 2},             // ERE: \1 is literal '1'
+		{`(a)\1`, "aa", -1, -1},
+		{"()", "x", 0, 0},
+		{"a+", "xa+y", 1, 2}, // one-or-more a
+	}
+	for _, tc := range cases {
+		re := mustCompileOpts(t, tc.pat, ere)
+		m, ok := re.MatchAt([]rune(tc.in), 0)
+		if tc.start < 0 {
+			if ok {
+				t.Errorf("ERE %q on %q: expected no match, got %+v", tc.pat, tc.in, m)
+			}
+			continue
+		}
+		if !ok {
+			t.Errorf("ERE %q on %q: expected match, got none", tc.pat, tc.in)
+			continue
+		}
+		if m.Start != tc.start || m.End != tc.end {
+			t.Errorf("ERE %q on %q: got [%d,%d), want [%d,%d)", tc.pat, tc.in, m.Start, m.End, tc.start, tc.end)
+		}
+	}
+}
+
+func TestERECompileErrors(t *testing.T) {
+	ere := Options{Magic: true, Extended: true}
+	cases := []struct{ pat, want string }{
+		{"*", "repetition-operator operand invalid"},
+		{"+", "repetition-operator operand invalid"},
+		{"?", "repetition-operator operand invalid"},
+		{"a|", "empty (sub)expression"},
+		{"|a", "empty (sub)expression"},
+		{"a{0}", "empty (sub)expression"},
+		{"a{0,0}", "empty (sub)expression"},
+		{"(a{0})", "empty (sub)expression"},
+		{"a)", "parentheses not balanced"},
+		{"(a", "parentheses not balanced"},
+		{"a{3,1}", "invalid repetition count(s)"},
+		{"a{2", "braces not balanced"},
+	}
+	for _, tc := range cases {
+		_, err := Compile(tc.pat, ere)
+		if err == nil {
+			t.Errorf("ERE compile %q: no error, want %q", tc.pat, tc.want)
+			continue
+		}
+		if err.Error() != tc.want {
+			t.Errorf("ERE compile %q: error %q, want %q", tc.pat, err.Error(), tc.want)
+		}
+	}
+	// {0,} and {0,1} stay valid (not REP(0,0)).
+	for _, ok := range []string{"a{0,}", "a{0,1}", "a{0,255}", "a+", "a?", "a|b", "(a|b)+"} {
+		if _, err := Compile(ok, ere); err != nil {
+			t.Errorf("ERE compile %q: unexpected error %v", ok, err)
+		}
+	}
+	// Drop: a{0}b is just b.
+	re := mustCompileOpts(t, "a{0}b", ere)
+	if m, ok := re.MatchAt([]rune("abc"), 0); !ok || m.Start != 1 || m.End != 2 {
+		t.Errorf("ERE a{0}b on abc: got %+v ok=%v, want 1-2", m, ok)
+	}
+}
+
+// TestERENomagic checks nvi re_conv's magic flip still applies under extended:
+// bare . * [ are literal; \. \* \[ regain special meaning.
+func TestERENomagic(t *testing.T) {
+	o := Options{Magic: false, Extended: true}
+	// bare a.c is three literals
+	re := mustCompileOpts(t, "a.c", o)
+	if m, ok := re.MatchAt([]rune("axc"), 0); ok {
+		t.Fatalf("nomagic ERE a.c should not match axc, got %+v", m)
+	}
+	if m, ok := re.MatchAt([]rune("a.c"), 0); !ok || m.Start != 0 || m.End != 3 {
+		t.Fatalf("nomagic ERE a.c on a.c: got %+v ok=%v", m, ok)
+	}
+	// \. is any
+	re = mustCompileOpts(t, `a\.c`, o)
+	if m, ok := re.MatchAt([]rune("axc"), 0); !ok || m.Start != 0 || m.End != 3 {
+		t.Fatalf(`nomagic ERE a\.c on axc: got %+v ok=%v`, m, ok)
+	}
+	// ERE | still special under nomagic
+	re = mustCompileOpts(t, "ab|cd", o)
+	if m, ok := re.MatchAt([]rune("xcdy"), 0); !ok || m.Start != 1 || m.End != 3 {
+		t.Fatalf("nomagic ERE ab|cd: got %+v ok=%v", m, ok)
 	}
 }
 

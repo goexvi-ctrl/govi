@@ -44,6 +44,15 @@ func isWordRune(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
+// emptyNode matches the empty string (zero-width). Used for an immediately
+// closed \(\) group body -- Spencer emits OLPAREN/ORPAREN with nothing between
+// and does not call p_bre, so the empty group is legal.
+type emptyNode struct{}
+
+func (emptyNode) match(m *machine, pos int, k func(int) bool) bool {
+	return k(pos)
+}
+
 // node is one compiled regex element. match attempts to match starting at pos;
 // on success it calls k with the position after this element and returns its
 // result, enabling backtracking through the continuation k.

@@ -1,31 +1,32 @@
 // Package regex implements a vi-compatible regular expression engine. vi uses
-// POSIX basic regular expressions (BRE) with extensions -- backreferences,
-// \< and \> word boundaries, \{m,n\} intervals, and the magic/nomagic option --
-// none of which Go's RE2-based regexp package supports (it forbids
-// backreferences). This is a backtracking matcher over runes, mirroring the
-// behavior of nvi's bundled regex (regex/) and search integration
-// (common/search.c).
+// POSIX basic regular expressions (BRE) by default, with an optional extended
+// (ERE) mode gated on nvi's :set extended. Neither mode is Go's RE2-based
+// regexp package (RE2 forbids backreferences). This is a backtracking matcher
+// over runes, mirroring nvi's bundled Spencer regex (regex/) plus the vi
+// search layer (common/search.c, ex/ex_subst.c re_conv).
 //
 // The engine works on a single line of runes at a time, matching vi's
 // line-oriented search and substitute semantics.
 //
-// Design notes (what "bug-for-bug with nvi" does and does not mean here):
+// Design notes:
 //
-//   - Backtracking, not RE2. Like Spencer's engine it is a recursive
-//     backtracker (continuation-passing), which is what backreferences require
-//     and can be exponential on pathological patterns -- the same trade nvi
-//     makes. For human-authored single-line search this is the right choice.
-//   - One vi-/search-layer construct is folded into this package rather than
-//     living above Spencer's regcomp: \< \> word boundaries (Spencer's C only
-//     spells these [[:<:]] / [[:>:]], which are also accepted; nvi's re_conv
-//     rewrites \< \> into them). Everything else is Spencer BRE: no
-//     alternation (\| is a literal '|'), and an escaped ordinary character is
-//     that literal character.
-//   - Runes, not bytes. Historic nvi is byte/locale oriented; operating on
-//     []rune is a deliberate modernization (correct UTF-8 handling) rather than
-//     an attempt at ASCII byte-for-byte reproduction.
-//   - An empty pattern is a valid compile here; "repeat the last RE" for an
-//     empty / or ? is handled in the search/substitute layer, as in nvi.
+//   - One matcher, two parse modes. Options.Extended selects ERE syntax
+//     (( ) | + ? {m,n} unescaped) vs BRE (\( \) \{m,n\}, no alternation).
+//     Both share the same AST nodes and backtracker.
+//   - Backtracking, not RE2. Like Spencer it is a recursive continuation-
+//     passing matcher -- required for BRE backreferences, exponential on
+//     pathological nested quantifiers. The Interrupt hook lets ^C abort a
+//     blown-up match.
+//   - Vi-layer constructs folded in: \< \> word boundaries (nvi re_conv
+//     rewrites these to [[:<:]] / [[:>:]] before regcomp; we accept both
+//     spellings) and magic/nomagic (nvi re_conv flips .*[ ; we do it in the
+//     parser via Options.Magic).
+//   - Spencer ERE has no backreferences: in Extended mode \1 is a literal
+//     '1', matching nvi. BRE \(...\)\1 still works when Extended is false.
+//   - Runes, not bytes: deliberate UTF-8 modernization, not ASCII byte
+//     reproduction.
+//   - Empty pattern compile is allowed; "repeat the last RE" is handled above
+//     this package in the search/substitute layer.
 package regex
 
 import "fmt"
@@ -36,19 +37,19 @@ type Options struct {
 	// Magic is the 'magic' option (vi default true). When false it is nvi
 	// nomagic -- '.', '*' and '[' are literal unless backslash-escaped (\. \* \[
 	// take on their special meaning) -- NOT Spencer's REG_NOSPEC ("all literal").
+	// Applies under both BRE and ERE (nvi re_conv runs before regcomp either way).
 	Magic bool
-	// Alt enables \| alternation. User patterns never get this: POSIX BRE has
-	// no alternation and Spencer/nvi match \| as a literal '|'. It exists for
-	// the internally generated cscope patterns, whose blank-run expression
-	// needs alternation -- nvi compiles those with REG_EXTENDED for the same
-	// reason (re_compile SEARCH_CSCOPE).
+	// Extended selects POSIX ERE syntax (nvi :set extended / REG_EXTENDED).
+	// Default false is BRE, matching nvi's default noextended.
+	Extended bool
+	// Alt enables BRE-style \| alternation for internally generated cscope
+	// patterns only. User BREs never set this ( \| is a literal '|' ). When
+	// Extended is true, alternation is the unescaped ERE | and Alt is ignored.
 	Alt bool
 	// Interrupt, when set, is polled during matching (every pollEvery
 	// quantifier iterations); returning true aborts the attempt, which then
-	// reports no match. It exists because the backtracker is exponential on
-	// pathological nested quantifiers (\(a*\)*b) -- without it such a match
-	// would hang the editor beyond even ^C (qa/CORNERS.md Part C #12). The
-	// engine passes its ^C flag; nil means never interrupted.
+	// reports no match. The engine passes its ^C flag; nil means never
+	// interrupted.
 	Interrupt func() bool
 }
 
@@ -70,15 +71,23 @@ type Match struct {
 
 // Compile parses pattern under the given options.
 func Compile(pattern string, opts Options) (*Regex, error) {
-	p := &parser{src: []rune(pattern), magic: opts.Magic, alt: opts.Alt}
+	p := &parser{
+		src:      []rune(pattern),
+		magic:    opts.Magic,
+		extended: opts.Extended,
+		alt:      opts.Alt && !opts.Extended, // ERE uses unescaped |; ignore Alt
+	}
 	root, err := p.parseAlternation(true)
 	if err != nil {
 		return nil, err
 	}
 	if !p.eof() {
-		// The only way the parser stops early is an unmatched \) (Spencer
-		// REG_EPAREN).
+		// Unmatched group close left unconsumed, or other early stop.
 		return nil, fmt.Errorf("parentheses not balanced")
+	}
+	// Spencer: REQUIRE nonempty (REG_EMPTY) after {0}-drops leave nothing.
+	if _, ok := root.(omitNode); ok {
+		return nil, fmt.Errorf("empty (sub)expression")
 	}
 	return &Regex{root: root, ngroups: p.ngroups, ic: opts.IgnoreCase, intr: opts.Interrupt}, nil
 }

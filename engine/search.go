@@ -45,7 +45,12 @@ func (e *Engine) compilePattern(p string) (*regex.Regex, error) {
 	// The Interrupt hook lets ^C break a match that blows up inside ONE line
 	// (pathological nested quantifiers); the per-line poll in the search
 	// loops cannot see those.
-	re, err := regex.Compile(p, regex.Options{Magic: magic, IgnoreCase: ic, Interrupt: e.Interrupted})
+	re, err := regex.Compile(p, regex.Options{
+		Magic:      magic,
+		IgnoreCase: ic,
+		Extended:   e.scr.opts.Bool("extended"),
+		Interrupt:  e.Interrupted,
+	})
 	if err != nil {
 		// nvi re_error: msgq "RE error: %s" with the regerror text (msgq
 		// supplies the trailing period).
