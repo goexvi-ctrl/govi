@@ -95,11 +95,17 @@ func (p *parser) parseAlternation(atStart bool) (node, error) {
 func (p *parser) parseConcat(atStart bool) (node, error) {
 	var seq []node
 	first := atStart
+	anchorOK := atStart
 	for !p.eof() && !p.atGroupClose() && !p.atAlt() {
-		n, err := p.parsePiece(first)
+		n, err := p.parsePiece(first, anchorOK)
 		if err != nil {
 			return nil, err
 		}
+		// Only the very first character of a BRE (sub)expression can be the ^
+		// anchor: Spencer's p_bre EATs it before its atom loop, so a second
+		// '^' -- even immediately after the anchor ("^^") -- is an ordinary
+		// character parsed by p_simp_re.
+		anchorOK = false
 		// {0}/{0,0}: Spencer DROP -- skip the operand entirely.
 		if _, ok := n.(omitNode); ok {
 			first = false
@@ -122,8 +128,8 @@ func (p *parser) parseConcat(atStart bool) (node, error) {
 	return &concatNode{nodes: seq}, nil
 }
 
-func (p *parser) parsePiece(first bool) (node, error) {
-	atom, err := p.parseAtom(first)
+func (p *parser) parsePiece(first, anchorOK bool) (node, error) {
+	atom, err := p.parseAtom(first, anchorOK)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +262,7 @@ func (p *parser) parseInt() (int, bool) {
 	return n, p.pos > start
 }
 
-func (p *parser) parseAtom(first bool) (node, error) {
+func (p *parser) parseAtom(first, anchorOK bool) (node, error) {
 	if p.eof() {
 		return nil, fmt.Errorf("empty (sub)expression")
 	}
@@ -312,10 +318,12 @@ func (p *parser) parseAtom(first bool) (node, error) {
 		return &litNode{r: '['}, nil
 	case r == '^':
 		p.next()
-		// BRE: anchor only as the first simple RE (else literal).
+		// BRE: anchor only as the very first character of the (sub)expression
+		// (Spencer p_bre EATs it before the loop; the second ^ of "^^" is an
+		// ordinary character).
 		// ERE: Spencer always emits OBOL for '^' (POSIX: also special after
 		// '('; mid-pattern ^ is still an anchor and typically fails to match).
-		if p.extended || first {
+		if p.extended || anchorOK {
 			return bolNode{}, nil
 		}
 		return &litNode{r: '^'}, nil

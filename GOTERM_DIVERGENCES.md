@@ -1145,12 +1145,22 @@ engine/ex.go (`!` after :! is not the force flag; per-invocation autoprint).
 Verified: goterm TestProbeExBangParity diffs the full Q-mode transcript
 against nvi (expansion, error, echo, `!`, autoprint, warn) -- matches.
 
-### 58. BRE `^^` anchors where nvi errors (regex fuzzer, seed 1783752283655725000)  [OPEN]
-`%s#^^#2X2#g`: nvi regcomp rejects the pattern (batch exits 1, file
-unchanged); govi compiles it as a line anchor and substitutes at the start of
-every line. Found by TestRegexBREFuzz trial 253; unrelated to the bang work
-(reproduces on the pre-bang tree). Needs nvi regcomp.c reading: a second `^`
-after the anchor position appears to be an error, not a literal.
+### 58. BRE `^^`: second caret is a literal, not an anchor  [FIXED 2026-07-11]
+`%s#^^#2X2#g`: in Spencer/nvi BRE only the very first character of a
+(sub)expression can be the `^` anchor -- p_bre EATs it before its atom loop,
+so the second `^` of `^^` (and any mid-pattern `^`) is an ordinary character
+parsed by p_simp_re. nvi therefore finds no match on caret-less lines (batch
+exits 1) and replaces a real leading `^` on `^abc`; govi (old) parsed every
+first-position `^` as an anchor -- the parser reused the "first simple RE"
+flag, which a leading anchor deliberately does not consume (that part is for
+Spencer's starordinary: `^*a` keeps `*` ordinary) -- and substituted empty at
+the start of every line. Found by TestRegexBREFuzz trial 253 (seed
+1783752283655725000). Fixed in engine/regex/parse.go: a separate anchorOK
+position dies after the first atom while `first` keeps its star semantics.
+`^` right after `\(` still anchors (recursive p_bre); `$` was already
+symmetric (anchor only as last atom / before `\)`). Verified against the
+oracle for `^^`, `^^^`, `a^b`, `\(^a\)Z`, `\(b^c\)`, `^*`, `$$`, `a$b`;
+regression cases in engine/regex TestMatchBasic; fuzz seed replays clean.
 
 ## Undocumented but functional (note, not a divergence)
 - vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes

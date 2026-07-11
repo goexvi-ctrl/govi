@@ -126,6 +126,21 @@ func TestMatchBasic(t *testing.T) {
 		// the anchor is not a repeatable atom.
 		{`^*a`, "*ab", 0, 2},
 		{`^*a`, "x*a", -1, -1},
+		// Only the very first ^ anchors (Spencer p_bre EATs it before its
+		// loop): the second ^ of ^^ is a literal, as is a mid-pattern ^.
+		// Found by the BRE fuzzer (seed 1783752283655725000, %s#^^#2X2#g).
+		{`^^`, "^abc", 0, 1},
+		{`^^`, "abc", -1, -1},
+		{`^^^`, "^^z", 0, 2},
+		{`a^b`, "a^b", 0, 3},
+		// ^ right after \( anchors (recursive p_bre); later in the group it
+		// is ordinary.
+		{`\(^a\)Z`, "aZb", 0, 2},
+		{`\(b^c\)`, "b^c", 0, 3},
+		// $ is symmetric already: anchor only as the last atom (or before
+		// \)); elsewhere, and before a repetition, it is ordinary.
+		{`$$`, "a$", 1, 2},
+		{`a$b`, "a$b", 0, 3},
 		// A leading * is ordinary too, at the top level and in a group.
 		{`*a`, "z*a", 1, 3},
 		{`\(*a\)`, "z*a", 1, 3},
