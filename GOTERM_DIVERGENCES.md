@@ -1125,6 +1125,33 @@ p_b_coll_elem, the latter via p_b_eclass). Verified against the rebuilt oracle:
 unknown `[[.nosuch.]]` errors identically. Regression: engine/regex
 TestMatch `[[.tab.]]`, `[[.comma.]]x`, `[[.newline.]]`, `[[.space.]-[.tilde.]]`.
 
+## Bang-command wave (2026-07-11, from a user report; exbanghang_probe_test.go)
+
+### 57. `:!` bang expansion, closing "!", and modified-file warn missing  [FIXED 2026-07-11]
+Reported from live use (Q then `!!who`). nvi expands an unescaped `!` in a
+bang argument to the previous (expanded) bang command -- "No previous command
+to replace \"!\"" when there is none -- and `%`/`#` to the current/alternate
+file name; an expansion redisplays the command as `!cmd` (ex prints the line,
+vi shows it on the message line). The expanded text becomes the remembered
+command (also set by `:r !cmd`, not by `:w !cmd`). Ex mode terminates the
+command with a bare `!` line even when the utility fails ("datedate: exited
+with status 127" is a message, never a command error, so the range form still
+autoprints), and a no-range `:!` on a modified buffer autowrites or, with
+warn set, prints "File modified since last write." first. govi (old) parsed
+the second `!` of `:!!cmd` as the force flag and ran the remainder, printed
+no closing `!`, and returned exit failures as command errors. Fixed in
+engine/shell.go (expandBang/prepBang/bangEcho/bangError), engine/bang.go,
+engine/ex.go (`!` after :! is not the force flag; per-invocation autoprint).
+Verified: goterm TestProbeExBangParity diffs the full Q-mode transcript
+against nvi (expansion, error, echo, `!`, autoprint, warn) -- matches.
+
+### 58. BRE `^^` anchors where nvi errors (regex fuzzer, seed 1783752283655725000)  [OPEN]
+`%s#^^#2X2#g`: nvi regcomp rejects the pattern (batch exits 1, file
+unchanged); govi compiles it as a line anchor and substitutes at the start of
+every line. Found by TestRegexBREFuzz trial 253; unrelated to the bang work
+(reproduces on the pre-bang tree). Needs nvi regcomp.c reading: a second `^`
+after the anchor position appears to be an error, not a literal.
+
 ## Undocumented but functional (note, not a divergence)
 - vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes
   in ex mode and returns cleanly with `vi` -- but `^\` is NOT listed in govi's

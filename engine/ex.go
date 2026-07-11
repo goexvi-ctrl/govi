@@ -21,6 +21,8 @@ type exCmd struct {
 	def          *exCmdDef
 	newScreen    bool   // command was given capitalized: act in a new split screen
 	pipeRest     string // text after an unescaped '|' separator, run as the next command
+	autoprint    bool   // handler requests autoprint for this invocation (the
+	// range form of :!, nvi ex_bang setting E_AUTOPRINT dynamically)
 }
 
 // exCmdDef describes one ex command: its full name, the minimum number of
@@ -163,7 +165,7 @@ func (e *Engine) exExecute(line string) error {
 	// autoprint: in ex (line) mode, commands flagged E_AUTOPRINT echo the new
 	// current line when the autoprint option is set (nvi ex.c). It is suppressed
 	// inside a :global (gMarks non-nil) and does not apply to vi colon commands.
-	if c.def.autoprint && e.scr.mode == ModeExText && e.scr.gMarks == nil && !e.exSilent &&
+	if (c.def.autoprint || c.autoprint) && e.scr.mode == ModeExText && e.scr.gMarks == nil && !e.exSilent &&
 		e.scr.opts.Bool("autoprint") && e.scr.store.Lines() > 0 {
 		e.printLine(string(e.scr.lineRunes(e.scr.cursor.Line)))
 	}
@@ -268,7 +270,9 @@ func (e *Engine) parseEx(line string) (*exCmd, error) {
 	c.def = def
 	c.newScreen = newScreen
 
-	if p.peek() == '!' {
+	// A '!' after :! is not the force flag but the start of the shell command
+	// (":!!" reruns the previous bang command via argument expansion).
+	if p.peek() == '!' && def.full != "!" {
 		p.next()
 		c.force = true
 	}

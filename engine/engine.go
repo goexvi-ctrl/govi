@@ -96,6 +96,11 @@ type Engine struct {
 	exOut      []string
 	exSilent   bool // batch script (nvi -s / SC_EX_SILENT): suppress autoprint etc.
 
+	// lastBang is the previous (expanded) shell command run by :! or :r !,
+	// substituted for an unescaped '!' in the next bang argument (nvi
+	// exp->lastbcomm). Empty means no previous command.
+	lastBang string
+
 	startup   bool // true while reading EXINIT / exrc startup information
 	launchCtx LaunchContext
 	cwd       string // per-instance working directory (:cd, relative :read/:write)
@@ -656,6 +661,11 @@ func (e *Engine) runCmdline(prefix rune, line string) {
 		cmd := strings.TrimSpace(line)
 		if cmd == "" {
 			e.scr.msg, e.scr.msgKind = "Usage: [range]!command", MsgError
+			return
+		}
+		cmd, err := e.prepBang(cmd)
+		if err != nil {
+			e.scr.msg, e.scr.msgKind = err.Error(), MsgError
 			return
 		}
 		if err := e.filterLines(l1, l2, cmd); err != nil {
