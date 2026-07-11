@@ -35,6 +35,12 @@ type Frontend struct {
 	inited bool
 	closed bool
 
+	// suspended is set while the tcell screen is Suspend()ed for the Q ex-mode
+	// line REPL. Painting is forbidden: tcell's disengage resizes the cell
+	// buffer to 0x0 while keeping the old w/h, and a draw against that spins
+	// forever on zero-width cells.
+	suspended bool
+
 	inEventBurst bool
 	paintPending bool
 	paintUrgent  bool // mode/message/overlay: paint immediately mid-burst
@@ -203,6 +209,7 @@ func (f *Frontend) runExMode(sigCh <-chan os.Signal) {
 		if err := f.scr.Suspend(); err != nil {
 			return
 		}
+		f.suspended = true
 		fmt.Fprintln(os.Stdout) // separate from the full-screen display we just left
 	}
 	// Resume the full-screen display only when going back to vi mode. On quit
@@ -212,6 +219,7 @@ func (f *Frontend) runExMode(sigCh <-chan os.Signal) {
 	defer func() {
 		if f.inited && !f.closed {
 			f.scr.Resume()
+			f.suspended = false
 		}
 	}()
 
@@ -396,7 +404,7 @@ func termSize() (w, h int) {
 // Bell rings the terminal bell. In ex line mode (no screen) it writes BEL to
 // the terminal directly.
 func (f *Frontend) Bell() {
-	if !f.inited || f.closed {
+	if !f.inited || f.closed || f.suspended {
 		os.Stdout.WriteString("\a")
 		return
 	}
@@ -430,8 +438,8 @@ func (f *Frontend) Render(v engine.View, cs engine.ChangeSet) {
 // each pane in its own row/column band, every pane carrying its own status line
 // (reverse video as a divider when split); the cursor goes in the active pane.
 func (f *Frontend) paintNow(v engine.View) {
-	if !f.inited || f.closed {
-		return // ex line mode (screen never started) or already shut down
+	if !f.inited || f.closed || f.suspended {
+		return // ex line mode (screen never started or suspended) or shut down
 	}
 	f.scr.Clear()
 	w, h := f.scr.Size()
