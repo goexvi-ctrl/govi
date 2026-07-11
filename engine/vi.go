@@ -660,6 +660,11 @@ func (m *vimode) charArg(e *Engine, ev KeyEvent) {
 	if ev.Key == KeyEnter {
 		c = '\r'
 	}
+	if isLinefeedEvent(ev) {
+		// A raw <newline> (^J) is the character \n: r splits the line like
+		// <Enter> (replaceChar handles both), f/t search for it in vain.
+		c = '\n'
+	}
 	if ev.Key == KeyEscape {
 		m.zLine = 0
 		m.zCount2, m.zCount2Set = 0, false

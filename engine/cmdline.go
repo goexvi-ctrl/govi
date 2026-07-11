@@ -72,7 +72,7 @@ func (e *Engine) colonEditKey(ev KeyEvent, opts colonEditOpts) {
 	}
 
 	switch {
-	case ev.Key == KeyEnter || ev.Rune == '\r' || ev.Rune == '\n':
+	case isNewlineEvent(ev):
 		line := string(s.colon)
 		s.resetColonEdit()
 		opts.onEnter(line)
@@ -109,6 +109,10 @@ func colonInterrupt(ev KeyEvent) bool {
 func colonControlKey(ev KeyEvent, s *screen) bool {
 	if ev.Mods&ModCtrl != 0 && ev.Key == KeyNone {
 		switch ev.Rune {
+		case 'j':
+			// ^J <newline> executes the line like <Enter> (nvi K_NL): leave
+			// it for the caller's newline case, not the literal default.
+			return false
 		case 'v':
 			s.cmdLiteralNext = true
 			return true

@@ -47,6 +47,15 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 	// ^V quotes the next key: insert it literally with no special handling.
 	if m.literalNext {
 		m.literalNext = false
+		// Even a quoted <newline> ends the line (nvi v_txt.c applies Q_VTHIS
+		// to every key but K_NL): a buffer line cannot contain one. A quoted
+		// <Enter> stays a literal carriage return.
+		if isLinefeedEvent(ev) {
+			e.maybeExpandAbbrev()
+			m.insertNewline(e)
+			m.insertText = append(m.insertText, '\n')
+			return
+		}
 		if r, ok := literalRune(ev); ok {
 			m.insertRune(e, r)
 			m.insertText = append(m.insertText, r)
@@ -78,6 +87,10 @@ func (m *vimode) insertKey(e *Engine, ev KeyEvent) {
 	// Insert-mode control commands.
 	if ev.Mods&ModCtrl != 0 && ev.Key == KeyNone {
 		switch ev.Rune {
+		case 'j': // ^J <newline>: ends the line, same as <Enter> (nvi K_NL)
+			e.maybeExpandAbbrev()
+			m.insertNewline(e)
+			m.insertText = append(m.insertText, '\n')
 		case 'v': // literal next
 			m.literalNext = true
 		case 'w': // erase the word before the cursor

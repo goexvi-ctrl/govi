@@ -1162,6 +1162,25 @@ symmetric (anchor only as last atom / before `\)`). Verified against the
 oracle for `^^`, `^^^`, `a^b`, `\(^a\)Z`, `\(b^c\)`, `^*`, `$$`, `a$b`;
 regression cases in engine/regex TestMatchBasic; fuzz seed replays clean.
 
+## Linefeed-key wave (2026-07-11, from an iPadSSH paste report; lfpaste_probe_test.go)
+
+### 59. Raw \n (^J) inserted literally in text input instead of ending the line  [FIXED 2026-07-11]
+Pasting multi-line text from a terminal that keeps \n line endings (iPadSSH;
+Terminal.app converts newlines to \r on paste, hiding the bug) filled the
+line with ^J characters: "M1 Max => ^JM1 Max => ..." instead of separate
+lines. nvi's key table maps \012 to K_NL, which v_txt.c and the ex line
+editor treat exactly like K_CR (line end); in vi command mode it stays the
+down motion. govi's tcell frontend delivers the byte as Ctrl+'j', and the
+insert-mode and colon-line control-key handlers fell through to "insert the
+control literally". Fixed in engine: isLinefeedEvent/isNewlineEvent
+(literal.go) recognize the key in both host encodings (Ctrl+'j' from tcell,
+bare '\n' rune from GUI hosts); insert mode ends the line (even ^V-quoted,
+nvi Q_VTHIS skips K_NL), the colon line executes, and r<^J> splits the line
+(charArg maps it to '\n'; replaceChar already handled it). Command-mode ^J
+(down) untouched. Verified against the oracle by goterm
+TestProbeLinefeedKeys: insert paste, colon-by-\n, r<^J>, command-mode ^J,
+and ^V^J all match; the pre-fix binary diverges on 4 of the 5.
+
 ## Undocumented but functional (note, not a divergence)
 - vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes
   in ex mode and returns cleanly with `vi` -- but `^\` is NOT listed in govi's
