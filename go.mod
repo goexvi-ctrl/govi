@@ -21,4 +21,4 @@ require (
 	golang.org/x/term v0.44.0
 )
 
-replace github.com/gdamore/tcell/v2 => github.com/goexvi-ctrl/tcell/v2 v2.13.13
+replace github.com/gdamore/tcell/v2 => github.com/goexvi-ctrl/tcell/v2 v2.13.14
