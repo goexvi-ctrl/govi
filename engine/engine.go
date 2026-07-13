@@ -680,7 +680,10 @@ func (e *Engine) runCmdline(prefix rune, line string) {
 		if e.scr.opts.Str("cedit") != "" {
 			e.ceditLog(line)
 		}
-		e.runColon(strings.TrimSpace(line))
+		// Do not trim here: parseEx skips leading blanks itself, and a substitute
+		// keeps trailing blanks that belong to an unclosed replacement (":s/b/<tab>"
+		// yields "a<tab>c"). The per-command arg parser trims where appropriate.
+		e.runColon(line)
 	}
 }
 

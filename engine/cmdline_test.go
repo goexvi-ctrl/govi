@@ -32,6 +32,30 @@ func TestColonCtrlVLiteral(t *testing.T) {
 	}
 }
 
+// A tab typed in the replacement of a substitute with no closing delimiter is
+// part of the replacement text (nvi), not stripped as trailing whitespace: the
+// vi ':' path must not trim the completed line before executing it. A tab is not
+// a file-completion trigger here because :s is not a path command.
+func TestColonSubstTrailingTabPreserved(t *testing.T) {
+	e, _, _ := newTestEngine(t, "abc\n")
+	drive(e, ":s/b/")
+	e.Input(KeyEvent{Rune: '\t'})
+	e.Input(KeyEvent{Key: KeyEnter})
+	if got := bufText(e); got != "a\tc" {
+		t.Fatalf("buffer after :s/b/<tab> = %q, want %q", got, "a\tc")
+	}
+}
+
+// A trailing literal space in an unclosed replacement is likewise kept.
+func TestColonSubstTrailingSpacePreserved(t *testing.T) {
+	e, _, _ := newTestEngine(t, "abc\n")
+	drive(e, ":s/b/ ")
+	e.Input(KeyEvent{Key: KeyEnter})
+	if got := bufText(e); got != "a c" {
+		t.Fatalf("buffer after :s/b/<space> = %q, want %q", got, "a c")
+	}
+}
+
 func TestColonCtrlVLiteralRaw(t *testing.T) {
 	e, _, _ := newTestEngine(t, "x\n")
 	drive(e, ":")
