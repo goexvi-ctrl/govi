@@ -291,6 +291,16 @@ func (p *exParser) parseArgPipe(c *exCmd) (arg, rest string) {
 	s := p.s
 	i := p.pos
 	whole := func() (string, string) { return strings.TrimSpace(string(s[i:])), "" }
+	// A substitute keeps trailing blanks: when the replacement has no closing
+	// delimiter (":s/b/<tab>"), those blanks ARE the replacement text, and nvi
+	// preserves them. The flag/count parser skips its own whitespace, so leaving
+	// the blanks on does not disturb a normal ":s/b/x/ g" form.
+	fin := func(v string) string {
+		if c.def.substArg {
+			return v
+		}
+		return strings.TrimSpace(v)
+	}
 
 	if c.def.wholeLine {
 		return whole()
@@ -320,11 +330,11 @@ func (p *exParser) parseArgPipe(c *exCmd) (arg, rest string) {
 			continue
 		}
 		if s[i] == '|' {
-			return strings.TrimSpace(b.String()), string(s[i+1:])
+			return fin(b.String()), string(s[i+1:])
 		}
 		b.WriteRune(s[i])
 	}
-	return strings.TrimSpace(b.String()), ""
+	return fin(b.String()), ""
 }
 
 // copySubstRE copies a substitute's leading delimited RE (the /pattern/replace

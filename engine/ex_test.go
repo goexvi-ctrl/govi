@@ -162,6 +162,11 @@ func TestExSubstitute(t *testing.T) {
 	// \n is the letter n in nvi; the line is split by a literal CR (see
 	// TestSubstReplacementEscapes).
 	exCase(t, "subst-newline", "a,b,c\n", []string{"s/,/\r/g"}, "a\nb\nc")
+	// A replacement with no closing delimiter keeps its trailing blanks: they
+	// ARE the replacement text (nvi), so ":s/b/<tab>" yields "a<tab>c", not "ac".
+	exCase(t, "subst-open-tab", "abc\n", []string{"s/b/\t"}, "a\tc")
+	exCase(t, "subst-open-space", "abc\n", []string{"s/b/ "}, "a c")
+	exCase(t, "subst-open-tab-x", "abc\n", []string{"s/b/\tX"}, "a\tXc")
 }
 
 func TestExGlobal(t *testing.T) {
