@@ -1181,6 +1181,41 @@ nvi Q_VTHIS skips K_NL), the colon line executes, and r<^J> splits the line
 TestProbeLinefeedKeys: insert paste, colon-by-\n, r<^J>, command-mode ^J,
 and ^V^J all match; the pre-fix binary diverges on 4 of the 5.
 
+## Substitute-whitespace wave (2026-07-13, from a user report; released in v0.5.1)
+
+### 60. `:s` dropped trailing blanks from a replacement with no closing delimiter  [FIXED 2026-07-13]
+Reported from live use (`:s/b/<tab>` on "abc"). When a substitute's
+replacement is not closed by a third delimiter, the trailing blanks ARE the
+replacement text and nvi keeps them: `:s/b/<tab>` -> "a<tab>c", `:s/b/ ` ->
+"a c". govi (old) produced "ac" -- it stripped the trailing whitespace. The
+closed form `:s/b/ /` (delimiter present) already worked, which is the tell
+that a whitespace trim, not the replacement logic, was at fault.
+
+govi trimmed in TWO separate places, so both had to be fixed:
+- the ex-command argument parser (engine/ex.go parseArgPipe) ran
+  strings.TrimSpace on the whole substitute argument before splitSubst carved
+  out pattern/replacement/flags. Now it skips the trim for substArg commands;
+  splitFlagsCount already skips its own whitespace, so `:s/b/x/ g` (blanks
+  around the flags) is unaffected.
+- the interactive vi `:` path (engine/engine.go runCmdline) trimmed the whole
+  completed line before parsing it -- so a tab typed at the `:` prompt was lost
+  even after the first fix. parseEx skips leading blanks itself, so the trim
+  was dropped entirely and per-command trailing handling delegated to the arg
+  parser.
+
+The tab reaches the command line normally here: `filec` defaults to `<tab>`
+(see Known/accepted), but colon-line completion only fires on file-path
+commands, and `:s` is not one, so the tab is appended to the replacement
+rather than triggering completion.
+
+Verified against the oracle: the shipped v0.5.1 binary and the source build
+both yield "a<tab>c" / "a c", matching nvi byte-for-byte (od -c on the written
+file). Regressions: engine/ex_test.go TestExSubstitute
+(subst-open-tab/-space/-tab-x drive the ex path) and engine/cmdline_test.go
+TestColonSubstTrailingTab/SpacePreserved (drive the real vi `:` key path, the
+one the first fix missed). goterm ex batteries: no new divergences (only the
+pre-existing #21 message-pagination residue).
+
 ## Undocumented but functional (note, not a divergence)
 - vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes
   in ex mode and returns cleanly with `vi` -- but `^\` is NOT listed in govi's
