@@ -125,9 +125,7 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         guard !normalized.isEmpty else { return }
         WaitCoordinator.shared.registerWait(paths: normalized, fifo: fifo)
 
-        // With tabbing off, force separate windows regardless of the popup.
-        let mode: Settings.OpenFilesIn = Settings.useTabs ? Settings.openFilesIn : .newWindow
-        switch mode {
+        switch Settings.openFilesIn {
         case .newWindow:
             for p in normalized {
                 if let w = existing(path: p) {
@@ -195,10 +193,11 @@ final class EditorWindow: NSObject, NSWindowDelegate {
         // together and dragged between windows; .automatic respects the user's
         // "prefer tabs" setting for Cmd-N while still allowing explicit tabs.
         window.tabbingIdentifier = "govi"
-        // Tabbing stays .automatic even with "Use window tabs" off: that
-        // setting decides where new files open (openPaths), while the window
-        // itself keeps a working Show/Hide Tab Bar menu -- .disallowed would
-        // gray those items out and pin the tab bar in whatever state it was in.
+        // Tabbing stays .automatic: where new files open is openFilesIn's job
+        // (openPaths), and the bar's visibility is reconciled per
+        // Settings.alwaysShowTabBar (GoviView.reconcileTabBar). .disallowed
+        // would gray out the Show/Hide Tab Bar menu items and pin the bar in
+        // whatever state it was in.
         window.tabbingMode = .automatic
     }
 

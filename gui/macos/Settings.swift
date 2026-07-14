@@ -125,18 +125,18 @@ enum Settings {
         }
     }
 
-    private static let useTabsKey = "useTabs"
+    private static let alwaysShowTabBarKey = "alwaysShowTabBar"
 
-    // useTabs controls macOS window tabbing. When off, every editor is a
-    // standalone window and no tab bar is shown (even with "prefer tabs" on).
-    static var useTabs: Bool {
+    // alwaysShowTabBar keeps the tab bar visible even on single-tab windows.
+    // When off, the bar appears only while a window holds two or more tabs.
+    // (The old "useTabs" key is ignored: it conflated bar visibility with
+    // where opened files go, which openFilesIn alone now decides.)
+    static var alwaysShowTabBar: Bool {
         get {
-            let d = UserDefaults.standard
-            guard d.object(forKey: useTabsKey) != nil else { return true }
-            return d.bool(forKey: useTabsKey)
+            UserDefaults.standard.bool(forKey: alwaysShowTabBarKey)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: useTabsKey)
+            UserDefaults.standard.set(newValue, forKey: alwaysShowTabBarKey)
             notifyChanged()
         }
     }
@@ -400,7 +400,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
     private let fontSummaryLabel = NSTextField(labelWithString: "")
     private let openFilesPopup = NSPopUpButton()
     private let selectionModePopup = NSPopUpButton()
-    private let useTabsCheckbox = NSButton(checkboxWithTitle: "Use window tabs (show the tab bar)", target: nil, action: nil)
+    private let alwaysShowTabBarCheckbox = NSButton(checkboxWithTitle: "Always show tab bar", target: nil, action: nil)
     private let warnCloseCheckbox = NSButton(checkboxWithTitle: "Warn before closing unsaved files", target: nil, action: nil)
     private let showDimensionsCheckbox = NSButton(checkboxWithTitle: "Show rows×columns in title bar (not tabs)", target: nil, action: nil)
     private let fgColorField = NSTextField()
@@ -483,9 +483,9 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         cursorStylePopup.target = self
         cursorStylePopup.action = #selector(cursorStyleChanged)
 
-        useTabsCheckbox.translatesAutoresizingMaskIntoConstraints = false
-        useTabsCheckbox.target = self
-        useTabsCheckbox.action = #selector(useTabsChanged)
+        alwaysShowTabBarCheckbox.translatesAutoresizingMaskIntoConstraints = false
+        alwaysShowTabBarCheckbox.target = self
+        alwaysShowTabBarCheckbox.action = #selector(alwaysShowTabBarChanged)
         warnCloseCheckbox.translatesAutoresizingMaskIntoConstraints = false
         warnCloseCheckbox.target = self
         warnCloseCheckbox.action = #selector(warnCloseChanged)
@@ -514,7 +514,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
             [openFilesPopup, selectionModePopup, cursorStylePopup], to: dirControls)
 
         let optionsStack = NSStackView(views: [
-            useTabsCheckbox, showDimensionsCheckbox, warnCloseCheckbox,
+            alwaysShowTabBarCheckbox, showDimensionsCheckbox, warnCloseCheckbox,
         ])
         optionsStack.translatesAutoresizingMaskIntoConstraints = false
         optionsStack.orientation = .vertical
@@ -681,7 +681,7 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         if let idx = Settings.SelectionMode.allCases.firstIndex(of: Settings.selectionMode) {
             selectionModePopup.selectItem(at: idx)
         }
-        useTabsCheckbox.state = Settings.useTabs ? .on : .off
+        alwaysShowTabBarCheckbox.state = Settings.alwaysShowTabBar ? .on : .off
         warnCloseCheckbox.state = Settings.warnOnUnsavedClose ? .on : .off
         showDimensionsCheckbox.state = Settings.showDimensionsInTitle ? .on : .off
         syncColorField(fgColorField, popup: fgColorPopup, spec: Settings.defaultForegroundColorSpec,
@@ -805,8 +805,8 @@ final class SettingsWindowController: NSWindowController, NSTextFieldDelegate {
         Settings.cursorStyle = Settings.CursorStyle.allCases[idx]
     }
 
-    @objc private func useTabsChanged() {
-        Settings.useTabs = useTabsCheckbox.state == .on
+    @objc private func alwaysShowTabBarChanged() {
+        Settings.alwaysShowTabBar = alwaysShowTabBarCheckbox.state == .on
     }
 
     @objc private func warnCloseChanged() {

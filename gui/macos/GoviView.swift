@@ -504,9 +504,12 @@ final class GoviView: NSView, NSTextInputClient {
 
     // Single-tab tab-bar preference (see reconcileTabBar): what the user last
     // chose with Show/Hide Tab Bar while the window had one tab, and the tab
-    // count last observed (to tell a closed tab from a user toggle).
-    private var wantsTabBarWhenSingle = false
+    // count last observed (to tell a closed tab from a user toggle). The
+    // "Always show tab bar" setting seeds the preference and is tracked so a
+    // checkbox change applies to open windows immediately.
+    private var wantsTabBarWhenSingle = Settings.alwaysShowTabBar
     private var lastTabCount = 1
+    private var lastAlwaysShowTabBar = Settings.alwaysShowTabBar
 
     private lazy var titleModeVC: NSTitlebarAccessoryViewController = {
         let vc = NSTitlebarAccessoryViewController()
@@ -544,17 +547,29 @@ final class GoviView: NSView, NSTextInputClient {
         }
     }
 
-    // reconcileTabBar makes a single-tab window remember whether its tab bar
-    // should show: Show/Hide Tab Bar while single-tab records the preference,
-    // and closing back down to one tab restores it (AppKit would leave the
-    // bar up). With several tabs the bar is a given, and any visibility
-    // change seen while the count stays 1 can only be the user's toggle.
+    // reconcileTabBar applies the "Always show tab bar" setting to a
+    // single-tab window (with several tabs the bar is a given). Setting on:
+    // the bar is kept visible. Setting off: the bar hides when the window is
+    // down to one tab, but Show/Hide Tab Bar still works -- a visibility
+    // change seen while the count stays 1 can only be the user's toggle, and
+    // it is remembered and restored when a sibling tab later closes (AppKit
+    // would leave the bar up).
     private func reconcileTabBar() {
         guard let w = window else { return }
+        let always = Settings.alwaysShowTabBar
         let tabCount = w.tabGroup?.windows.count ?? 1
         let barVisible = w.tabGroup?.isTabBarVisible ?? false
-        if tabCount <= 1 {
-            if lastTabCount > 1 {
+        if always != lastAlwaysShowTabBar {
+            // The checkbox just changed: adopt it as the single-tab state.
+            lastAlwaysShowTabBar = always
+            wantsTabBarWhenSingle = always
+            if tabCount <= 1 && barVisible != always {
+                w.toggleTabBar(nil)
+            }
+        } else if tabCount <= 1 {
+            if always {
+                if !barVisible { w.toggleTabBar(nil) }
+            } else if lastTabCount > 1 {
                 if barVisible != wantsTabBarWhenSingle {
                     w.toggleTabBar(nil)
                 }
