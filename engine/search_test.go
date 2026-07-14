@@ -120,3 +120,108 @@ func TestSearchInterruptibleInsideOneLine(t *testing.T) {
 		t.Fatalf("msg = %q/%v, want Interrupted", msg, k)
 	}
 }
+
+// nvi search_msg S_WRAP: a vi search (/, ?, n, N) that passes the end or top
+// of the file warns "Search wrapped"; the failure wording names the boundary
+// under nowrapscan (S_EOF/S_SOF), the whole file under wrapscan (S_NOTFOUND),
+// and an empty file as such (S_EMPTY).
+func TestSearchWrapMessage(t *testing.T) {
+	e, _, _ := newTestEngine(t, "alpha\nbeta\ngamma\n")
+
+	drive(e, "G/alpha\r") // only match is above: wraps forward
+	if e.scr.cursor.Line != 1 || e.scr.msg != "Search wrapped" || e.scr.msgKind != MsgError {
+		t.Fatalf("wrapped / -> line %d msg %q/%v, want line1 Search wrapped/error",
+			e.scr.cursor.Line, e.scr.msg, e.scr.msgKind)
+	}
+
+	drive(e, "?gamma\r") // only match is below: wraps backward
+	if e.scr.cursor.Line != 3 || e.scr.msg != "Search wrapped" {
+		t.Fatalf("wrapped ? -> line %d msg %q", e.scr.cursor.Line, e.scr.msg)
+	}
+
+	drive(e, "1G/beta\r") // plain forward hit: no message
+	if e.scr.cursor.Line != 2 || e.scr.msg != "" {
+		t.Fatalf("plain / -> line %d msg %q, want line2 and no message", e.scr.cursor.Line, e.scr.msg)
+	}
+
+	drive(e, "n") // repeat from the last match wraps
+	if e.scr.cursor.Line != 2 || e.scr.msg != "Search wrapped" {
+		t.Fatalf("n wrap -> line %d msg %q", e.scr.cursor.Line, e.scr.msg)
+	}
+}
+
+func TestSearchFailMessages(t *testing.T) {
+	e, _, _ := newTestEngine(t, "alpha\nbeta\ngamma\n")
+
+	drive(e, "/zebra\r") // wrapscan scanned the whole file
+	if e.scr.msg != "Pattern not found" {
+		t.Fatalf("wrapscan miss msg = %q", e.scr.msg)
+	}
+
+	if err := e.exExecute("set nowrapscan"); err != nil {
+		t.Fatal(err)
+	}
+	drive(e, "G/alpha\r") // match exists, but only above the cursor
+	if e.scr.msg != "Reached end-of-file without finding the pattern" {
+		t.Fatalf("nowrapscan forward miss msg = %q", e.scr.msg)
+	}
+	if e.scr.cursor.Line != 3 {
+		t.Fatalf("failed search moved the cursor to line %d", e.scr.cursor.Line)
+	}
+	drive(e, "1G?gamma\r") // match exists, but only below the cursor
+	if e.scr.msg != "Reached top-of-file without finding the pattern" {
+		t.Fatalf("nowrapscan backward miss msg = %q", e.scr.msg)
+	}
+}
+
+func TestSearchEmptyFileMessage(t *testing.T) {
+	e, _, _ := newTestEngine(t, "")
+	drive(e, "/alpha\r")
+	if e.scr.msg != "File empty; nothing to search" {
+		t.Fatalf("empty-file search msg = %q", e.scr.msg)
+	}
+}
+
+// nvi v_correct: a motion search that wraps around to exactly its starting
+// position fails the command (M_BERR: bell, or the message under verbose).
+// The S_WRAP warning has already been issued by the search itself.
+func TestSearchMotionWrapToOrigin(t *testing.T) {
+	e, fe, _ := newTestEngine(t, "one\ntwo\nomega three\nfour")
+	drive(e, "3G0d/omega\r")
+	if got := bufText(e); got != "one\ntwo\nomega three\nfour" {
+		t.Fatalf("buffer changed: %q", got)
+	}
+	if fe.bells == 0 {
+		t.Fatal("expected a bell for the failed motion search")
+	}
+	if e.scr.msg != "Search wrapped" {
+		t.Fatalf("msg = %q, want the S_WRAP warning left in place", e.scr.msg)
+	}
+
+	if err := e.exExecute("set verbose"); err != nil {
+		t.Fatal(err)
+	}
+	drive(e, "3G0d/omega\r")
+	if e.scr.msg != "Search wrapped to original position" {
+		t.Fatalf("verbose msg = %q", e.scr.msg)
+	}
+	if got := bufText(e); got != "one\ntwo\nomega three\nfour" {
+		t.Fatalf("buffer changed under verbose: %q", got)
+	}
+}
+
+// A plain ex address search does not warn about wrapping (nvi only sets
+// SEARCH_WMSG for the vi search commands, via E_SEARCH_WMSG).
+func TestSearchExAddrNoWrapMessage(t *testing.T) {
+	e, _, _ := newTestEngine(t, "alpha\nbeta\ngamma\n")
+	drive(e, "G")
+	if err := e.exExecute("/alpha/"); err != nil {
+		t.Fatal(err)
+	}
+	if e.scr.cursor.Line != 1 {
+		t.Fatalf(":/alpha/ -> line %d, want 1", e.scr.cursor.Line)
+	}
+	if e.scr.msg == "Search wrapped" {
+		t.Fatal("ex address search must not show the wrap warning")
+	}
+}

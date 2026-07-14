@@ -220,7 +220,8 @@ func (e *Engine) tagSearch(excmd string) {
 			return Pos{}, false
 		}
 		// Col -1: include a match at line 1 column 0 (nvi SEARCH_FIRST).
-		return e.searchFrom(re, Pos{Line: 1, Col: -1}, searchFwd)
+		pos, _, ok := e.searchFrom(re, Pos{Line: 1, Col: -1}, searchFwd)
+		return pos, ok
 	}
 	pos, ok := find(pat)
 	if !ok {

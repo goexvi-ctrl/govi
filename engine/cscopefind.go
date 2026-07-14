@@ -240,7 +240,7 @@ func (e *Engine) cscopeSearch(m tagMatch) error {
 		if err != nil {
 			return fmt.Errorf("%s: search pattern not found", m.search)
 		}
-		pos, ok := e.searchFrom(re, Pos{Line: 1, Col: -1}, searchFwd)
+		pos, _, ok := e.searchFrom(re, Pos{Line: 1, Col: -1}, searchFwd)
 		if !ok {
 			return fmt.Errorf("%s: search pattern not found", m.search)
 		}

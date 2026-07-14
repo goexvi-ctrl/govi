@@ -163,9 +163,7 @@ func (e *Engine) resolveMap(forced bool) {
 		if lhs := longestPrefixMap(table, s); lhs != "" {
 			rhs := table[lhs]
 			e.mapPending = []rune(s[len(lhs):])
-			for _, c := range decodeKeys(rhs) {
-				e.dispatchRune(c)
-			}
+			e.replayRunes(decodeKeys(rhs))
 			forced = false
 			continue
 		}
@@ -190,9 +188,25 @@ func longestPrefixMap(table map[string]string, s string) string {
 func (e *Engine) flushMapPending() {
 	pend := e.mapPending
 	e.mapPending = nil
-	for _, c := range pend {
-		e.dispatchRune(c)
+	e.replayRunes(pend)
+}
+
+// replayRunes dispatches a run of queued input (a map RHS, an executed @
+// buffer, pasted text), maintaining the count of keys still waiting so a
+// command can consult keysWaiting (nvi KEYS_WAITING).
+func (e *Engine) replayRunes(rs []rune) {
+	e.queuedKeys += len(rs)
+	for _, r := range rs {
+		e.queuedKeys--
+		e.dispatchRune(r)
 	}
+}
+
+// keysWaiting reports whether more input is already queued ahead of the
+// command being executed: replay runes still to dispatch, or typed input held
+// back by an ambiguous map prefix (nvi KEYS_WAITING).
+func (e *Engine) keysWaiting() bool {
+	return e.queuedKeys > 0 || len(e.mapPending) > 0
 }
 
 // mapTimeout resolves a pending ambiguous map when the input wait elapses.

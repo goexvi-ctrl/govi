@@ -1216,6 +1216,45 @@ TestColonSubstTrailingTab/SpacePreserved (drive the real vi `:` key path, the
 one the first fix missed). goterm ex batteries: no new divergences (only the
 pre-existing #21 message-pagination residue).
 
+## Search-message wave (2026-07-14, from a user report)
+
+### 61. No "Search wrapped" warning (and wrong miss wording) on vi searches  [FIXED 2026-07-14]
+Reported from live use: when a `/` `?` `n` `N` search passes the end (or top)
+of the file under wrapscan, nvi warns "Search wrapped" on the status line;
+govi (old) said nothing, so you could not tell you had come back around. The
+failure wording was also flattened: govi said "Pattern not found" for every
+miss, where nvi's search_msg distinguishes S_EOF/S_SOF ("Reached
+end-of-file/top-of-file without finding the pattern") under nowrapscan,
+S_NOTFOUND ("Pattern not found") only when the whole file was searched, and
+S_EMPTY ("File empty; nothing to search") for an empty buffer.
+
+Fixed in engine/search.go: searchFrom now reports whether the match was found
+only after wrapping, searchFailErr picks the nvi wording from the direction +
+wrapscan + empty-buffer state, and the vi search commands (searchLine for
+`/`/`?`, repeatSearch/searchRepeatMotion for n/N, startSearch for ^A) show
+"Search wrapped" via noteSearchWrap. A plain ex address search (`:/pat/`)
+stays silent, matching nvi (SEARCH_WMSG comes only from vi's E_SEARCH_WMSG).
+Two nvi side behaviors came along:
+- v_correct: a motion search (`d/pat`) that wraps to exactly its starting
+  position now FAILS (bell; "Search wrapped to original position" under
+  verbose, nvi M_BERR) instead of silently operating over an empty span.
+- KEYS_WAITING: the warning is withheld while queued input (a map RHS, an @
+  buffer, a paste) is still replaying, so a macro looping over a wrapping
+  search does not flash it. Plumbed as Engine.queuedKeys/keysWaiting
+  (engine/maps.go replayRunes). govi cannot see OS-level typed-ahead the way
+  nvi's queue can, so a human holding `n` may still see the message flash --
+  accepted as unobservable in practice.
+
+Verified against the oracle with a full-screen (status row included) goterm
+probe -- the divergence batteries drop the status line, so they cannot see
+this class. All 10 cases match nvi byte-for-byte: wrap fwd/back, n/N wrap,
+nowrapscan EOF/SOF, plain miss, no-wrap hit (no message), d/pat
+wrap-to-origin (buffer untouched, "Search wrapped" left showing, bell), and
+the empty-buffer message. TestDiverge* full run: no new divergences.
+Regressions: engine/search_test.go TestSearchWrapMessage, TestSearchFail-
+Messages, TestSearchEmptyFileMessage, TestSearchMotionWrapToOrigin,
+TestSearchExAddrNoWrapMessage.
+
 ## Undocumented but functional (note, not a divergence)
 - vi `^\` (switch to ex mode): WORKS in govi -- `^\` then `2d` then `1,$p` executes
   in ex mode and returns cleanly with `vi` -- but `^\` is NOT listed in govi's

@@ -767,20 +767,20 @@ func (e *Engine) execBuffer(name rune) {
 		return
 	}
 	e.scr.lastAtBuf = name
+	var rs []rune
 	for i, ln := range txt.Lines {
 		if i > 0 {
-			e.dispatchRune('\n')
+			rs = append(rs, '\n')
 		}
-		for _, r := range ln {
-			e.dispatchRune(r)
-		}
+		rs = append(rs, ln...)
 	}
 	// A linewise buffer ends every line with a <newline>, including the last,
 	// so its replay finishes with an Enter that moves the cursor down a line
 	// (nvi v_at.c, CB_LMODE). A charwise buffer joins lines without a trailer.
 	if txt.Kind == register.LineWise {
-		e.dispatchRune('\n')
+		rs = append(rs, '\n')
 	}
+	e.replayRunes(rs)
 }
 
 // validBufferName reports whether name is a buffer that @ can execute: the

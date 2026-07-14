@@ -57,6 +57,7 @@ type Engine struct {
 	termCols int
 
 	mapPending []rune // runes accumulating toward a possible map LHS
+	queuedKeys int    // replay runes (map RHS, @ buffer, paste) not yet dispatched
 
 	// cscopes are the running cscope subprocess connections (nvi exp->cscq),
 	// shared across all screens; cscopeInit records whether the CSCOPE_DIRS
@@ -524,9 +525,7 @@ func (e *Engine) Input(ev Event) {
 		return
 	case StringEvent:
 		// Pasted/literal text is dispatched directly, bypassing map expansion.
-		for _, r := range v.Text {
-			e.dispatchRune(r)
-		}
+		e.replayRunes([]rune(v.Text))
 	case KeyEvent:
 		e.handleKeyEvent(v)
 	case InterruptEvent:

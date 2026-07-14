@@ -96,8 +96,10 @@ func expandPatternTilde(p, repl string, magic bool) string {
 }
 
 // searchFrom finds the next match of re from the given position in the given
-// direction, wrapping around the file. Returns the match position.
-func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (Pos, bool) {
+// direction, wrapping around the file. Returns the match position; wrapped
+// reports that the match was only found after passing the end (or top) of the
+// file, so the caller can show nvi's "Search wrapped" warning.
+func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (pos Pos, wrapped, ok bool) {
 	s := e.scr
 	n := s.lineCount()
 
@@ -108,7 +110,7 @@ func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (Pos, bool
 		// wrapping back to the start if wrapscan is set.
 		for i := int64(0); i <= n; i++ {
 			if e.Interrupted() {
-				return Pos{}, false
+				return Pos{}, false, false
 			}
 			lno := from.Line + i
 			startCol := 0
@@ -120,19 +122,20 @@ func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (Pos, bool
 					break
 				}
 				lno -= n // wrap
+				wrapped = true
 			}
 			line := s.lineRunes(lno)
 			if m, ok := re.MatchAt(line, startCol); ok {
-				return Pos{Line: lno, Col: m.Start}, true
+				return Pos{Line: lno, Col: m.Start}, wrapped, true
 			}
 		}
-		return Pos{}, false
+		return Pos{}, wrapped, false
 	}
 
 	// Backward.
 	for i := int64(0); i <= n; i++ {
 		if e.Interrupted() {
-			return Pos{}, false
+			return Pos{}, false, false
 		}
 		lno := from.Line - i
 		if lno < 1 {
@@ -142,6 +145,7 @@ func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (Pos, bool
 			for lno < 1 {
 				lno += n
 			}
+			wrapped = true
 		}
 		line := s.lineRunes(lno)
 		limit := len(line)
@@ -150,22 +154,44 @@ func (e *Engine) searchFrom(re *regex.Regex, from Pos, dir searchDir) (Pos, bool
 		}
 		if limit >= 0 {
 			if m, ok := re.MatchLast(line, limit); ok {
-				return Pos{Line: lno, Col: m.Start}, true
+				return Pos{Line: lno, Col: m.Start}, wrapped, true
 			}
 		}
 	}
-	return Pos{}, false
+	return Pos{}, wrapped, false
 }
 
 // searchFailErr reports why a searchFrom returned no match: an interrupt (the
 // user pressed ^C mid-scan) takes precedence over a genuine miss so the user
-// sees "Interrupted" rather than a misleading "not found".
-func (e *Engine) searchFailErr() error {
+// sees "Interrupted" rather than a misleading "not found". The miss wording
+// follows nvi search_msg: an empty file is called out (S_EMPTY); under
+// nowrapscan the scan stopped at the file boundary (S_EOF/S_SOF); under
+// wrapscan the whole file was searched (S_NOTFOUND). None echo the pattern.
+func (e *Engine) searchFailErr(dir searchDir) error {
 	if e.Interrupted() {
 		return errInterrupted
 	}
-	// nvi reports just "Pattern not found" -- it does not echo the pattern.
+	if e.scr.store.Lines() == 0 {
+		return fmt.Errorf("File empty; nothing to search")
+	}
+	if !e.scr.opts.Bool("wrapscan") {
+		if dir == searchFwd {
+			return fmt.Errorf("Reached end-of-file without finding the pattern")
+		}
+		return fmt.Errorf("Reached top-of-file without finding the pattern")
+	}
 	return fmt.Errorf("Pattern not found")
+}
+
+// noteSearchWrap shows nvi's "Search wrapped" warning (S_WRAP) after a
+// successful search that passed the end of the file. nvi withholds it when
+// more keys are already queued (SEARCH_WMSG is only set when !KEYS_WAITING)
+// so a macro looping over a wrapping search does not flash it repeatedly; it
+// is also never shown for a plain ex address search, only the vi commands.
+func (e *Engine) noteSearchWrap(wrapped bool) {
+	if wrapped && !e.keysWaiting() {
+		e.scr.msg, e.scr.msgKind = "Search wrapped", MsgError
+	}
 }
 
 // searchAddr resolves an ex search line-address (/pat/ or ?pat?): it finds the
@@ -184,9 +210,11 @@ func (e *Engine) searchAddr(pat string, cur int64, dir searchDir) (int64, error)
 	} else {
 		from = Pos{Line: cur, Col: 0} // backward: limit -1 skips cur
 	}
-	pos, ok := e.searchFrom(re, from, dir)
+	// A plain ex address search never shows the wrap warning (nvi sets
+	// SEARCH_WMSG only via E_SEARCH_WMSG, i.e. for the vi search commands).
+	pos, _, ok := e.searchFrom(re, from, dir)
 	if !ok {
-		return 0, e.searchFailErr()
+		return 0, e.searchFailErr(dir)
 	}
 	return pos.Line, nil
 }
@@ -200,10 +228,11 @@ func (e *Engine) startSearch(pattern string, dir searchDir) error {
 	}
 	e.scr.lastSearchDir = dir
 	prev := e.scr.cursor
-	pos, ok := e.searchFrom(re, e.scr.cursor, dir)
+	pos, wrapped, ok := e.searchFrom(re, e.scr.cursor, dir)
 	if !ok {
-		return e.searchFailErr()
+		return e.searchFailErr(dir)
 	}
+	e.noteSearchWrap(wrapped)
 	e.scr.cursor = pos
 	e.scr.clampCursor()
 	// startSearch backs ^A (v_searchw), which is V_ABS: always set the mark.
@@ -229,6 +258,14 @@ func (e *Engine) runSearchLine(line string, dir searchDir) error {
 		e.scr.clampCursor()
 		// / and ? are V_ABS_C: set the previous context if the line or column moved.
 		e.setPrevContext(prev, e.scr.cursor, absCol)
+		return nil
+	}
+	// A motion search that wrapped around to exactly its starting position
+	// fails (nvi v_correct: "Search wrapped to original position").
+	if target == m.searchStart {
+		e.searchWrapOriginErr()
+		m.changed = false
+		m.count, m.haveCount = 0, false
 		return nil
 	}
 	// Apply the deferred operator over [searchStart, target]. A search with no
@@ -284,10 +321,11 @@ func (e *Engine) searchLine(line string, dir searchDir) (Pos, bool, error) {
 			return Pos{}, false, err
 		}
 		s.lastSearchDir = dir
-		pos, ok := e.searchFrom(re, from, dir)
+		pos, wrapped, ok := e.searchFrom(re, from, dir)
 		if !ok {
-			return Pos{}, false, e.searchFailErr()
+			return Pos{}, false, e.searchFailErr(dir)
 		}
+		e.noteSearchWrap(wrapped)
 		cur := pos
 		linewise = false
 		// Optional line offset: +N, -N, + or - (default 1).
@@ -422,9 +460,9 @@ func regexEscape(s string) string {
 }
 
 // repeatSearchTarget computes the position of the count-th n (same direction)
-// or N (opposite) search repeat from the cursor, without moving it. ok is false
-// when the pattern is not found; err is set only when there is no prior pattern.
-func (e *Engine) repeatSearchTarget(opposite bool, count int) (Pos, bool, error) {
+// or N (opposite) search repeat from the cursor, without moving it. wrapped
+// reports that any of the repeats wrapped past the end of the file.
+func (e *Engine) repeatSearchTarget(opposite bool, count int) (pos Pos, wrapped bool, err error) {
 	if e.scr.lastPattern == "" {
 		return Pos{}, false, fmt.Errorf("No previous search pattern")
 	}
@@ -444,27 +482,25 @@ func (e *Engine) repeatSearchTarget(opposite bool, count int) (Pos, bool, error)
 		count = 1
 	}
 	from := e.scr.cursor
-	var pos Pos
 	for i := 0; i < count; i++ {
-		p, ok := e.searchFrom(re, from, dir)
+		p, w, ok := e.searchFrom(re, from, dir)
 		if !ok {
-			return Pos{}, false, nil
+			return Pos{}, false, e.searchFailErr(dir)
 		}
+		wrapped = wrapped || w
 		pos, from = p, p
 	}
-	return pos, true, nil
+	return pos, wrapped, nil
 }
 
 // repeatSearch implements n (same direction) and N (opposite).
 func (e *Engine) repeatSearch(opposite bool) error {
 	prev := e.scr.cursor
-	pos, ok, err := e.repeatSearchTarget(opposite, 1)
+	pos, wrapped, err := e.repeatSearchTarget(opposite, 1)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		return e.searchFailErr()
-	}
+	e.noteSearchWrap(wrapped)
 	e.scr.cursor = pos
 	e.scr.clampCursor()
 	// n and N are V_ABS_C: set the previous context if the line or column moved.
@@ -481,18 +517,34 @@ func (m *vimode) searchRepeatMotion(e *Engine, opposite bool) {
 	op, reg := m.op, m.opReg
 	count := effCount(m.opCount) * effCount(m.count)
 	start := s.cursor
-	target, ok, err := e.repeatSearchTarget(opposite, count)
+	target, wrapped, err := e.repeatSearchTarget(opposite, count)
 	m.op, m.opCount, m.opReg = 0, 0, 0
 	m.count, m.haveCount = 0, false
 	if err != nil {
 		s.msg, s.msgKind = err.Error(), MsgError
 		return
 	}
-	if !ok {
-		s.msg, s.msgKind = e.searchFailErr().Error(), MsgError
+	e.noteSearchWrap(wrapped)
+	// A motion search that wrapped around to exactly its starting position
+	// fails (nvi v_correct: "Search wrapped to original position").
+	if target == start {
+		e.searchWrapOriginErr()
+		m.changed = false
 		return
 	}
 	s.cursor = start
 	m.operate(e, op, reg, motion{to: target, promote: true})
 	m.changed = false
+}
+
+// searchWrapOriginErr reports a motion search that wrapped back to exactly the
+// position where the command started, which fails the command (nvi v_correct).
+// nvi issues it as M_BERR: in vi mode it only rings the bell unless the
+// verbose option is set.
+func (e *Engine) searchWrapOriginErr() {
+	if e.scr.opts.Bool("verbose") {
+		e.scr.msg, e.scr.msgKind = "Search wrapped to original position", MsgError
+	} else {
+		e.fe.Bell()
+	}
 }
