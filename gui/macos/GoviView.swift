@@ -86,6 +86,18 @@ final class GoviView: NSView, NSTextInputClient {
     private var bufB: Caret = (1, 0)
     private var dragging = false
 
+    // A buffer-anchored screen selection: a linear (non-block) selection lying
+    // entirely on buffer text, kept in buffer coordinates so its highlight
+    // follows the text when the view scrolls. reanchorSelection recomputes the
+    // screen cells from these before every compose. selEdit is the half-open
+    // [a, b) buffer range used by cut/copy/edit; selDrawA/selDrawB are the
+    // inclusive endpoint carets used to redraw the highlight. Block rectangles
+    // and selections touching non-buffer rows stay fixed to their screen cells.
+    private var selBufBacked = false
+    private var selEdit: (a: Caret, b: Caret) = ((1, 0), (1, 0))
+    private var selDrawA: Caret = (1, 0)
+    private var selDrawB: Caret = (1, 0)
+
     // selGranularity records how the selection was started; shift-extend and
     // drag-extend snap to word or line boundaries after double/triple-click.
     private enum SelGranularity { case character, word, line }
@@ -327,6 +339,7 @@ final class GoviView: NSView, NSTextInputClient {
     }
 
     private func recompose() {
+        reanchorSelection() // follow the text if the viewport scrolled
         GoviCompose(handle, Int32(rows), Int32(cols))
         syncColorsFromEngine()
         updateSpelling()
@@ -703,6 +716,7 @@ final class GoviView: NSView, NSTextInputClient {
         selActive = false
         selBlock = false
         selWholeBuffer = false
+        selBufBacked = false
         GoviSetSelection(handle, 0, 0, 0, 0, 0)
         GoviSetScreenSelection(handle, 0, 0, 0, 0, 0, 0)
     }
@@ -715,9 +729,19 @@ final class GoviView: NSView, NSTextInputClient {
         selActive = true
         selBlock = block
         selWholeBuffer = false
+        selBufBacked = false // recomputed below; keep editRange on the engine path
         screenSelStart = a
         screenSelEnd = b
         GoviSetScreenSelection(handle, 1, block ? 0 : 1, a.x, a.y, b.x, b.y)
+        // Anchor a linear buffer selection in buffer coordinates so its highlight
+        // tracks the text on scroll. editRange (engine path) is non-nil exactly
+        // when the selection lies entirely on buffer rows.
+        if !block, let r = editRange() {
+            selBufBacked = true
+            selEdit = ((r.0, r.1), (r.2, r.3))
+            selDrawA = cellToPos(a)
+            selDrawB = cellToPos(b)
+        }
     }
 
     // setBufferAll stores and highlights the editor Select All range in buffer
@@ -730,6 +754,7 @@ final class GoviView: NSView, NSTextInputClient {
         selActive = true
         selBlock = false
         selWholeBuffer = true
+        selBufBacked = false
         bufA = a
         bufB = b
         GoviSetSelection(handle, 1, a.line, Int32(a.col), b.line, Int32(b.col))
@@ -746,6 +771,11 @@ final class GoviView: NSView, NSTextInputClient {
             return (bufA.line, bufA.col, bufB.line, bufB.col)
         }
         if selBlock { return nil }
+        // Buffer-anchored: return the stored range, since the on-screen selection
+        // cells may have been clamped to the visible region after scrolling.
+        if selBufBacked {
+            return (selEdit.a.line, selEdit.a.col, selEdit.b.line, selEdit.b.col)
+        }
         var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
         if GoviSelectionEditRange(handle, &l1, &c1, &l2, &c2) != 0 {
             return (l1, Int(c1), l2, Int(c2))
@@ -776,6 +806,81 @@ final class GoviView: NSView, NSTextInputClient {
         var x: Int32 = 0, y: Int32 = 0, vis: Int32 = 0
         GoviPosToCell(handle, line, Int32(col), &x, &y, &vis)
         return (x, y)
+    }
+
+    // posCellVis is posCell plus whether the caret is within the laid-out area
+    // (false when scrolled off-screen; the cell is then meaningless).
+    private func posCellVis(_ p: Caret) -> (cell: ScreenCell, visible: Bool) {
+        var x: Int32 = 0, y: Int32 = 0, vis: Int32 = 0
+        GoviPosToCell(handle, p.line, Int32(p.col), &x, &y, &vis)
+        return ((x, y), vis != 0)
+    }
+
+    // cellToPos maps a screen cell to the buffer caret it sits on (clamped into
+    // the pane, so a cell past end-of-line yields the end-of-line caret).
+    private func cellToPos(_ c: ScreenCell) -> Caret {
+        var line: Int64 = 0, col: Int32 = 0
+        GoviCellToPos(handle, c.x, c.y, &line, &col)
+        return (line, Int(col))
+    }
+
+    // activePaneGeom returns the active pane's text-area origin/extent and first
+    // visible buffer line, queried live from the engine (the viewport may have
+    // just scrolled). nil when there is no active pane (e.g. ex transcript mode).
+    private func activePaneGeom() -> (roff: Int32, coff: Int32, rows: Int32, cols: Int32, top: Int64)? {
+        let n = GoviPaneCount(handle)
+        for i in 0..<n {
+            var roff: Int32 = 0, coff: Int32 = 0, prows: Int32 = 0, pcols: Int32 = 0, active: Int32 = 0
+            guard GoviPaneGeom(handle, i, &roff, &coff, &prows, &pcols, &active) != 0, active != 0 else {
+                continue
+            }
+            var top: Int64 = 0, lines: Int64 = 0, viewRows: Int32 = 0, scrollable: Int32 = 0
+            GoviPaneScrollInfo(handle, i, &top, &lines, &viewRows, &scrollable)
+            return (roff, coff, prows, pcols, top)
+        }
+        return nil
+    }
+
+    // reanchorSelection recomputes a buffer-anchored linear selection's screen
+    // cells from its buffer endpoints, so the highlight follows the text when the
+    // view scrolls. Endpoints scrolled past an edge are clamped to the visible
+    // region; a selection scrolled entirely off-screen keeps its buffer anchors
+    // (so it reappears on scroll-back) but shows no highlight. Called before every
+    // compose; a no-op when nothing has moved.
+    private func reanchorSelection() {
+        // Skip during an active drag: extendSelection is already setting the cells
+        // from the live pointer, and scrolling does not happen mid-drag.
+        guard selActive, selBufBacked, !selBlock, !selWholeBuffer, !dragging,
+              GoviExActive(handle) == 0, let pane = activePaneGeom() else { return }
+        // Reading order on buffer text matches buffer order: lo -> top-left cell,
+        // hi -> bottom-right cell.
+        var lo = selDrawA, hi = selDrawB
+        if caretBefore(hi, lo) { swap(&lo, &hi) }
+        let loR = posCellVis(lo), hiR = posCellVis(hi)
+        // Entirely off the top (bottom endpoint above the first line) or off the
+        // bottom (top endpoint below the last visible line): nothing to draw.
+        if (!hiR.visible && hi.line < pane.top) || (!loR.visible && lo.line >= pane.top) {
+            screenSelStart = (0, 0)
+            screenSelEnd = (0, 0)
+            GoviSetScreenSelection(handle, 0, 0, 0, 0, 0, 0)
+            return
+        }
+        // Top endpoint: its cell if visible, else clamped to the top row's first
+        // buffer cell (invisible here implies it scrolled above the viewport).
+        let loCell: ScreenCell
+        if loR.visible {
+            loCell = loR.cell
+        } else {
+            let fx = firstBufferX(onRow: pane.roff)
+            loCell = ((fx != nil && fx! >= pane.coff) ? fx! : pane.coff, pane.roff)
+        }
+        // Bottom endpoint: its cell if visible, else clamped to the pane's
+        // bottom-right (invisible here implies it scrolled below the viewport).
+        let hiCell: ScreenCell = hiR.visible ? hiR.cell
+            : (pane.coff + pane.cols - 1, pane.roff + pane.rows - 1)
+        screenSelStart = loCell
+        screenSelEnd = hiCell
+        GoviSetScreenSelection(handle, 1, 1, loCell.x, loCell.y, hiCell.x, hiCell.y)
     }
 
     // firstBufferX is the first column on row y that maps to buffer text (just
