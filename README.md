@@ -42,7 +42,8 @@ I've been impressed with how well it worked. Make of that what you will.
   the rest (a lot of them exist purely for compatibility, same as in nvi)
 - built-in help: `:help`, `:viusage`, `:exusage`, `:version`
 
-The macOS app adds tabbed windows, spell checking, international input, and color.
+The macOS app adds tabbed windows, spell checking, international input, color,
+and hover tooltips for words you define.
 
 ## What it can't (yet)
 
@@ -511,6 +512,10 @@ not change the display.
 
 Example: **`:set background=wheat foreground=#001122`**
 
+Also GoVi.app-only, and inert in the terminal, are **mode** (whether a mouse
+selection captures typed/pasted input) and the **tooltip** / **tooltipdelay** /
+**tooltipfile** options — see [GoVi.app](#goviapp-macos-gui) for all four.
+
 All other nvi options (73 total) are recognized and appear in **`:set all`**. Many
 are inert in govi — they exist for compatibility but do not change behavior. See
 [`docs/parity.md`](docs/parity.md) for the full parity matrix.
@@ -598,14 +603,92 @@ to a new window from the **Window** menu.
 
 | Action | How |
 |--------|-----|
-| Move cursor | Click |
-| Select text | Click-drag |
-| Select word / line | Double-click / triple-click |
+| Move cursor | Click on buffer text |
+| Select text | Click-drag — anything visible, in reading order: buffer text, the status line, `:!` output, the ex (Q) transcript |
+| Select a rectangle | **Option**-click-drag (copy-only block selection) |
+| Extend a selection | **Shift**-click |
+| Select word / line | Double-click / triple-click (drag to extend by whole words / lines) |
 | Scroll | Wheel or two-finger scroll (viewport moves; cursor stays until next edit) |
 | Copy / cut / paste | **Cmd-C / Cmd-X / Cmd-V** or Edit menu |
-| Select all | **Cmd-A** |
-| Replace selection | Type or paste while text is selected |
-| Context menu | Right-click or control-click (spelling, Look Up, cut/copy/paste) |
+| Select all | **Cmd-A** (whole buffer, including text scrolled off screen) |
+| Replace selection | Type or paste while text is selected (see selection modes below) |
+| Context menu | Right-click or control-click (spelling, tooltip, Look Up, cut/copy/paste) |
+
+Copy takes the buffer text when the selection is wholly editable (line numbers
+are excluded), otherwise exactly what is on screen. **Backspace/Delete** with a
+selection clears it (or deletes it, when the selection captures input); with no
+selection it behaves as vi's **`^?`**.
+
+#### Selection modes (`:set mode=…`)
+
+Whether typing or pasting acts on a selection is the **`mode`** option
+(default **contextual**; also in Settings):
+
+| Mode | Behavior |
+|------|----------|
+| **terminal** | Selection is copy-only; keystrokes stay vi commands, like a terminal |
+| **gui** | Typing or pasting replaces the selection; **Cmd-X** cuts it |
+| **contextual** | **gui** while in insert mode, **terminal** in command mode |
+
+An edit only applies when the selection lies wholly on editable buffer text; a
+selection touching the status line, gutter, or a transcript is copy-only.
+Pasting with no selection feeds the text in the current mode — pasting on the
+**`:`** line runs it as an ex command, insert mode inserts it literally.
+
+### Split panes
+
+Split screens (**`^W`**, **`:vsplit`**, **`:Edit`**, …) behave like native
+subwindows:
+
+- Each pane has its own **overlay scroll bar**; the wheel scrolls the pane
+  under the pointer.
+- **Click** in a pane to focus it.
+- **Drag** the divider between panes (a status row or divider column) to
+  resize them; the pointer shows the matching resize cursor.
+
+### Tooltips
+
+GoVi.app can show a tooltip for words you define in a **tooltip file** — hover
+documentation for a project's jargon, function names, config keys, and so on.
+Three `:set` options control it (put them in your `.nexrc`/`.exrc`; the
+terminal `govi` accepts and ignores them):
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| **tooltip** | hover | **off**, **hover** (show after the pointer rests on a known word), or **manual** (only on request) |
+| **tooltipdelay** | 500 | Hover delay in milliseconds |
+| **tooltipfile** | — | The definitions file (`~/` works); nothing shows until this is set |
+
+In **hover** mode, resting the pointer on a defined word pops the tip up; it
+stays while the pointer remains on the word, and any keystroke, click, or
+scroll dismisses it. In **manual** mode (and also in hover mode),
+**Command-click** a word or use the **Show Tooltip for "word"** context-menu
+item. The file is re-read automatically when it changes on disk.
+
+Example `~/.nexrc` lines:
+
+```
+set tooltipfile=~/.govi.tips
+set tooltipdelay=300
+```
+
+The tooltip file is plain text: an unindented line names one or more words
+(they share the tip), the indented lines after it are the tip's text, and
+**`#`** in column 0 is a comment:
+
+```
+# ~/.govi.tips
+malloc calloc
+    Allocate dynamic memory.
+    Returns NULL on failure.
+
+free
+    Release memory obtained from malloc()/calloc().
+```
+
+Words match exactly (case-sensitive), as selected by double-click word
+boundaries. Blank lines inside a tip are kept, and the tip's common
+indentation is stripped, so indented examples keep their shape.
 
 ### Spell checking
 
@@ -625,9 +708,13 @@ system. Control keys (**`^F`**, **`^D`**, etc.) remain vi commands.
 |---------|--------|
 | **Text padding** | Pixel inset between window edge and text (all windows) |
 | **Default rows / columns** | Initial window size for new editors |
-| **Font / font size** | Monospaced display font (all windows) |
+| **Font** | Monospaced display font, size, and character/line spacing (all windows) |
 | **Default foreground / background** | Colors for **new tabs** only |
+| **Cursor color / cursor style** | Block or bar cursor and its color |
+| **Initial directory** | Working directory for new windows |
 | **Open files in** | New window vs tab of front window |
+| **Selection mode** | Default `mode` option for new tabs (terminal / gui / contextual) |
+| **Always show tab bar** | Keep the tab bar visible even with a single tab |
 | **Show rows×columns in title bar** | Live grid size in the window subtitle |
 | **Warn before closing unsaved files** | Save/discard prompt on close |
 
