@@ -141,6 +141,15 @@ final class GoviView: NSView, NSTextInputClient {
     private var misspellings: [Misspelling] = []
     private var contextMisspelling: Misspelling?
 
+    // Tooltips (:set tooltip / tooltipdelay / tooltipfile, engine-carried so an
+    // .exrc configures them). tooltipSpan is the caret span of the word whose
+    // tip is showing, so moves within the word keep it up; the panel is a
+    // borderless child window anchored under the word.
+    private var tooltipPanel: NSPanel?
+    private var tooltipTimer: Timer?
+    private var tooltipSpan: (a: Caret, b: Caret)?
+    private var hoverTrackingArea: NSTrackingArea?
+
     init(frame frameRect: NSRect, handle: Int64) {
         self.handle = handle
         super.init(frame: frameRect)
@@ -166,6 +175,13 @@ final class GoviView: NSView, NSTextInputClient {
         NotificationCenter.default.addObserver(
             self, selector: #selector(someWindowClosed), name: NSWindow.willCloseNotification,
             object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowResignedKey),
+            name: NSWindow.didResignKeyNotification, object: nil)
+    }
+
+    @objc private func windowResignedKey(_ note: Notification) {
+        if (note.object as? NSWindow) === window { hideTooltip() }
     }
 
     @objc private func someWindowClosed(_ note: Notification) {
@@ -308,6 +324,7 @@ final class GoviView: NSView, NSTextInputClient {
         let w = max(1, Int((bounds.width - 2 * padding) / cellW + 1e-6))
         let h = max(1, Int((bounds.height - 2 * padding) / cellH + 1e-6))
         if w == cols && h == rows { return }
+        hideTooltip() // a resize reflows the text under the tip
         cols = w
         rows = h
         GoviResize(handle, Int32(rows), Int32(cols))
@@ -999,6 +1016,15 @@ final class GoviView: NSView, NSTextInputClient {
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+
+        // Command-click purposefully pulls up the tooltip for the clicked word
+        // (any tooltip mode but off); it neither moves the caret nor selects.
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command),
+           tooltipMode != 0 {
+            showTooltip(at: cellAt(event))
+            return
+        }
+        hideTooltip()
         dragBlock = optionRectSelect(event)
 
         // Shift-click (or shift-click-drag) extends the selection. This must run
@@ -1123,6 +1149,7 @@ final class GoviView: NSView, NSTextInputClient {
     private var scrollAccum: CGFloat = 0
 
     override func scrollWheel(with event: NSEvent) {
+        hideTooltip()
         if event.hasPreciseScrollingDeltas {
             scrollAccum += event.scrollingDeltaY / cellH // points -> lines
         } else {
@@ -1271,6 +1298,7 @@ final class GoviView: NSView, NSTextInputClient {
     // Autorepeat (isARepeat) is handled directly: interpretKeyEvents does not
     // deliver repeats to insertText/doCommand.
     override func keyDown(with event: NSEvent) {
+        hideTooltip()
         if isControlKey(event) {
             handleControlKey(event)
             return
@@ -1622,6 +1650,7 @@ final class GoviView: NSView, NSTextInputClient {
     // the click is selected so those commands act on it.
     override func menu(for event: NSEvent) -> NSMenu? {
         window?.makeFirstResponder(self)
+        hideTooltip()
         let cell = cellAt(event)
         var line: Int64 = 0, col: Int32 = 0
         GoviCellToPos(handle, cell.x, cell.y, &line, &col)
@@ -1632,6 +1661,15 @@ final class GoviView: NSView, NSTextInputClient {
         if let m = misspelling(at: line, col: Int(col)) {
             contextMisspelling = m
             addSuggestions(to: menu, for: m)
+        }
+        if tooltipMode != 0, let q = tooltipQuery(at: cell) {
+            let word = bridgeString(GoviRangeText(handle, q.a.line, Int32(q.a.col),
+                                                  q.b.line, Int32(q.b.col)))
+            let tip = menu.addItem(withTitle: "Show Tooltip for “\(word)”",
+                                   action: #selector(showTooltipFromMenu(_:)), keyEquivalent: "")
+            tip.target = self
+            tip.representedObject = q
+            menu.addItem(.separator())
         }
         if !wordText.isEmpty {
             let look = menu.addItem(withTitle: "Look Up “\(wordText)”",
@@ -1730,6 +1768,137 @@ final class GoviView: NSView, NSTextInputClient {
         NSSpellChecker.shared.learnWord(word(m))
         spellCache.removeAll()
         step()
+    }
+
+    // MARK: - Tooltips
+
+    // Tooltip modes (must match GoviTooltipMode): 0 off, 1 hover (show after
+    // the pointer rests on a known word for the configured delay), 2 manual
+    // (only Command-click or the context menu; both also work in hover mode).
+    private var tooltipMode: Int32 { GoviTooltipMode(handle) }
+
+    private struct TooltipHit { let text: String; let a: Caret; let b: Caret }
+
+    // tooltipQuery resolves the word under a screen cell to its tooltip text
+    // and caret span via the engine's word boundaries and the tooltipfile.
+    private func tooltipQuery(at c: ScreenCell) -> TooltipHit? {
+        var l1: Int64 = 0, c1: Int32 = 0, l2: Int64 = 0, c2: Int32 = 0
+        let text = bridgeString(GoviTooltipAt(handle, c.x, c.y, &l1, &c1, &l2, &c2))
+        guard !text.isEmpty else { return nil }
+        return TooltipHit(text: text, a: (l1, Int(c1)), b: (l2, Int(c2)))
+    }
+
+    // The tracking area delivers mouseMoved/mouseExited for hover tooltips.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let ta = hoverTrackingArea { removeTrackingArea(ta) }
+        let ta = NSTrackingArea(
+            rect: .zero,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self, userInfo: nil)
+        addTrackingArea(ta)
+        hoverTrackingArea = ta
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let mode = tooltipMode
+        guard mode != 0 else { return }
+        let c = cellAt(event)
+        // A visible tip stays up while the pointer remains inside its word.
+        if let span = tooltipSpan {
+            if let q = tooltipQuery(at: c), q.a == span.a, q.b == span.b { return }
+            hideTooltip()
+        }
+        guard mode == 1 else { return } // manual: no hover arming
+        tooltipTimer?.invalidate()
+        let delay = max(0.01, Double(GoviTooltipDelayMS(handle)) / 1000.0)
+        tooltipTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            self.tooltipTimer = nil
+            // The pointer has been resting on c since the last mouseMoved.
+            if let q = self.tooltipQuery(at: c) { self.presentTooltip(q) }
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hideTooltip()
+    }
+
+    private func hideTooltip() {
+        tooltipTimer?.invalidate()
+        tooltipTimer = nil
+        tooltipSpan = nil
+        guard let p = tooltipPanel else { return }
+        p.parent?.removeChildWindow(p)
+        p.orderOut(nil)
+        tooltipPanel = nil
+    }
+
+    // showTooltip is the manual trigger (Command-click / context menu): show
+    // the tip for the word under the cell immediately, if it has one.
+    private func showTooltip(at c: ScreenCell) {
+        guard let q = tooltipQuery(at: c) else { hideTooltip(); return }
+        presentTooltip(q)
+    }
+
+    // presentTooltip shows text in a borderless floating panel anchored just
+    // below the word's first cell (above it when there is no room), attached
+    // as a child window so it follows the editor window.
+    private func presentTooltip(_ q: TooltipHit) {
+        hideTooltip()
+        guard let window = window else { return }
+        let tipFont = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        let attr = NSAttributedString(string: q.text, attributes: [.font: tipFont])
+        let textBounds = attr.boundingRect(
+            with: NSSize(width: 480, height: 1000), options: [.usesLineFragmentOrigin])
+        let pad: CGFloat = 6
+        let size = NSSize(width: ceil(textBounds.width) + 2 * pad,
+                          height: ceil(textBounds.height) + 2 * pad)
+
+        let label = NSTextField(wrappingLabelWithString: q.text)
+        label.font = tipFont
+        label.textColor = .labelColor
+        label.isSelectable = false
+        label.frame = NSRect(x: pad, y: pad,
+                             width: ceil(textBounds.width), height: ceil(textBounds.height))
+
+        let content = NSView(frame: NSRect(origin: .zero, size: size))
+        content.wantsLayer = true
+        content.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        content.layer?.borderColor = NSColor.separatorColor.cgColor
+        content.layer?.borderWidth = 1
+        content.layer?.cornerRadius = 5
+        content.addSubview(label)
+
+        let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
+                            styleMask: [.borderless, .nonactivatingPanel],
+                            backing: .buffered, defer: false)
+        panel.contentView = content
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.level = .floating
+        panel.ignoresMouseEvents = true
+
+        // Anchor below the word start (cursor cell if it scrolled off-screen).
+        let (cell, vis) = posCellVis(q.a)
+        let anchor = vis ? cell : cursorCell()
+        let cellScreen = window.convertToScreen(
+            convert(cellRect(Int(anchor.x), Int(anchor.y)), to: nil))
+        var origin = NSPoint(x: cellScreen.minX, y: cellScreen.minY - size.height - 3)
+        if let vf = window.screen?.visibleFrame {
+            if origin.y < vf.minY { origin.y = cellScreen.maxY + 3 } // no room below
+            origin.x = min(max(origin.x, vf.minX), max(vf.minX, vf.maxX - size.width))
+        }
+        panel.setFrameOrigin(origin)
+        window.addChildWindow(panel, ordered: .above)
+        tooltipPanel = panel
+        tooltipSpan = (q.a, q.b)
+    }
+
+    @objc private func showTooltipFromMenu(_ sender: NSMenuItem) {
+        guard let q = sender.representedObject as? TooltipHit else { return }
+        presentTooltip(q)
     }
 
     // MARK: - Drawing

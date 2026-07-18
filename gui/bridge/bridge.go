@@ -31,6 +31,7 @@ import (
 
 	"govi/engine"
 	"govi/frontend/grid"
+	"govi/frontend/tips"
 )
 
 // host implements engine.Frontend. Because the host application pulls the
@@ -64,6 +65,8 @@ type instance struct {
 	screenSelLinear bool // false = axis-aligned rectangle; true = reading-order
 	screenSelA      grid.Cell
 	screenSelB      grid.Cell
+
+	tips tips.Cache // tooltipfile contents, reloaded when the file changes
 }
 
 // instMu guards insts and nextHandle. The GUI host now runs each editor's input

@@ -144,6 +144,14 @@ var optDefs = []optDef{
 	{name: "terse", typ: optBool},
 	{name: "tildeop", abbr: "to", typ: optBool},
 	{name: "timeout", typ: optBool, dB: true},
+	// tooltip* (GoVi GUI only) configure word tooltips in GoVi.app: tooltip is
+	// the mode (off, hover, manual), tooltipdelay the hover delay in
+	// milliseconds, and tooltipfile the definitions file (see gui/README.md).
+	// Inert in terminal govi. Nothing shows until tooltipfile is set, so the
+	// hover default is harmless out of the box.
+	{name: "tooltip", typ: optStr, dS: "hover"},
+	{name: "tooltipdelay", typ: optNum, dN: 500},
+	{name: "tooltipfile", typ: optStr},
 	{name: "ttywerase", typ: optBool},
 	{name: "verbose", typ: optBool},
 	{name: "warn", typ: optBool, dB: true},
@@ -299,6 +307,12 @@ func (e *Engine) setOne(tok string) error {
 					return err
 				}
 				val = canon
+			} else if d.name == "tooltip" {
+				canon, err := canonTooltipMode(val)
+				if err != nil {
+					return err
+				}
+				val = canon
 			}
 			o.s[d.name] = val
 		case optNum:
@@ -402,6 +416,12 @@ func (e *Engine) SetStrOption(name, value string) error {
 			return err
 		}
 		value = canon
+	} else if d.name == "tooltip" {
+		canon, err := canonTooltipMode(value)
+		if err != nil {
+			return err
+		}
+		value = canon
 	}
 	e.scr.opts.s[d.name] = value
 	return nil
@@ -409,6 +429,10 @@ func (e *Engine) SetStrOption(name, value string) error {
 
 // StrOption returns a string option's current value.
 func (e *Engine) StrOption(name string) string { return e.scr.opts.Str(name) }
+
+// IntOption returns a numeric option's current value (GUI hosts read
+// tooltipdelay this way).
+func (e *Engine) IntOption(name string) int { return e.scr.opts.Int(name) }
 
 // SetStartupWindow records the -w command-line size for the window option
 // before the host has reported the terminal geometry (when the :set clamp
@@ -441,6 +465,8 @@ func (e *Engine) optDisplay(d *optDef) string {
 			val = formatRefresh(val)
 		} else if d.name == "mode" {
 			val = formatSelectionMode(val)
+		} else if d.name == "tooltip" {
+			val = formatTooltipMode(val)
 		}
 		return fmt.Sprintf("%s=%q", d.name, val)
 	}

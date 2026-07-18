@@ -130,6 +130,66 @@ view runs `NSSpellChecker`, draws the underlines, and applies corrections
 through the same caret-range primitives as the rest of the GUI. Results are
 cached per line text so unchanged lines are not re-checked.
 
+### Tooltips
+
+GoVi.app can show a tooltip for words the user has defined in a **tooltip
+file** — hover documentation for a project's jargon, API names, config keys,
+etc. Three exrc-settable options control it (they are carried by the engine so
+`.exrc`/`.nexrc` or `:set` configures them, but they are **ignored by the
+terminal govi** — like the `mode` option, they only affect GoVi.app):
+
+- `tooltip=off|hover|manual` — the mode (unique prefixes work, e.g. `:set
+  tooltip=m`):
+  - **off** — no tooltips.
+  - **hover** (default) — resting the pointer on a known word for
+    `tooltipdelay` milliseconds pops the tip up; it stays while the pointer
+    remains on the word. The manual triggers below also work.
+  - **manual** — only a purposeful request shows a tip: **Command-click** a
+    word, or use the **Show Tooltip for "word"** context-menu item
+    (right-click / control-click).
+- `tooltipdelay=N` — the hover delay in milliseconds (default 500).
+- `tooltipfile=path` — the definitions file (a leading `~/` is expanded).
+  Unset by default, so nothing shows until it is configured; the file is
+  re-read automatically when it changes on disk.
+
+Example exrc lines:
+
+```
+set tooltipfile=~/.govi.tips
+set tooltipdelay=300
+```
+
+The tip is looked up for the word under the pointer using the editor's
+double-click word boundaries, on buffer text in the active pane. Any
+keystroke, click, scroll, or moving the pointer off the word dismisses it.
+
+#### Tooltip file format
+
+Line-based and indentation-driven, designed to be easy to write by hand:
+
+```
+# GoVi tooltip file. '#' in column 0 is a comment.
+#
+# An entry is one unindented term line -- one or more words separated by
+# whitespace, all sharing the same tooltip -- followed by the tooltip body
+# on indented lines.
+malloc calloc
+    Allocate dynamic memory.
+    Returns NULL on failure.
+
+free
+    Release memory obtained from malloc()/calloc().
+    Example:
+        free(p);
+```
+
+The body's common indentation is stripped (so the `free(p);` example keeps its
+relative indent), blank lines inside a body are preserved, and an indented `#`
+line is body text, not a comment. Words match exactly (case-sensitive). A word
+defined twice keeps the later entry. The parser is lenient and never fails;
+malformed text is simply ignored. See `frontend/tips` for the parser and its
+tests.
+
 ### Settings
 
 **Cmd-,** opens a Settings window. Currently it sets the **text padding** — the
