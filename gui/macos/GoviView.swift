@@ -1847,20 +1847,19 @@ final class GoviView: NSView, NSTextInputClient {
     private func presentTooltip(_ q: TooltipHit) {
         hideTooltip()
         guard let window = window else { return }
-        let tipFont = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
-        let attr = NSAttributedString(string: q.text, attributes: [.font: tipFont])
-        let textBounds = attr.boundingRect(
-            with: NSSize(width: 480, height: 1000), options: [.usesLineFragmentOrigin])
-        let pad: CGFloat = 6
-        let size = NSSize(width: ceil(textBounds.width) + 2 * pad,
-                          height: ceil(textBounds.height) + 2 * pad)
-
         let label = NSTextField(wrappingLabelWithString: q.text)
-        label.font = tipFont
+        label.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         label.textColor = .labelColor
         label.isSelectable = false
-        label.frame = NSRect(x: pad, y: pad,
-                             width: ceil(textBounds.width), height: ceil(textBounds.height))
+        // Measure with the field's own cell so wrapping and inset match what
+        // will actually be drawn (NSAttributedString.boundingRect wraps a hair
+        // later than the cell and clipped the last line of long tips).
+        let measured = label.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 480, height: 10000))
+            ?? NSSize(width: 480, height: 100)
+        let textSize = NSSize(width: ceil(measured.width), height: ceil(measured.height))
+        let pad: CGFloat = 6
+        let size = NSSize(width: textSize.width + 2 * pad, height: textSize.height + 2 * pad)
+        label.frame = NSRect(x: pad, y: pad, width: textSize.width, height: textSize.height)
 
         let content = NSView(frame: NSRect(origin: .zero, size: size))
         content.wantsLayer = true
